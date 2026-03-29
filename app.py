@@ -160,11 +160,10 @@ def clean_amount(val):
         return 0.0
 
 def is_checked(val):
-    """Retourne True si la cellule est cochée (✓, TRUE, OUI, oui, 1, x)."""
     if pd.isna(val):
         return False
-    v = str(val).strip().lower()
-    return v in ["✓", "✔", "true", "oui", "1", "x", "yes", "✅", "oui ✅"]
+    v = str(val).strip()
+    return v in ["✓", "✔", "✅", "TRUE", "true", "oui", "1", "x", "yes"]
 
 def status_badge(statut):
     statut = str(statut).lower()
