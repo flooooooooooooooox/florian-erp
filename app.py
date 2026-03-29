@@ -142,7 +142,7 @@ def get_sheet_data():
         gc = gspread.authorize(creds)
         sh = gc.open(st.secrets["SHEET_NAME"])
         ws = sh.sheet1
-        data = ws.get_all_records()
+        data = ws.get_all_records(expected_headers=[])
         df = pd.DataFrame(data)
         return df, None
     except Exception as e:
