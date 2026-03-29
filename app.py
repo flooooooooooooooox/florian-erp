@@ -43,7 +43,10 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; }
 if not check_login():
     st.stop()
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 
 @st.cache_resource(ttl=30)
 def get_sheet_data():
