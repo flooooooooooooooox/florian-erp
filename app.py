@@ -131,7 +131,7 @@ if not check_login():
     st.stop()
 
 # ── Connexion Google Sheets ───────────────────────────────────────────────────
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource(ttl=30)
 def get_sheet_data():
