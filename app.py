@@ -149,15 +149,12 @@ def get_sheet_data():
         return pd.DataFrame(), str(e)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def clean_amount(val):
-    """Convertit une cellule montant en float."""
-    if pd.isna(val) or val == "":
-        return 0.0
-    s = str(val).replace(" ", "").replace("\u202f", "").replace(",", ".").replace("€", "").strip()
-    try:
-        return float(s)
-    except:
-        return 0.0
+def is_checked(val):
+    if not val or str(val).strip() == "":
+        return False
+    v = str(val).strip()
+    # Accepte tous les formats possibles
+    return len(v) > 0 and v not in ["", " ", "📧", "0", "FALSE", "false", "non", "Non"]
 
 def is_checked(val):
     if pd.isna(val):
