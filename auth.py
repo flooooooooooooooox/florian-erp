@@ -54,6 +54,8 @@ def _sb_insert(user: dict) -> bool:
         json=user,
         timeout=10,
     )
+    if not r.ok:
+        st.error(f"Supabase erreur {r.status_code} : {r.text}")
     return r.ok
 
 def _sb_delete(username: str) -> bool:
