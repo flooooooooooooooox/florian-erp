@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 from datetime import datetime
 import time
 import json
-from auth import check_login, logout, admin_panel, LOGO_B64
+import os
+from auth import check_login, logout, admin_panel, get_user_credentials
 
 st.set_page_config(
     page_title="Florian AI Bâtiment – ERP",
@@ -39,9 +40,14 @@ h1, h2, h3 { font-family: 'Nunito', sans-serif !important; }
     border-radius: 14px; padding: 16px 20px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.2);
 }
-[data-testid="stMetric"] label { color: var(--gris) !important; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; }
-[data-testid="stMetricValue"] { color: var(--blanc) !important; font-family: 'Nunito', sans-serif; font-size: 1.8rem !important; font-weight: 800 !important; }
-[data-testid="stMetricDelta"] { font-size: 0.8rem; }
+[data-testid="stMetric"] label {
+    color: var(--gris) !important; font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 1px;
+}
+[data-testid="stMetricValue"] {
+    color: var(--blanc) !important; font-family: 'Nunito', sans-serif;
+    font-size: 1.8rem !important; font-weight: 800 !important;
+}
 .stButton > button {
     background: linear-gradient(135deg, #22C55E, #16A34A) !important;
     color: #0F2942 !important; border: none !important;
@@ -50,14 +56,13 @@ h1, h2, h3 { font-family: 'Nunito', sans-serif !important; }
 }
 .stButton > button:hover { opacity: 0.85 !important; transform: translateY(-1px); }
 [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
-[data-testid="stTab"] { font-family: 'Nunito', sans-serif !important; font-weight: 700; }
-.stTextInput input, .stSelectbox select {
+.stTextInput input {
     background: rgba(255,255,255,0.06) !important;
     color: var(--blanc) !important;
     border: 1px solid var(--border) !important;
     border-radius: 8px !important;
 }
-.stTextInput label, .stSelectbox label { color: var(--gris) !important; font-size: 0.85rem; }
+.stTextInput label { color: var(--gris) !important; font-size: 0.85rem; }
 .refresh-dot {
     display: inline-block; width: 8px; height: 8px;
     border-radius: 50%; background: var(--vert);
@@ -65,152 +70,107 @@ h1, h2, h3 { font-family: 'Nunito', sans-serif !important; }
 }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 hr { border-color: var(--border) !important; }
-.stAlert { border-radius: 10px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth ───────────────────────────────────────────────────────────────────────
 if not check_login():
     st.stop()
 
-# ── Connexion Google Sheets ───────────────────────────────────────────────────
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+# ── Connexion Google Sheet (par user) ─────────────────────────────────────────
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
 @st.cache_resource(ttl=30)
-def get_sheet_data():
+def get_sheet_data(username: str):
+    """Charge le Sheet du user connecté avec SES propres credentials."""
     try:
-        creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+        sheet_name, gsa_json = get_user_credentials(username)
+
+        if not sheet_name:
+            return pd.DataFrame(), "SHEET_NAME non configuré pour cet utilisateur."
+        if not gsa_json:
+            return pd.DataFrame(), "GOOGLE_SERVICE_ACCOUNT non configuré pour cet utilisateur."
+
+        creds_dict = json.loads(gsa_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         gc = gspread.authorize(creds)
-        sh = gc.open(st.secrets["SHEET_NAME"])
+        sh = gc.open(sheet_name)
+
+        # Essayer l'onglet "suivie", sinon sheet1
         try:
             ws = sh.worksheet("suivie")
         except Exception:
             ws = sh.sheet1
-        data = ws.get_all_records(expected_headers=[])
-        df = pd.DataFrame(data)
-        # Supprimer lignes vides
-        df = df[df.apply(lambda r: any(str(v).strip() not in ["", "0"] for v in r), axis=1)]
-        df = df.reset_index(drop=True)
+
+        # Lecture robuste (gère colonnes vides / doublons)
+        all_values = ws.get_all_values()
+        if not all_values:
+            return pd.DataFrame(), None
+
+        raw_headers = all_values[0]
+        seen = {}
+        clean_headers = []
+        for i, h in enumerate(raw_headers):
+            h = h.strip()
+            if h == "":
+                h = f"_col_{i}"
+            if h in seen:
+                seen[h] += 1
+                h = f"{h}_{seen[h]}"
+            else:
+                seen[h] = 0
+            clean_headers.append(h)
+
+        rows = all_values[1:]
+        n = len(clean_headers)
+        padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+        df = pd.DataFrame(padded, columns=clean_headers)
+
+        # Supprimer colonnes fantômes et lignes vides
+        df = df.loc[:, ~df.columns.str.startswith("_col_")]
+        df = df.replace("", pd.NA).dropna(how="all").fillna("")
+
         return df, None
     except Exception as e:
         return pd.DataFrame(), str(e)
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def clean_amount(val):
-    if not val and val != 0:
+    if pd.isna(val) or str(val).strip() == "":
         return 0.0
-    s = str(val).replace("\xa0","").replace("\u202f","").replace(" ","").replace(",",".").replace("€","").strip()
+    s = (str(val)
+         .replace("\xa0", "").replace("\u202f", "").replace(" ", "")
+         .replace(",", ".").replace("€", "").strip())
     try:
         return float(s)
     except:
         return 0.0
 
 def is_checked(val):
-    if val is None:
+    if pd.isna(val):
         return False
     s = str(val).strip()
-    CHECKED = {"✅","✓","✔","TRUE","true","oui","Oui","OUI","1","x","X","yes","Yes"}
-    NOT_CHECKED = {"","📧","0","FALSE","false","non","Non","NON"}
+    CHECKED = {"✅", "✓", "✔", "TRUE", "true", "oui", "Oui", "OUI", "1", "x", "X", "yes", "Yes"}
     if s in CHECKED:
         return True
-    if s in NOT_CHECKED:
-        return False
     return "✅" in s
 
 def fcol(df, *keywords):
     for kw in keywords:
         for c in df.columns:
-            if kw.lower() in str(c).lower():
+            if kw.lower() in str(c).strip().lower():
                 return c
     return None
 
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(
-        f"""<div style="text-align:center; padding: 16px 0 20px;">
-            <img src="data:image/jpeg;base64,{LOGO_B64}"
-                 style="width:120px; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.4);" />
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-    user = st.session_state.get("username", "")
-    role = st.session_state.get("role", "viewer")
-
-    pages = ["📊 Vue Générale", "📋 Devis", "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers"]
-    if role == "admin":
-        pages.append("👥 Utilisateurs")
-
-    page = st.selectbox("Navigation", pages, label_visibility="collapsed")
-
-    st.divider()
-    st.markdown('<span class="refresh-dot"></span><span style="font-size:0.75rem;color:#94A3B8;">Sync toutes les 30s</span>', unsafe_allow_html=True)
-    if st.button("🔄 Actualiser"):
-        st.cache_resource.clear()
-        st.rerun()
-
-    st.divider()
-    st.markdown(f'<div style="font-size:0.8rem;color:#94A3B8;">👤 <b style="color:#F8FAFC">{user}</b> &nbsp;·&nbsp; {role}</div>', unsafe_allow_html=True)
-    if st.button("🚪 Déconnexion"):
-        logout()
-        st.rerun()
-
-# ── Page Utilisateurs (admin) ─────────────────────────────────────────────────
-if page == "👥 Utilisateurs":
-    admin_panel()
-    st.stop()
-
-# ── Chargement données ────────────────────────────────────────────────────────
-df_raw, error = get_sheet_data()
-
-if error:
-    st.error(f"❌ Impossible de charger le Google Sheet : {error}")
-    st.stop()
-
-if df_raw.empty:
-    st.warning("📭 Le Google Sheet est vide ou inaccessible.")
-    st.stop()
-
-df = df_raw.copy()
-
-# ── Colonnes ──────────────────────────────────────────────────────────────────
-COL_CLIENT   = fcol(df, "client")
-COL_CHANTIER = fcol(df, "objet", "chantier")
-COL_NUM      = fcol(df, "n° devis", "n°", "num")
-COL_MONTANT  = fcol(df, "montant")
-COL_SIGN     = fcol(df, "devis signé", "signé")
-COL_FACT_FIN = fcol(df, "facture finale", "finale", "final")
-COL_PV       = fcol(df, "pv signé", "pv")
-COL_STATUT   = fcol(df, "statut")
-COL_DATE     = fcol(df, "date")
-COL_MODALITE = fcol(df, "modalit")
-COL_TVA      = fcol(df, "tva")
-COL_RELANCE1 = fcol(df, "relance 1")
-COL_RELANCE2 = fcol(df, "relance 2")
-COL_ACOMPTE1 = fcol(df, "acompte 1")
-COL_ACOMPTE2 = fcol(df, "acompte 2")
-
-df["_montant"] = df[COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
-df["_signe"]   = df[COL_SIGN].apply(is_checked)      if COL_SIGN    else False
-df["_fact_fin"]= df[COL_FACT_FIN].apply(is_checked)  if COL_FACT_FIN else False
-df["_pv"]      = df[COL_PV].apply(is_checked)         if COL_PV      else False
-
-total_ca   = df["_montant"].sum()
-nb_devis   = len(df)
-nb_signes  = int(df["_signe"].sum())
-nb_attente = nb_devis - nb_signes
-nb_fact_ok = int(df["_fact_fin"].sum())
-ca_signe   = df[df["_signe"]]["_montant"].sum()
-ca_non_s   = df[~df["_signe"]]["_montant"].sum()
-
-LIMIT = 100  # Seuil affichage tableau complet
+LIMIT = 100
 
 def show_table(dataframe, key_suffix=""):
-    """Affiche un tableau avec bouton 'Voir plus' si > LIMIT lignes."""
     total = len(dataframe)
     if total == 0:
         st.info("Aucun dossier.")
@@ -230,9 +190,101 @@ def show_table(dataframe, key_suffix=""):
                 st.session_state[f"show_all_{key_suffix}"] = False
                 st.rerun()
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=130)
+    else:
+        st.markdown(
+            "<div style='text-align:center;font-size:2rem;padding:8px 0'>⚡</div>",
+            unsafe_allow_html=True,
+        )
+
+    user = st.session_state.get("username", "")
+    role = st.session_state.get("role", "viewer")
+
+    pages = [
+        "📊 Vue Générale", "📋 Devis",
+        "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers"
+    ]
+    if role == "admin":
+        pages.append("👥 Utilisateurs")
+
+    page = st.selectbox("Navigation", pages, label_visibility="collapsed")
+
+    st.divider()
+    st.markdown(
+        '<span class="refresh-dot"></span>'
+        '<span style="font-size:0.75rem;color:#94A3B8;">Sync toutes les 30s</span>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🔄 Actualiser"):
+        st.cache_resource.clear()
+        st.rerun()
+
+    st.divider()
+    st.markdown(
+        f'<div style="font-size:0.8rem;color:#94A3B8;">'
+        f'👤 <b style="color:#F8FAFC">{user}</b> &nbsp;·&nbsp; {role}</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Déconnexion"):
+        logout()
+        st.rerun()
+
+# ── Page admin ─────────────────────────────────────────────────────────────────
+if page == "👥 Utilisateurs":
+    admin_panel()
+    st.stop()
+
+# ── Chargement données ─────────────────────────────────────────────────────────
+df_raw, error = get_sheet_data(user)
+
+if error:
+    st.error(f"❌ Impossible de charger le Google Sheet : {error}")
+    st.stop()
+
+if df_raw.empty:
+    st.warning("📭 Le Google Sheet est vide ou inaccessible.")
+    st.stop()
+
+df = df_raw.copy()
+
+# ── Détection colonnes ─────────────────────────────────────────────────────────
+COL_CLIENT   = fcol(df, "client")
+COL_CHANTIER = fcol(df, "objet", "chantier")
+COL_NUM      = fcol(df, "n° devis", "n°", "num")
+COL_MONTANT  = fcol(df, "montant")
+COL_SIGN     = fcol(df, "devis signé", "signé")
+COL_FACT_FIN = fcol(df, "facture finale", "finale", "final")
+COL_PV       = fcol(df, "pv signé", "pv")
+COL_STATUT   = fcol(df, "statut")
+COL_DATE     = fcol(df, "date")
+COL_MODALITE = fcol(df, "modalit")
+COL_TVA      = fcol(df, "tva")
+COL_RELANCE1 = fcol(df, "relance 1")
+COL_RELANCE2 = fcol(df, "relance 2")
+COL_RELANCE3 = fcol(df, "relance 3")
+COL_ACOMPTE1 = fcol(df, "acompte 1")
+COL_ACOMPTE2 = fcol(df, "acompte 2")
+COL_RESERVE  = fcol(df, "réserve", "reserve")
+
+df["_montant"]  = df[COL_MONTANT].apply(clean_amount)  if COL_MONTANT  else 0.0
+df["_signe"]    = df[COL_SIGN].apply(is_checked)        if COL_SIGN     else False
+df["_fact_fin"] = df[COL_FACT_FIN].apply(is_checked)   if COL_FACT_FIN else False
+df["_pv"]       = df[COL_PV].apply(is_checked)          if COL_PV       else False
+
+total_ca   = df["_montant"].sum()
+nb_devis   = len(df)
+nb_signes  = int(df["_signe"].sum())
+nb_attente = nb_devis - nb_signes
+nb_fact_ok = int(df["_fact_fin"].sum())
+ca_signe   = df[df["_signe"]]["_montant"].sum()
+ca_non_s   = df[~df["_signe"]]["_montant"].sum()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 if page == "📊 Vue Générale":
     st.markdown('<h1 style="font-size:2rem;margin-bottom:4px;">Vue Générale</h1>', unsafe_allow_html=True)
     st.caption(f"Mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -255,8 +307,13 @@ if page == "📊 Vue Générale":
                 d2["_mois"] = d2["_date"].dt.to_period("M").astype(str)
                 cm = d2.groupby("_mois")["_montant"].sum().reset_index()
                 cm.columns = ["Mois", "CA (€)"]
-                fig = px.bar(cm, x="Mois", y="CA (€)", title="📈 CA par mois", color_discrete_sequence=["#22C55E"])
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC", xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1E3A5F"), title_font_family="Nunito")
+                fig = px.bar(cm, x="Mois", y="CA (€)", title="📈 CA par mois",
+                             color_discrete_sequence=["#22C55E"])
+                fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#F8FAFC", title_font_family="Nunito",
+                    xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1E3A5F"),
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
     with cr:
@@ -264,12 +321,14 @@ if page == "📊 Vue Générale":
         fig2 = go.Figure(go.Pie(
             labels=["Signés", "En attente"],
             values=[max(nb_signes, 0), max(nb_attente, 0)],
-            hole=0.65, marker_colors=["#22C55E", "#1E3A5F"], textinfo="none"
+            hole=0.65, marker_colors=["#22C55E", "#1E3A5F"], textinfo="none",
         ))
         fig2.update_layout(
-            title="📋 Statut des devis", paper_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC",
-            showlegend=True, legend=dict(font=dict(color="#94A3B8")), title_font_family="Nunito",
-            annotations=[dict(text=f"<b>{pct}%</b>", x=0.5, y=0.5, font_size=24, showarrow=False, font_color="#F8FAFC")]
+            title="📋 Statut des devis", paper_bgcolor="rgba(0,0,0,0)",
+            font_color="#F8FAFC", title_font_family="Nunito", showlegend=True,
+            legend=dict(font=dict(color="#94A3B8")),
+            annotations=[dict(text=f"<b>{pct}%</b>", x=0.5, y=0.5,
+                               font_size=24, showarrow=False, font_color="#F8FAFC")],
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -277,20 +336,24 @@ if page == "📊 Vue Générale":
     cols_show = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_STATUT] if c]
     show_table(df[cols_show].tail(10).iloc[::-1] if cols_show else df.tail(10), "home")
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "📋 Devis":
     st.markdown('<h1 style="font-size:2rem;">Devis</h1>', unsafe_allow_html=True)
-    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE, COL_RELANCE1, COL_RELANCE2, COL_STATUT] if c]
 
-    # Recherche
-    search = st.text_input("🔍 Rechercher un devis", placeholder="Client, chantier, numéro...")
+    cols = [c for c in [
+        COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE,
+        COL_RELANCE1, COL_RELANCE2, COL_RELANCE3, COL_STATUT,
+    ] if c]
+
+    search = st.text_input("🔍 Rechercher", placeholder="Client, chantier, numéro...")
     df_d = df.copy()
-    if search and COL_CLIENT:
-        mask = df_d[COL_CLIENT].astype(str).str.contains(search, case=False, na=False)
-        if COL_CHANTIER: mask |= df_d[COL_CHANTIER].astype(str).str.contains(search, case=False, na=False)
-        if COL_NUM:      mask |= df_d[COL_NUM].astype(str).str.contains(search, case=False, na=False)
+    if search:
+        mask = pd.Series([False] * len(df_d), index=df_d.index)
+        for col in [COL_CLIENT, COL_CHANTIER, COL_NUM]:
+            if col:
+                mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
     t1, t2 = st.tabs(["⏳ En attente de signature", "✅ Signés"])
@@ -303,24 +366,32 @@ elif page == "📋 Devis":
         st.caption(f"{len(d)} devis — CA confirmé : {fmt(d['_montant'].sum())}")
         show_table(d[cols].reset_index(drop=True) if cols else d, "devis_signes")
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : FACTURES & PAIEMENTS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "💶 Factures & Paiements":
     st.markdown('<h1 style="font-size:2rem;">Factures & Paiements</h1>', unsafe_allow_html=True)
+
     df_imp = df[df["_signe"] & ~df["_fact_fin"]]
     c1, c2, c3 = st.columns(3)
     c1.metric("✅ Factures finales émises", nb_fact_ok)
     c2.metric("⚠️ Sans facture finale", len(df_imp))
     c3.metric("💸 CA à facturer", fmt(df_imp["_montant"].sum()))
     st.divider()
-    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, COL_FACT_FIN, COL_MODALITE, COL_STATUT] if c]
 
-    search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...")
+    cols = [c for c in [
+        COL_CLIENT, COL_CHANTIER, COL_MONTANT,
+        COL_ACOMPTE1, COL_ACOMPTE2, COL_FACT_FIN,
+        COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT,
+    ] if c]
+
+    search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...", key="search_f")
     df_f = df.copy()
-    if search_f and COL_CLIENT:
-        mask = df_f[COL_CLIENT].astype(str).str.contains(search_f, case=False, na=False)
-        if COL_CHANTIER: mask |= df_f[COL_CHANTIER].astype(str).str.contains(search_f, case=False, na=False)
+    if search_f:
+        mask = pd.Series([False] * len(df_f), index=df_f.index)
+        for col in [COL_CLIENT, COL_CHANTIER]:
+            if col:
+                mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
     t1, t2 = st.tabs(["⚠️ À facturer", "✅ Facturés"])
@@ -331,63 +402,67 @@ elif page == "💶 Factures & Paiements":
         d = df_f[df_f["_fact_fin"]]
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_ok")
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CHANTIERS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "🏗️ Chantiers":
     st.markdown('<h1 style="font-size:2rem;">Chantiers</h1>', unsafe_allow_html=True)
 
     df["_statut_ch"] = df["_pv"].apply(lambda x: "✅ Terminé" if x else "🟡 En cours")
     nb_cours    = int((~df["_pv"]).sum())
     nb_termines = int(df["_pv"].sum())
-    ca_cours    = df[~df["_pv"]]["_montant"].sum()
-    ca_termines = df[df["_pv"]]["_montant"].sum()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🏗️ Chantiers en cours", nb_cours)
-    c2.metric("💰 CA en cours", fmt(ca_cours))
-    c3.metric("✅ Chantiers terminés", nb_termines)
-    c4.metric("💰 CA réalisé", fmt(ca_termines))
+    c1.metric("🏗️ En cours", nb_cours)
+    c2.metric("💰 CA en cours", fmt(df[~df["_pv"]]["_montant"].sum()))
+    c3.metric("✅ Terminés (PV signé)", nb_termines)
+    c4.metric("💰 CA réalisé", fmt(df[df["_pv"]]["_montant"].sum()))
 
     st.divider()
 
-    # Recherche chantiers
-    search_ch = st.text_input("🔍 Rechercher un chantier", placeholder="Client, lieu...")
+    search_ch = st.text_input("🔍 Rechercher un chantier", placeholder="Client, lieu...", key="search_ch")
     df_ch = df.copy()
-    if search_ch and COL_CLIENT:
-        mask = df_ch[COL_CLIENT].astype(str).str.contains(search_ch, case=False, na=False)
-        if COL_CHANTIER: mask |= df_ch[COL_CHANTIER].astype(str).str.contains(search_ch, case=False, na=False)
+    if search_ch:
+        mask = pd.Series([False] * len(df_ch), index=df_ch.index)
+        for col in [COL_CLIENT, COL_CHANTIER]:
+            if col:
+                mask |= df_ch[col].astype(str).str.contains(search_ch, case=False, na=False)
         df_ch = df_ch[mask]
 
-    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, "_statut_ch"] if c]
+    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, COL_RESERVE, "_statut_ch"] if c]
 
     t1, t2 = st.tabs(["🟡 En cours de travaux", "✅ Terminés"])
-
     with t1:
         d = df_ch[~df_ch["_pv"]]
-        st.caption(f"{len(d)} chantier(s) en cours — {fmt(d['_montant'].sum())}")
+        st.caption(f"{len(d)} chantier(s) — {fmt(d['_montant'].sum())}")
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_cours")
-
     with t2:
         d = df_ch[df_ch["_pv"]]
-        st.caption(f"{len(d)} chantier(s) terminé(s) — {fmt(d['_montant'].sum())}")
+        st.caption(f"{len(d)} chantier(s) — {fmt(d['_montant'].sum())}")
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "📁 Tous les dossiers":
     st.markdown('<h1 style="font-size:2rem;">Tous les dossiers</h1>', unsafe_allow_html=True)
-    search = st.text_input("🔍 Rechercher", placeholder="Client, chantier, numéro de devis...")
-    d = df.copy()
-    if search and COL_CLIENT:
-        mask = d[COL_CLIENT].astype(str).str.contains(search, case=False, na=False)
-        if COL_CHANTIER: mask |= d[COL_CHANTIER].astype(str).str.contains(search, case=False, na=False)
-        if COL_NUM:      mask |= d[COL_NUM].astype(str).str.contains(search, case=False, na=False)
-        d = d[mask]
-    st.caption(f"{len(d)} dossier(s)")
-    show_table(d.drop(columns=["_montant","_signe","_fact_fin","_pv","_statut_ch"], errors="ignore").reset_index(drop=True), "all")
 
-# ── Auto-refresh ──────────────────────────────────────────────────────────────
+    search = st.text_input("🔍 Rechercher", placeholder="Client, chantier, numéro de devis...", key="search_all")
+    d = df.copy()
+    if search:
+        mask = pd.Series([False] * len(d), index=d.index)
+        for col in [COL_CLIENT, COL_CHANTIER, COL_NUM]:
+            if col:
+                mask |= d[col].astype(str).str.contains(search, case=False, na=False)
+        d = d[mask]
+
+    st.caption(f"{len(d)} dossier(s)")
+    drop_cols = ["_montant", "_signe", "_fact_fin", "_pv", "_statut_ch"]
+    show_table(
+        d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True),
+        "all",
+    )
+
+# ── Auto-refresh ───────────────────────────────────────────────────────────────
 time.sleep(30)
 st.rerun()
