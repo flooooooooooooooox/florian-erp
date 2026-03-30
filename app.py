@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import time
 import json
-from auth import check_login, logout
+from auth import check_login, logout, admin_panel, LOGO_B64
 
 st.set_page_config(
     page_title="Florian AI Bâtiment – ERP",
@@ -16,35 +16,64 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── CSS global ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@300;400;500&display=swap');
 :root {
     --blanc: #F8FAFC; --vert: #22C55E; --vert-dk: #16A34A;
     --bleu: #0F2942; --bleu-md: #1E3A5F; --gris: #94A3B8;
     --surface: #0D1F33; --card: #132236; --border: #1E3A5F;
 }
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: var(--bleu) !important;
+    background: linear-gradient(160deg, #0F2942 0%, #0D1F33 100%) !important;
     font-family: 'DM Sans', sans-serif; color: var(--blanc);
 }
-[data-testid="stSidebar"] { background: var(--surface) !important; border-right: 1px solid var(--border); }
-h1, h2, h3 { font-family: 'Syne', sans-serif !important; }
-[data-testid="stMetric"] { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
-[data-testid="stMetric"] label { color: var(--gris) !important; font-size: 0.8rem; }
-[data-testid="stMetricValue"] { color: var(--blanc) !important; font-family: 'Syne', sans-serif; font-size: 1.8rem !important; }
+[data-testid="stSidebar"] {
+    background: var(--surface) !important;
+    border-right: 1px solid var(--border);
+}
+h1, h2, h3 { font-family: 'Nunito', sans-serif !important; }
+[data-testid="stMetric"] {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+[data-testid="stMetric"] label { color: var(--gris) !important; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; }
+[data-testid="stMetricValue"] { color: var(--blanc) !important; font-family: 'Nunito', sans-serif; font-size: 1.8rem !important; font-weight: 800 !important; }
 [data-testid="stMetricDelta"] { font-size: 0.8rem; }
-.stButton > button { background: var(--vert) !important; color: var(--bleu) !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 700 !important; padding: 0.4rem 1.2rem !important; }
-.stButton > button:hover { background: var(--vert-dk) !important; }
-.refresh-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--vert); animation: pulse 2s infinite; margin-right: 6px; }
+.stButton > button {
+    background: linear-gradient(135deg, #22C55E, #16A34A) !important;
+    color: #0F2942 !important; border: none !important;
+    border-radius: 9px !important; font-family: 'Nunito', sans-serif !important;
+    font-weight: 900 !important; transition: all 0.2s;
+}
+.stButton > button:hover { opacity: 0.85 !important; transform: translateY(-1px); }
+[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+[data-testid="stTab"] { font-family: 'Nunito', sans-serif !important; font-weight: 700; }
+.stTextInput input, .stSelectbox select {
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--blanc) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
+.stTextInput label, .stSelectbox label { color: var(--gris) !important; font-size: 0.85rem; }
+.refresh-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--vert);
+    animation: pulse 2s infinite; margin-right: 6px;
+}
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-hr { border-color: var(--border); }
+hr { border-color: var(--border) !important; }
+.stAlert { border-radius: 10px !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
 if not check_login():
     st.stop()
 
+# ── Connexion Google Sheets ───────────────────────────────────────────────────
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 @st.cache_resource(ttl=30)
@@ -54,77 +83,88 @@ def get_sheet_data():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         gc = gspread.authorize(creds)
         sh = gc.open(st.secrets["SHEET_NAME"])
-        # Lire l'onglet "suivie" spécifiquement
         try:
             ws = sh.worksheet("suivie")
-        except:
+        except Exception:
             ws = sh.sheet1
         data = ws.get_all_records(expected_headers=[])
         df = pd.DataFrame(data)
-        # Supprimer les lignes complètement vides
-        df = df.dropna(how="all")
+        # Supprimer lignes vides
         df = df[df.apply(lambda r: any(str(v).strip() not in ["", "0"] for v in r), axis=1)]
+        df = df.reset_index(drop=True)
         return df, None
     except Exception as e:
         return pd.DataFrame(), str(e)
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def clean_amount(val):
-    """Convertit une cellule montant en float — gère virgule française."""
     if not val and val != 0:
         return 0.0
-    s = str(val).replace("\xa0", "").replace("\u202f", "").replace(" ", "")
-    s = s.replace(",", ".").replace("€", "").strip()
+    s = str(val).replace("\xa0","").replace("\u202f","").replace(" ","").replace(",",".").replace("€","").strip()
     try:
         return float(s)
     except:
         return 0.0
 
 def is_checked(val):
-    """
-    Détecte si une case est cochée.
-    Dans le Sheet de Florian, coché = "✅", non coché = "" ou "📧" (relance)
-    """
     if val is None:
         return False
     s = str(val).strip()
-    if s == "":
-        return False
-    # Valeurs explicitement cochées
-    CHECKED = {"✅", "✓", "✔", "TRUE", "true", "oui", "Oui", "OUI", "1", "x", "X", "yes", "Yes"}
-    # Valeurs explicitement NON cochées (relances, vide, etc.)
-    NOT_CHECKED = {"", "📧", "0", "FALSE", "false", "non", "Non", "NON"}
+    CHECKED = {"✅","✓","✔","TRUE","true","oui","Oui","OUI","1","x","X","yes","Yes"}
+    NOT_CHECKED = {"","📧","0","FALSE","false","non","Non","NON"}
     if s in CHECKED:
         return True
     if s in NOT_CHECKED:
         return False
-    # Par défaut : si contient ✅ c'est coché
     return "✅" in s
 
-with st.sidebar:
-    st.markdown("""
-    <div style="text-align:center; padding: 8px 0 24px;">
-        <div style="font-family:'Syne',sans-serif; font-size:1.4rem; font-weight:800; color:#F8FAFC;">⚡ Florian AI</div>
-        <div style="font-size:0.75rem; color:#94A3B8; letter-spacing:2px; text-transform:uppercase;">Bâtiment ERP</div>
-    </div>
-    """, unsafe_allow_html=True)
+def fcol(df, *keywords):
+    for kw in keywords:
+        for c in df.columns:
+            if kw.lower() in str(c).lower():
+                return c
+    return None
 
-    page = st.selectbox("Nav", [
-        "📊 Vue Générale", "📋 Devis",
-        "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers"
-    ], label_visibility="collapsed")
+def fmt(v):
+    return f"{v:,.0f} €".replace(",", " ")
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(
+        f"""<div style="text-align:center; padding: 16px 0 20px;">
+            <img src="data:image/jpeg;base64,{LOGO_B64}"
+                 style="width:120px; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.4);" />
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    user = st.session_state.get("username", "")
+    role = st.session_state.get("role", "viewer")
+
+    pages = ["📊 Vue Générale", "📋 Devis", "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers"]
+    if role == "admin":
+        pages.append("👥 Utilisateurs")
+
+    page = st.selectbox("Navigation", pages, label_visibility="collapsed")
 
     st.divider()
     st.markdown('<span class="refresh-dot"></span><span style="font-size:0.75rem;color:#94A3B8;">Sync toutes les 30s</span>', unsafe_allow_html=True)
-    if st.button("🔄 Actualiser maintenant"):
+    if st.button("🔄 Actualiser"):
         st.cache_resource.clear()
         st.rerun()
+
     st.divider()
-    user = st.session_state.get("username", "")
-    st.markdown(f'<div style="font-size:0.8rem;color:#94A3B8;">Connecté : <b style="color:#F8FAFC">{user}</b></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:0.8rem;color:#94A3B8;">👤 <b style="color:#F8FAFC">{user}</b> &nbsp;·&nbsp; {role}</div>', unsafe_allow_html=True)
     if st.button("🚪 Déconnexion"):
         logout()
         st.rerun()
 
+# ── Page Utilisateurs (admin) ─────────────────────────────────────────────────
+if page == "👥 Utilisateurs":
+    admin_panel()
+    st.stop()
+
+# ── Chargement données ────────────────────────────────────────────────────────
 df_raw, error = get_sheet_data()
 
 if error:
@@ -137,14 +177,7 @@ if df_raw.empty:
 
 df = df_raw.copy()
 
-# ── Détection flexible des colonnes ──────────────────────────────────────────
-def fcol(df, *keywords):
-    for kw in keywords:
-        for c in df.columns:
-            if kw.lower() in str(c).lower():
-                return c
-    return None
-
+# ── Colonnes ──────────────────────────────────────────────────────────────────
 COL_CLIENT   = fcol(df, "client")
 COL_CHANTIER = fcol(df, "objet", "chantier")
 COL_NUM      = fcol(df, "n° devis", "n°", "num")
@@ -161,21 +194,41 @@ COL_RELANCE2 = fcol(df, "relance 2")
 COL_ACOMPTE1 = fcol(df, "acompte 1")
 COL_ACOMPTE2 = fcol(df, "acompte 2")
 
-# ── Calcul des colonnes internes ──────────────────────────────────────────────
 df["_montant"] = df[COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
 df["_signe"]   = df[COL_SIGN].apply(is_checked)      if COL_SIGN    else False
 df["_fact_fin"]= df[COL_FACT_FIN].apply(is_checked)  if COL_FACT_FIN else False
 df["_pv"]      = df[COL_PV].apply(is_checked)         if COL_PV      else False
 
-# ── KPIs ─────────────────────────────────────────────────────────────────────
-total_ca    = df["_montant"].sum()
-nb_devis    = len(df)
-nb_signes   = int(df["_signe"].sum())
-nb_attente  = nb_devis - nb_signes
-nb_fact_ok  = int(df["_fact_fin"].sum())
-ca_signe    = df[df["_signe"]]["_montant"].sum()
-ca_non_sign = df[~df["_signe"]]["_montant"].sum()
-fmt = lambda v: f"{v:,.0f} €".replace(",", " ")
+total_ca   = df["_montant"].sum()
+nb_devis   = len(df)
+nb_signes  = int(df["_signe"].sum())
+nb_attente = nb_devis - nb_signes
+nb_fact_ok = int(df["_fact_fin"].sum())
+ca_signe   = df[df["_signe"]]["_montant"].sum()
+ca_non_s   = df[~df["_signe"]]["_montant"].sum()
+
+LIMIT = 100  # Seuil affichage tableau complet
+
+def show_table(dataframe, key_suffix=""):
+    """Affiche un tableau avec bouton 'Voir plus' si > LIMIT lignes."""
+    total = len(dataframe)
+    if total == 0:
+        st.info("Aucun dossier.")
+        return
+    show_all = st.session_state.get(f"show_all_{key_suffix}", False)
+    displayed = dataframe if show_all else dataframe.head(LIMIT)
+    st.dataframe(displayed, use_container_width=True, hide_index=True)
+    if total > LIMIT:
+        if not show_all:
+            st.caption(f"Affichage des {LIMIT} premiers sur {total} dossiers.")
+            if st.button(f"📂 Voir les {total - LIMIT} suivants", key=f"btn_more_{key_suffix}"):
+                st.session_state[f"show_all_{key_suffix}"] = True
+                st.rerun()
+        else:
+            st.caption(f"{total} dossiers affichés.")
+            if st.button("🔼 Réduire", key=f"btn_less_{key_suffix}"):
+                st.session_state[f"show_all_{key_suffix}"] = False
+                st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
@@ -203,27 +256,26 @@ if page == "📊 Vue Générale":
                 cm = d2.groupby("_mois")["_montant"].sum().reset_index()
                 cm.columns = ["Mois", "CA (€)"]
                 fig = px.bar(cm, x="Mois", y="CA (€)", title="📈 CA par mois", color_discrete_sequence=["#22C55E"])
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC", xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1E3A5F"))
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC", xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1E3A5F"), title_font_family="Nunito")
                 st.plotly_chart(fig, use_container_width=True)
 
     with cr:
+        pct = int(nb_signes / nb_devis * 100) if nb_devis else 0
         fig2 = go.Figure(go.Pie(
             labels=["Signés", "En attente"],
             values=[max(nb_signes, 0), max(nb_attente, 0)],
             hole=0.65, marker_colors=["#22C55E", "#1E3A5F"], textinfo="none"
         ))
-        pct = int(nb_signes / nb_devis * 100) if nb_devis else 0
         fig2.update_layout(
-            title="📋 Statut des devis",
-            paper_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC",
-            showlegend=True, legend=dict(font=dict(color="#94A3B8")),
-            annotations=[dict(text=f"<b>{pct}%</b>", x=0.5, y=0.5, font_size=22, showarrow=False, font_color="#F8FAFC")]
+            title="📋 Statut des devis", paper_bgcolor="rgba(0,0,0,0)", font_color="#F8FAFC",
+            showlegend=True, legend=dict(font=dict(color="#94A3B8")), title_font_family="Nunito",
+            annotations=[dict(text=f"<b>{pct}%</b>", x=0.5, y=0.5, font_size=24, showarrow=False, font_color="#F8FAFC")]
         )
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("### 🕐 Derniers dossiers")
     cols_show = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_STATUT] if c]
-    st.dataframe(df[cols_show].tail(10).iloc[::-1] if cols_show else df.tail(10), use_container_width=True, hide_index=True)
+    show_table(df[cols_show].tail(10).iloc[::-1] if cols_show else df.tail(10), "home")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
@@ -231,15 +283,25 @@ if page == "📊 Vue Générale":
 elif page == "📋 Devis":
     st.markdown('<h1 style="font-size:2rem;">Devis</h1>', unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE, COL_RELANCE1, COL_RELANCE2, COL_STATUT] if c]
+
+    # Recherche
+    search = st.text_input("🔍 Rechercher un devis", placeholder="Client, chantier, numéro...")
+    df_d = df.copy()
+    if search and COL_CLIENT:
+        mask = df_d[COL_CLIENT].astype(str).str.contains(search, case=False, na=False)
+        if COL_CHANTIER: mask |= df_d[COL_CHANTIER].astype(str).str.contains(search, case=False, na=False)
+        if COL_NUM:      mask |= df_d[COL_NUM].astype(str).str.contains(search, case=False, na=False)
+        df_d = df_d[mask]
+
     t1, t2 = st.tabs(["⏳ En attente de signature", "✅ Signés"])
     with t1:
-        d = df[~df["_signe"]]
-        st.caption(f"{len(d)} devis — CA potentiel : {fmt(ca_non_sign)}")
-        st.dataframe(d[cols] if cols else d, use_container_width=True, hide_index=True)
+        d = df_d[~df_d["_signe"]]
+        st.caption(f"{len(d)} devis — CA potentiel : {fmt(d['_montant'].sum())}")
+        show_table(d[cols].reset_index(drop=True) if cols else d, "devis_attente")
     with t2:
-        d = df[df["_signe"]]
-        st.caption(f"{len(d)} devis — CA confirmé : {fmt(ca_signe)}")
-        st.dataframe(d[cols] if cols else d, use_container_width=True, hide_index=True)
+        d = df_d[df_d["_signe"]]
+        st.caption(f"{len(d)} devis — CA confirmé : {fmt(d['_montant'].sum())}")
+        show_table(d[cols].reset_index(drop=True) if cols else d, "devis_signes")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE : FACTURES & PAIEMENTS
@@ -253,43 +315,79 @@ elif page == "💶 Factures & Paiements":
     c3.metric("💸 CA à facturer", fmt(df_imp["_montant"].sum()))
     st.divider()
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, COL_FACT_FIN, COL_MODALITE, COL_STATUT] if c]
+
+    search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...")
+    df_f = df.copy()
+    if search_f and COL_CLIENT:
+        mask = df_f[COL_CLIENT].astype(str).str.contains(search_f, case=False, na=False)
+        if COL_CHANTIER: mask |= df_f[COL_CHANTIER].astype(str).str.contains(search_f, case=False, na=False)
+        df_f = df_f[mask]
+
     t1, t2 = st.tabs(["⚠️ À facturer", "✅ Facturés"])
     with t1:
-        st.dataframe(df_imp[cols] if cols else df_imp, use_container_width=True, hide_index=True)
+        d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
+        show_table(d[cols].reset_index(drop=True) if cols else d, "fact_attente")
     with t2:
-        d = df[df["_fact_fin"]]
-        st.dataframe(d[cols] if cols else d, use_container_width=True, hide_index=True)
+        d = df_f[df_f["_fact_fin"]]
+        show_table(d[cols].reset_index(drop=True) if cols else d, "fact_ok")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE : CHANTIERS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🏗️ Chantiers":
     st.markdown('<h1 style="font-size:2rem;">Chantiers</h1>', unsafe_allow_html=True)
+
     df["_statut_ch"] = df["_pv"].apply(lambda x: "✅ Terminé" if x else "🟡 En cours")
-    c1, c2 = st.columns(2)
-    c1.metric("🏗️ En cours", int((~df["_pv"]).sum()))
-    c2.metric("✅ Terminés (PV signé)", int(df["_pv"].sum()))
+    nb_cours    = int((~df["_pv"]).sum())
+    nb_termines = int(df["_pv"].sum())
+    ca_cours    = df[~df["_pv"]]["_montant"].sum()
+    ca_termines = df[df["_pv"]]["_montant"].sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🏗️ Chantiers en cours", nb_cours)
+    c2.metric("💰 CA en cours", fmt(ca_cours))
+    c3.metric("✅ Chantiers terminés", nb_termines)
+    c4.metric("💰 CA réalisé", fmt(ca_termines))
+
     st.divider()
-    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, "_statut_ch"] if c]
-    st.dataframe(df[cols].sort_values("_statut_ch") if cols else df, use_container_width=True, hide_index=True)
+
+    # Recherche chantiers
+    search_ch = st.text_input("🔍 Rechercher un chantier", placeholder="Client, lieu...")
+    df_ch = df.copy()
+    if search_ch and COL_CLIENT:
+        mask = df_ch[COL_CLIENT].astype(str).str.contains(search_ch, case=False, na=False)
+        if COL_CHANTIER: mask |= df_ch[COL_CHANTIER].astype(str).str.contains(search_ch, case=False, na=False)
+        df_ch = df_ch[mask]
+
+    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, "_statut_ch"] if c]
+
+    t1, t2 = st.tabs(["🟡 En cours de travaux", "✅ Terminés"])
+
+    with t1:
+        d = df_ch[~df_ch["_pv"]]
+        st.caption(f"{len(d)} chantier(s) en cours — {fmt(d['_montant'].sum())}")
+        show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_cours")
+
+    with t2:
+        d = df_ch[df_ch["_pv"]]
+        st.caption(f"{len(d)} chantier(s) terminé(s) — {fmt(d['_montant'].sum())}")
+        show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "📁 Tous les dossiers":
     st.markdown('<h1 style="font-size:2rem;">Tous les dossiers</h1>', unsafe_allow_html=True)
-    search = st.text_input("🔍 Rechercher", placeholder="Client, chantier...")
+    search = st.text_input("🔍 Rechercher", placeholder="Client, chantier, numéro de devis...")
     d = df.copy()
     if search and COL_CLIENT:
         mask = d[COL_CLIENT].astype(str).str.contains(search, case=False, na=False)
-        if COL_CHANTIER:
-            mask |= d[COL_CHANTIER].astype(str).str.contains(search, case=False, na=False)
+        if COL_CHANTIER: mask |= d[COL_CHANTIER].astype(str).str.contains(search, case=False, na=False)
+        if COL_NUM:      mask |= d[COL_NUM].astype(str).str.contains(search, case=False, na=False)
         d = d[mask]
     st.caption(f"{len(d)} dossier(s)")
-    st.dataframe(
-        d.drop(columns=["_montant", "_signe", "_fact_fin", "_pv", "_statut_ch"], errors="ignore"),
-        use_container_width=True, hide_index=True
-    )
+    show_table(d.drop(columns=["_montant","_signe","_fact_fin","_pv","_statut_ch"], errors="ignore").reset_index(drop=True), "all")
 
+# ── Auto-refresh ──────────────────────────────────────────────────────────────
 time.sleep(30)
 st.rerun()
