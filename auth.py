@@ -4,94 +4,112 @@ import json
 import os
 import secrets
 import string
+import requests
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STOCKAGE DES USERS
-# ══════════════════════════════════════════════════════════════════════════════
-# Streamlit Cloud est READ-ONLY → on ne peut pas écrire sur disque.
-# Les users sont stockés dans st.secrets sous la clé USERS_DB (JSON string).
-#
-# Dans Streamlit Cloud → Settings → Secrets, ajoute :
-#
-#   SHEET_NAME = "Prestation1"
-#   GOOGLE_SERVICE_ACCOUNT = '''{ ... }'''
-#   USERS_DB = '''{}'''
-#
-# Quand tu crées un user via le panel admin, le nouveau users.json est affiché
-# à l'écran pour que tu le copie-colles dans les Secrets Streamlit.
-#
-# Structure USERS_DB :
-# {
-#   "dupont_elec": {
-#     "password": "<sha256>",
-#     "role": "viewer",
-#     "sheet_name": "SheetDupont",
-#     "google_sa": "{...json...}"
-#   }
-# }
-# Note : florian (admin) n'est PAS dans USERS_DB — il est toujours dans st.secrets.
+# SUPABASE — config
+# Les clés sont dans Streamlit Secrets :
+#   SUPABASE_URL = "https://bkcedmuryujnddgabobn.supabase.co"
+#   SUPABASE_KEY = "eyJhbGci..."
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _sb_url() -> str:
+    return st.secrets.get("SUPABASE_URL", "").rstrip("/")
+
+def _sb_key() -> str:
+    return st.secrets.get("SUPABASE_KEY", "")
+
+def _sb_headers() -> dict:
+    return {
+        "apikey":        _sb_key(),
+        "Authorization": f"Bearer {_sb_key()}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
+
+def _sb_get(username: str):
+    """Récupère un user depuis Supabase."""
+    r = requests.get(
+        f"{_sb_url()}/rest/v1/users?username=eq.{username}&select=*",
+        headers=_sb_headers(),
+        timeout=10,
+    )
+    data = r.json()
+    return data[0] if data else None
+
+def _sb_all_users() -> list:
+    """Récupère tous les users."""
+    r = requests.get(
+        f"{_sb_url()}/rest/v1/users?select=*&order=created_at.asc",
+        headers=_sb_headers(),
+        timeout=10,
+    )
+    return r.json() if r.ok else []
+
+def _sb_insert(user: dict) -> bool:
+    """Insère un nouveau user."""
+    r = requests.post(
+        f"{_sb_url()}/rest/v1/users",
+        headers=_sb_headers(),
+        json=user,
+        timeout=10,
+    )
+    return r.ok
+
+def _sb_delete(username: str) -> bool:
+    """Supprime un user."""
+    r = requests.delete(
+        f"{_sb_url()}/rest/v1/users?username=eq.{username}",
+        headers=_sb_headers(),
+        timeout=10,
+    )
+    return r.ok
+
+def _sb_update_password(username: str, new_hash: str) -> bool:
+    """Met à jour le mot de passe."""
+    r = requests.patch(
+        f"{_sb_url()}/rest/v1/users?username=eq.{username}",
+        headers=_sb_headers(),
+        json={"password_hash": new_hash},
+        timeout=10,
+    )
+    return r.ok
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def _hash(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-def _load_users() -> dict:
-    """
-    Charge les users depuis st.secrets["USERS_DB"] (JSON string).
-    Florian (admin) est géré séparément via st.secrets["ADMIN_PASSWORD"].
-    """
-    users = {}
-    try:
-        raw = st.secrets.get("USERS_DB", "{}")
-        users = json.loads(raw) if raw else {}
-    except Exception:
-        users = {}
-
-    # Injecter florian depuis st.secrets (toujours présent, jamais dans USERS_DB)
-    admin_pwd_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
-    users["florian"] = {
-        "password":   admin_pwd_hash,
-        "role":       "admin",
-        "sheet_name": None,   # → lire depuis st.secrets["SHEET_NAME"]
-        "google_sa":  None,   # → lire depuis st.secrets["GOOGLE_SERVICE_ACCOUNT"]
-    }
-    return users
-
-def get_user_credentials(username: str):
-    """
-    Retourne (sheet_name, google_sa_json_str) pour le user connecté.
-    - florian → st.secrets["SHEET_NAME"] + st.secrets["GOOGLE_SERVICE_ACCOUNT"]
-    - autres  → valeurs stockées dans st.secrets["USERS_DB"]
-    """
-    users = _load_users()
-    u = users.get(username, {})
-    sheet = u.get("sheet_name")
-    gsa   = u.get("google_sa")
-
-    if not sheet:
-        sheet = st.secrets.get("SHEET_NAME", "")
-    if not gsa:
-        gsa = st.secrets.get("GOOGLE_SERVICE_ACCOUNT", "")
-
-    return sheet, gsa
 
 def _generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
-# ── CSS page login ─────────────────────────────────────────────────────────────
+def get_user_credentials(username: str):
+    """
+    Retourne (sheet_name, google_sa_json_str) pour le user connecté.
+    - florian → st.secrets (SHEET_NAME + GOOGLE_SERVICE_ACCOUNT)
+    - autres  → valeurs dans Supabase
+    """
+    if username == "florian":
+        return (
+            st.secrets.get("SHEET_NAME", ""),
+            st.secrets.get("GOOGLE_SERVICE_ACCOUNT", ""),
+        )
+    u = _sb_get(username)
+    if not u:
+        return "", ""
+    return u.get("sheet_name", ""), u.get("google_sa", "")
+
+# ── CSS login ──────────────────────────────────────────────────────────────────
 _LOGIN_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@300;400;500&display=swap');
 html, body, [data-testid="stAppViewContainer"] {
     background: linear-gradient(160deg, #0F2942 0%, #0D1F33 100%) !important;
-    font-family: 'DM Sans', sans-serif;
-    color: #F8FAFC;
+    font-family: 'DM Sans', sans-serif; color: #F8FAFC;
 }
 [data-testid="stForm"] {
     background: rgba(19,34,54,0.95);
-    border-radius: 16px;
-    padding: 28px 24px;
+    border-radius: 16px; padding: 28px 24px;
     box-shadow: 0 4px 32px rgba(0,0,0,0.4);
     border: 1px solid #1E3A5F;
 }
@@ -123,7 +141,6 @@ def check_login() -> bool:
                 "<div style='text-align:center;font-size:3.5rem;padding:24px 0'>⚡</div>",
                 unsafe_allow_html=True,
             )
-
         st.markdown(
             "<div style='text-align:center;padding-bottom:20px;'>"
             "<div style='color:#94A3B8;font-size:0.8rem;letter-spacing:2px;"
@@ -137,15 +154,29 @@ def check_login() -> bool:
             submitted = st.form_submit_button("Se connecter", use_container_width=True)
 
         if submitted:
-            users = _load_users()
-            u = users.get(username)  # None si user inexistant
-            if u is not None and u.get("password") == _hash(password):
-                st.session_state["authenticated"] = True
-                st.session_state["username"]      = username
-                st.session_state["role"]          = u.get("role", "viewer")
-                st.rerun()
+            # Florian → vérification via ADMIN_PASSWORD dans secrets
+            if username == "florian":
+                admin_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
+                if _hash(password) == admin_hash:
+                    st.session_state["authenticated"] = True
+                    st.session_state["username"]      = "florian"
+                    st.session_state["role"]          = "admin"
+                    st.rerun()
+                else:
+                    st.error("❌ Identifiant ou mot de passe incorrect.")
             else:
-                st.error("❌ Identifiant ou mot de passe incorrect.")
+                # Autres users → vérification via Supabase
+                try:
+                    u = _sb_get(username)
+                    if u and u.get("password_hash") == _hash(password):
+                        st.session_state["authenticated"] = True
+                        st.session_state["username"]      = username
+                        st.session_state["role"]          = u.get("role", "viewer")
+                        st.rerun()
+                    else:
+                        st.error("❌ Identifiant ou mot de passe incorrect.")
+                except Exception as e:
+                    st.error(f"❌ Erreur de connexion : {e}")
 
     return False
 
@@ -157,32 +188,31 @@ def logout():
 def admin_panel():
     st.markdown('<h1 style="font-size:2rem;">👥 Gestion des utilisateurs</h1>', unsafe_allow_html=True)
 
-    # Charger USERS_DB (sans florian)
-    try:
-        raw = st.secrets.get("USERS_DB", "{}")
-        users_db = json.loads(raw) if raw else {}
-    except Exception:
-        users_db = {}
-
     # ── Liste ──────────────────────────────────────────────────────────────────
     st.markdown("### Utilisateurs existants")
 
-    # Florian (admin, depuis secrets)
+    # Florian (admin, toujours dans secrets)
     c1, c2, _ = st.columns([3, 4, 1])
     c1.markdown("**florian** *(admin)*")
-    sheet_f = st.secrets.get("SHEET_NAME", "—")
-    c2.caption(f"Sheet : `{sheet_f}` — credentials depuis Streamlit Secrets")
+    c2.caption(f"Sheet : `{st.secrets.get('SHEET_NAME','—')}` — credentials dans Streamlit Secrets")
 
-    for uname, udata in list(users_db.items()):
-        c1, c2, c3 = st.columns([3, 4, 1])
-        c1.markdown(f"**{uname}**")
-        role  = udata.get("role", "viewer")
-        sheet = udata.get("sheet_name", "—")
-        c2.caption(f"`{role}` — Sheet : `{sheet}`")
-        if c3.button("🗑️", key=f"del_{uname}"):
-            del users_db[uname]
-            _show_updated_secrets(users_db)
-            st.rerun()
+    try:
+        users = _sb_all_users()
+        for u in users:
+            uname = u.get("username", "")
+            if uname == "florian":
+                continue
+            c1, c2, c3 = st.columns([3, 4, 1])
+            c1.markdown(f"**{uname}**")
+            c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}`")
+            if c3.button("🗑️", key=f"del_{uname}"):
+                if _sb_delete(uname):
+                    st.success(f"✅ User **{uname}** supprimé.")
+                    st.rerun()
+                else:
+                    st.error("Erreur lors de la suppression.")
+    except Exception as e:
+        st.error(f"Erreur chargement users : {e}")
 
     st.divider()
 
@@ -214,14 +244,12 @@ def admin_panel():
             err = "L'identifiant ne peut pas être vide."
         elif new_username == "florian":
             err = "Le nom 'florian' est réservé à l'admin."
-        elif new_username in users_db:
-            err = f"L'identifiant **{new_username}** existe déjà."
         elif not new_sheet.strip():
             err = "Le SHEET_NAME est obligatoire."
         elif not gsa_clean:
-            err = "Le JSON Google Service Account est obligatoire (champ vide)."
+            err = "Le JSON Google Service Account est obligatoire."
         else:
-            # Nettoyage défensif : retirer les ``` éventuels, espaces parasites
+            # Nettoyage JSON
             if gsa_clean.startswith("```"):
                 gsa_clean = gsa_clean.split("```")[1]
                 if gsa_clean.startswith("json"):
@@ -229,33 +257,35 @@ def admin_panel():
                 gsa_clean = gsa_clean.strip()
             try:
                 parsed = json.loads(gsa_clean)
-                # Vérifier que c'est bien un service account Google
                 if parsed.get("type") != "service_account":
-                    err = "Ce JSON ne semble pas être un Google Service Account (champ 'type' manquant ou incorrect)."
+                    err = "Ce JSON ne semble pas être un Google Service Account."
                 else:
-                    gsa_clean = json.dumps(parsed)  # Re-sérialiser proprement sur 1 ligne
+                    gsa_clean = json.dumps(parsed)
             except json.JSONDecodeError as e:
                 err = f"JSON invalide : {e}"
-                st.code(gsa_clean[:300], language="text")  # Afficher ce qui a été reçu pour debug
+                st.code(gsa_clean[:300], language="text")
 
         if err:
             st.error(err)
         else:
             pwd = new_password.strip() if new_password.strip() else _generate_password()
-            users_db[new_username] = {
-                "password":   _hash(pwd),
-                "role":       new_role,
-                "sheet_name": new_sheet.strip(),
-                "google_sa":  gsa_clean,
-            }
-            st.success(f"✅ User **{new_username}** créé avec le rôle `{new_role}`.")
-            if not new_password.strip():
-                st.info(f"🔑 Mot de passe généré : `{pwd}`  — notez-le, il ne sera plus affiché.")
-            _show_updated_secrets(users_db)
+            ok = _sb_insert({
+                "username":      new_username.strip(),
+                "password_hash": _hash(pwd),
+                "role":          new_role,
+                "sheet_name":    new_sheet.strip(),
+                "google_sa":     gsa_clean,
+            })
+            if ok:
+                st.success(f"✅ User **{new_username}** créé avec le rôle `{new_role}`.")
+                if not new_password.strip():
+                    st.info(f"🔑 Mot de passe : `{pwd}` — notez-le, il ne sera plus affiché.")
+            else:
+                st.error("❌ Erreur lors de la création. L'identifiant existe peut-être déjà.")
 
     st.divider()
 
-    # ── Changer le mot de passe admin ─────────────────────────────────────────
+    # ── Changer mot de passe admin ─────────────────────────────────────────────
     st.markdown("### 🔑 Changer le mot de passe admin (florian)")
     with st.form("change_pwd_form"):
         old_pwd  = st.text_input("Ancien mot de passe", type="password")
@@ -273,15 +303,5 @@ def admin_panel():
             st.error("Minimum 8 caractères.")
         else:
             new_hash = _hash(new_pwd1)
-            st.success("✅ Nouveau hash généré. Mets à jour ADMIN_PASSWORD dans les Secrets :")
+            st.success("✅ Copie ce hash dans **Streamlit Secrets → ADMIN_PASSWORD** :")
             st.code(f'ADMIN_PASSWORD = "{new_hash}"', language="toml")
-
-def _show_updated_secrets(users_db: dict):
-    """Affiche le USERS_DB mis à jour à copier-coller dans Streamlit Secrets."""
-    updated_json = json.dumps(users_db, ensure_ascii=False, indent=2)
-    st.warning(
-        "⚠️ **Action requise** — Streamlit Cloud ne permet pas l'écriture sur disque.\n\n"
-        "Copie ce contenu et colle-le dans **Streamlit Cloud → Settings → Secrets** "
-        "à la place de la valeur actuelle de `USERS_DB` :"
-    )
-    st.code(f"USERS_DB = '''\n{updated_json}\n'''", language="toml")
