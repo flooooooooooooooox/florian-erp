@@ -208,6 +208,8 @@ def admin_panel():
 
     if submitted_create:
         err = None
+        gsa_clean = new_gsa.strip() if new_gsa else ""
+
         if not new_username.strip():
             err = "L'identifiant ne peut pas être vide."
         elif new_username == "florian":
@@ -216,13 +218,25 @@ def admin_panel():
             err = f"L'identifiant **{new_username}** existe déjà."
         elif not new_sheet.strip():
             err = "Le SHEET_NAME est obligatoire."
-        elif not new_gsa.strip():
-            err = "Le JSON Google Service Account est obligatoire."
+        elif not gsa_clean:
+            err = "Le JSON Google Service Account est obligatoire (champ vide)."
         else:
+            # Nettoyage défensif : retirer les ``` éventuels, espaces parasites
+            if gsa_clean.startswith("```"):
+                gsa_clean = gsa_clean.split("```")[1]
+                if gsa_clean.startswith("json"):
+                    gsa_clean = gsa_clean[4:]
+                gsa_clean = gsa_clean.strip()
             try:
-                json.loads(new_gsa.strip())
+                parsed = json.loads(gsa_clean)
+                # Vérifier que c'est bien un service account Google
+                if parsed.get("type") != "service_account":
+                    err = "Ce JSON ne semble pas être un Google Service Account (champ 'type' manquant ou incorrect)."
+                else:
+                    gsa_clean = json.dumps(parsed)  # Re-sérialiser proprement sur 1 ligne
             except json.JSONDecodeError as e:
                 err = f"JSON invalide : {e}"
+                st.code(gsa_clean[:300], language="text")  # Afficher ce qui a été reçu pour debug
 
         if err:
             st.error(err)
@@ -232,7 +246,7 @@ def admin_panel():
                 "password":   _hash(pwd),
                 "role":       new_role,
                 "sheet_name": new_sheet.strip(),
-                "google_sa":  new_gsa.strip(),
+                "google_sa":  gsa_clean,
             }
             st.success(f"✅ User **{new_username}** créé avec le rôle `{new_role}`.")
             if not new_password.strip():
