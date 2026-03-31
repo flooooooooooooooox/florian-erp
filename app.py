@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import time
 import json
 import os
+import calendar
 from auth import check_login, logout, admin_panel, get_user_credentials
 
 st.set_page_config(
@@ -51,19 +52,16 @@ html, body, [data-testid="stAppViewContainer"] {
     color: var(--text-main);
 }
 
-/* ── SIDEBAR ── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, var(--bg-sidebar) 0%, #0a1628 100%) !important;
     border-right: 1px solid var(--border) !important;
 }
 [data-testid="stSidebar"] > div { padding: 0 !important; }
 
-/* ── SCROLLBAR ── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 99px; }
 
-/* ── MÉTRIQUES ── */
 [data-testid="stMetric"] {
     background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-surface) 100%);
     border: 1px solid var(--border);
@@ -81,10 +79,7 @@ html, body, [data-testid="stAppViewContainer"] {
     background: linear-gradient(90deg, var(--primary), transparent);
     opacity: 0.6;
 }
-[data-testid="stMetric"]:hover {
-    transform: translateY(-2px);
-    border-color: var(--border-hover);
-}
+[data-testid="stMetric"]:hover { transform: translateY(-2px); border-color: var(--border-hover); }
 [data-testid="stMetric"] label {
     color: var(--text-muted) !important;
     font-size: 0.78rem !important;
@@ -101,7 +96,6 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 [data-testid="stMetricDelta"] { font-size: 0.8rem !important; }
 
-/* ── TABS ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 4px;
     background: var(--bg-surface);
@@ -124,7 +118,6 @@ html, body, [data-testid="stAppViewContainer"] {
     box-shadow: 0 2px 12px rgba(79,142,247,0.3) !important;
 }
 
-/* ── BOUTONS ── */
 .stButton > button {
     border-radius: var(--radius-sm) !important;
     font-weight: 600 !important;
@@ -142,7 +135,6 @@ html, body, [data-testid="stAppViewContainer"] {
     transform: translateY(-1px);
 }
 
-/* ── INPUTS ── */
 .stTextInput input, .stNumberInput input, .stSelectbox select,
 [data-testid="stTextArea"] textarea {
     background: var(--bg-surface) !important;
@@ -157,27 +149,21 @@ html, body, [data-testid="stAppViewContainer"] {
     box-shadow: 0 0 0 3px var(--primary-glow) !important;
 }
 
-/* ── DATAFRAME ── */
 [data-testid="stDataFrame"] {
     border-radius: var(--radius) !important;
     overflow: hidden;
     border: 1px solid var(--border) !important;
 }
 
-/* ── DIVIDER ── */
 hr { border-color: var(--border) !important; margin: 16px 0 !important; }
 
-/* ── CONTAINERS ── */
 [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > div[style*="border"] {
     border-color: var(--border) !important;
     background: var(--bg-card) !important;
     border-radius: var(--radius) !important;
 }
 
-/* ── SIDEBAR NAV ── */
-[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label > div:first-child {
-    display: none !important;
-}
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label > div:first-child { display: none !important; }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {
     padding: 10px 14px;
     background: transparent;
@@ -188,158 +174,41 @@ hr { border-color: var(--border) !important; margin: 16px 0 !important; }
     transition: all 0.15s ease;
     width: 100%;
 }
-[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {
-    background: var(--bg-card);
-    border-color: var(--border);
-}
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover { background: var(--bg-card); border-color: var(--border); }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] {
     background: linear-gradient(135deg, var(--primary-glow), rgba(79,142,247,0.08)) !important;
     border-color: rgba(79,142,247,0.4) !important;
 }
-[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {
-    color: var(--primary) !important;
-    font-weight: 700 !important;
-}
-[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p {
-    margin: 0;
-    font-size: 0.92rem;
-    color: var(--text-muted);
-}
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] p { color: var(--primary) !important; font-weight: 700 !important; }
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p { margin: 0; font-size: 0.92rem; color: var(--text-muted); }
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] { gap: 2px; }
 
-/* ── STATUT BADGES ── */
-.badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 99px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-}
+.badge { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.03em; }
 .badge-success { background: var(--success-glow); color: var(--success); border: 1px solid rgba(0,214,143,0.2); }
 .badge-warning { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(255,184,77,0.2); }
 .badge-primary { background: var(--primary-glow); color: var(--primary); border: 1px solid rgba(79,142,247,0.2); }
+.badge-danger { background: rgba(255,92,122,0.1); color: var(--danger); border: 1px solid rgba(255,92,122,0.2); }
 .badge-muted { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border); }
 
-/* ── PULSE DOT ── */
 .pulse-dot {
     display: inline-block; width: 7px; height: 7px;
     border-radius: 50%; background: var(--success);
     animation: pulse-anim 2s ease-in-out infinite;
     margin-right: 6px; vertical-align: middle;
 }
-@keyframes pulse-anim {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.85); }
-}
+@keyframes pulse-anim { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
 
-/* ── PLANNING CARD ── */
-.gantt-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 20px;
-    margin-bottom: 10px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-}
-.gantt-card:hover { border-color: var(--border-hover); transform: translateX(3px); }
-.gantt-card::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: var(--primary);
-    border-radius: 3px 0 0 3px;
-}
-.gantt-card.done::before { background: var(--success); }
-.gantt-card.urgent::before { background: var(--danger); }
-.gantt-card.soon::before { background: var(--warning); }
+.page-header { padding: 8px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+.page-header h1 { font-family: 'Syne', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }
+.page-header .subtitle { color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }
 
-/* ── PAGE HEADER ── */
-.page-header {
-    padding: 8px 0 24px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 28px;
-}
-.page-header h1 {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 1.9rem !important;
-    font-weight: 800 !important;
-    letter-spacing: -0.03em;
-    margin: 0 !important;
-    color: var(--text-main) !important;
-}
-.page-header .subtitle {
-    color: var(--text-muted);
-    font-size: 0.88rem;
-    margin-top: 4px;
-}
-
-/* ── SEARCH BOX ── */
-.search-wrap { position: relative; }
-
-/* ── ALERT BOX ── */
-.alert-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 14px;
-    background: rgba(255,184,77,0.06);
-    border: 1px solid rgba(255,184,77,0.15);
-    border-radius: var(--radius-sm);
-    margin-bottom: 8px;
-}
+.alert-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: rgba(255,184,77,0.06); border: 1px solid rgba(255,184,77,0.15); border-radius: var(--radius-sm); margin-bottom: 8px; }
 .alert-item .icon { font-size: 1.1rem; }
 .alert-item .info { flex: 1; }
 .alert-item .info .name { font-weight: 600; font-size: 0.9rem; color: var(--text-main); }
 .alert-item .info .amount { font-size: 0.8rem; color: var(--text-muted); }
 
-/* ── KPI MINI ── */
-.kpi-mini {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 14px 18px;
-    text-align: center;
-}
-.kpi-mini .val { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; color: var(--text-main); }
-.kpi-mini .lbl { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
-
-/* ── TIMELINE PLANNING ── */
-.timeline-container { margin-top: 16px; }
-.timeline-month {
-    font-family: 'Syne', sans-serif;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 10px 0 6px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
-}
-.timeline-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.03);
-}
-.timeline-label { width: 160px; min-width: 160px; }
-.timeline-label .client { font-weight: 600; font-size: 0.88rem; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.timeline-label .chantier { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.timeline-bar-wrap { flex: 1; position: relative; height: 28px; }
-.timeline-bar {
-    position: absolute;
-    height: 100%;
-    border-radius: 6px;
-    display: flex; align-items: center;
-    padding: 0 10px;
-    font-size: 0.72rem; font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    transition: filter 0.2s;
-    cursor: pointer;
-}
-.timeline-bar:hover { filter: brightness(1.15); }
-.timeline-dates { font-size: 0.75rem; color: var(--text-muted); min-width: 160px; text-align: right; }
+.timeline-month { font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -433,17 +302,6 @@ def fcol(df, *keywords):
 
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
-
-def fmt_date(d):
-    if pd.isna(d) or d == "":
-        return "—"
-    try:
-        dt = pd.to_datetime(d, dayfirst=True, errors="coerce")
-        if pd.isna(dt):
-            return str(d)
-        return dt.strftime("%d/%m/%Y")
-    except:
-        return str(d)
 
 LIMIT = 100
 
@@ -995,7 +853,6 @@ if page == "📊 Vue Générale":
             else:
                 st.success("✅ Aucun devis en attente !")
 
-    # Donut chart statuts
     st.markdown("<br>", unsafe_allow_html=True)
     col_d1, col_d2 = st.columns(2)
     with col_d1:
@@ -1137,56 +994,42 @@ elif page == "🏗️ Chantiers":
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : PLANNING — VERSION PREMIUM STYLE GOOGLE CALENDAR
+# PAGE : PLANNING — STYLE GOOGLE CALENDAR
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
 
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
-        st.warning(f"⚠️ Colonnes de dates non détectées.")
+        st.warning("⚠️ Colonnes de dates non détectées.")
         with st.expander("🔍 Colonnes disponibles dans le Sheet"):
             st.write(list(df.columns))
         st.stop()
 
-    # Préparation données planning
+    today = datetime.now()
+
     df_plan = df.copy()
     df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
     df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
     df_plan = df_plan.dropna(subset=["_start", "_end"])
-    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]  # Sanity check
+    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
 
     if df_plan.empty:
         st.info("ℹ️ Aucune date d'intervention valide dans vos dossiers.")
         st.stop()
 
-    # ── FILTRES COMPACTS EN LIGNE ──────────────────────────────────────────────
-    today = datetime.now()
-    f1, f2, f3 = st.columns([2, 2, 1])
-    with f1:
-        view_mode = st.selectbox("Vue", ["📅 Gantt interactif", "📋 Liste par période", "🗓️ Calendrier mensuel"], key="plan_view")
-    with f2:
-        filter_statut = st.multiselect("Statut", ["🟡 En cours", "✅ Terminé", "🔴 En retard"], default=["🟡 En cours", "🔴 En retard"], key="plan_filter")
-    with f3:
-        show_all_plan = st.toggle("Tout afficher", value=False, key="plan_show_all")
+    def get_statut_code(row):
+        if row["_pv"]:
+            return "termine"
+        if row["_end"].date() < today.date():
+            return "retard"
+        return "en-cours"
 
-    # Filtrage
-    df_plan["_statut"] = df_plan.apply(lambda row:
-        "✅ Terminé" if row["_pv"] else
-        ("🔴 En retard" if row["_end"].date() < today.date() else "🟡 En cours"), axis=1)
+    df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
 
-    if not show_all_plan and filter_statut:
-        df_plan = df_plan[df_plan["_statut"].isin(filter_statut)]
-
-    if df_plan.empty:
-        st.info("Aucun chantier correspondant aux filtres sélectionnés.")
-        st.stop()
-
-    df_plan_sorted = df_plan.sort_values("_start")
-
-    # ── KPI PLANNING ──────────────────────────────────────────────────────────
-    nb_en_cours  = int((df_plan["_statut"] == "🟡 En cours").sum())
-    nb_retard    = int((df_plan["_statut"] == "🔴 En retard").sum())
-    nb_termine   = int((df_plan["_statut"] == "✅ Terminé").sum())
+    # KPI
+    nb_en_cours  = int((df_plan["_statut_code"] == "en-cours").sum())
+    nb_retard    = int((df_plan["_statut_code"] == "retard").sum())
+    nb_termine   = int((df_plan["_statut_code"] == "termine").sum())
     nb_this_week = int(((df_plan["_start"].dt.date >= today.date()) &
                         (df_plan["_start"].dt.date <= (today + timedelta(days=7)).date())).sum())
 
@@ -1198,204 +1041,119 @@ elif page == "📅 Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ════════════════════════════════════════════════════════════════
-    # VUE GANTT INTERACTIF
-    # ════════════════════════════════════════════════════════════════
-    if view_mode == "📅 Gantt interactif":
-        nom_col   = COL_CHANTIER or COL_CLIENT or df_plan.columns[0]
-        color_col = COL_EQUIPE or COL_CLIENT or nom_col
+    view_mode = st.radio(
+        "Vue",
+        ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"],
+        horizontal=True,
+        key="plan_view"
+    )
 
-        color_map = {"🟡 En cours": "#4f8ef7", "🔴 En retard": "#ff5c7a", "✅ Terminé": "#00d68f"}
-
-        fig_gantt = px.timeline(
-            df_plan_sorted,
-            x_start="_start",
-            x_end="_end",
-            y=nom_col,
-            color="_statut",
-            color_discrete_map=color_map,
-            hover_name=nom_col,
-            hover_data={
-                COL_CLIENT: True if COL_CLIENT else False,
-                COL_MONTANT: True if COL_MONTANT else False,
-                COL_ADRESSE: True if COL_ADRESSE else False,
-                "_start": "|%d/%m/%Y",
-                "_end": "|%d/%m/%Y",
-                "_statut": True,
-            },
-            labels={"_start": "Début", "_end": "Fin", "_statut": "Statut"},
-        )
-
-        # Ligne "Aujourd'hui"
-        fig_gantt.add_vline(
-            x=today.timestamp() * 1000,
-            line_width=2, line_dash="dash", line_color="#ffb84d",
-            annotation_text="Aujourd'hui",
-            annotation_font_color="#ffb84d",
-            annotation_position="top right",
-        )
-
-        fig_gantt.update_yaxes(autorange="reversed", showgrid=False)
-        fig_gantt.update_xaxes(
-            showgrid=True,
-            gridcolor="rgba(255,255,255,0.04)",
-            tickformat="%d %b",
-            tickfont_color="#6b84a3",
-        )
-        fig_gantt.update_traces(
-            marker_line_width=0,
-            opacity=0.9,
-        )
-        fig_gantt.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(13,30,48,0.6)",
-            font_color="#e8f0fe",
-            font_family="DM Sans",
-            title=None,
-            xaxis_title="",
-            yaxis_title="",
-            height=max(380, len(df_plan_sorted) * 42 + 80),
-            legend=dict(
-                bgcolor="rgba(13,30,48,0.8)",
-                bordercolor="rgba(255,255,255,0.08)",
-                borderwidth=1,
-                font_color="#6b84a3",
-                title_text="",
-            ),
-            margin=dict(t=20, b=20, l=10, r=10),
-            bargap=0.25,
-        )
-
-        with st.container(border=True):
-            st.plotly_chart(fig_gantt, use_container_width=True)
-
-        # Tableau détail sous le Gantt
-        with st.expander("📋 Détail des chantiers planifiés", expanded=False):
-            detail_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN,
-                                        COL_MONTANT, COL_ADRESSE, COL_EQUIPE, "_statut"] if c]
-            show_table(df_plan_sorted[detail_cols].reset_index(drop=True), "plan_detail")
-
-    # ════════════════════════════════════════════════════════════════
-    # VUE LISTE PAR PÉRIODE
-    # ════════════════════════════════════════════════════════════════
-    elif view_mode == "📋 Liste par période":
-        # Grouper par mois de début
-        df_plan_sorted["_mois_str"] = df_plan_sorted["_start"].dt.strftime("%B %Y").str.capitalize()
-        df_plan_sorted["_mois_ord"] = df_plan_sorted["_start"].dt.to_period("M")
-
-        months = df_plan_sorted.groupby("_mois_ord", sort=True)
-
-        for period, group in months:
-            mois_label = group["_mois_str"].iloc[0]
-            st.markdown(f'<div class="timeline-month">📅 {mois_label} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
-
-            for _, row in group.iterrows():
-                client   = str(row[COL_CLIENT]) if COL_CLIENT else ""
-                chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
-                adresse  = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
-                montant  = fmt(row["_montant"])
-                debut    = row["_start"].strftime("%d/%m")
-                fin      = row["_end"].strftime("%d/%m/%Y")
-                statut   = row["_statut"]
-                duree    = (row["_end"] - row["_start"]).days + 1
-
-                # Couleur selon statut
-                if statut == "✅ Terminé":
-                    css_class = "done"
-                    badge_cls = "badge-success"
-                elif statut == "🔴 En retard":
-                    css_class = "urgent"
-                    badge_cls = "badge-danger"  
-                else:
-                    css_class = ""
-                    badge_cls = "badge-primary"
-
-                st.markdown(f"""
-                <div class="gantt-card {css_class}">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-                        <div style="flex:1;">
-                            <div style="font-weight:700;font-size:0.95rem;color:#e8f0fe;margin-bottom:2px;">{chantier}</div>
-                            <div style="font-size:0.8rem;color:#6b84a3;">
-                                👤 {client}
-                                {"  📍 " + adresse if adresse and adresse != "nan" else ""}
-                            </div>
-                        </div>
-                        <div style="text-align:right;min-width:130px;">
-                            <div style="font-weight:700;color:#4f8ef7;font-size:0.95rem;">{montant}</div>
-                            <div style="font-size:0.78rem;color:#6b84a3;margin-top:2px;">🗓 {debut} → {fin}</div>
-                            <div style="font-size:0.75rem;color:#3d5473;">{duree} jour(s)</div>
-                        </div>
-                    </div>
-                    <div style="margin-top:8px;">
-                        <span class="badge {badge_cls}">{statut}</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════════════
     # VUE CALENDRIER MENSUEL
     # ════════════════════════════════════════════════════════════════
-    elif view_mode == "🗓️ Calendrier mensuel":
-        # Sélecteur de mois
-        all_months = sorted(df_plan_sorted["_start"].dt.to_period("M").unique())
-        current_period = pd.Period(today, "M")
-        default_idx = next((i for i, m in enumerate(all_months) if m >= current_period), len(all_months)-1)
+    if view_mode == "📅 Calendrier mensuel":
 
-        month_labels = [m.strftime("%B %Y").capitalize() for m in all_months]
-        sel_month_idx = st.selectbox("Mois", range(len(all_months)), index=default_idx,
-                                     format_func=lambda i: month_labels[i], key="cal_month")
-        sel_period = all_months[sel_month_idx]
+        if "plan_year" not in st.session_state:
+            st.session_state["plan_year"] = today.year
+        if "plan_month" not in st.session_state:
+            st.session_state["plan_month"] = today.month
 
-        df_month = df_plan_sorted[
-            (df_plan_sorted["_start"].dt.to_period("M") <= sel_period) &
-            (df_plan_sorted["_end"].dt.to_period("M") >= sel_period)
-        ]
+        nav1, nav2, nav3 = st.columns([1, 3, 1])
+        with nav1:
+            if st.button("◀ Mois précédent", use_container_width=True):
+                if st.session_state["plan_month"] == 1:
+                    st.session_state["plan_month"] = 12
+                    st.session_state["plan_year"] -= 1
+                else:
+                    st.session_state["plan_month"] -= 1
+                st.rerun()
+        with nav2:
+            mois_fr = ["","Janvier","Février","Mars","Avril","Mai","Juin",
+                       "Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+            st.markdown(
+                f"<h3 style='text-align:center;margin:0;color:#e8f0fe;'>"
+                f"{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h3>",
+                unsafe_allow_html=True
+            )
+        with nav3:
+            if st.button("Mois suivant ▶", use_container_width=True):
+                if st.session_state["plan_month"] == 12:
+                    st.session_state["plan_month"] = 1
+                    st.session_state["plan_year"] += 1
+                else:
+                    st.session_state["plan_month"] += 1
+                st.rerun()
 
-        # Construire une mini grille calendrier HTML
-        import calendar
-        cal = calendar.monthcalendar(sel_period.year, sel_period.month)
-        days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+        sel_year  = st.session_state["plan_year"]
+        sel_month = st.session_state["plan_month"]
 
-        # Préparer les events par jour
+        _, last_day_num = calendar.monthrange(sel_year, sel_month)
+        df_month = df_plan[
+            (df_plan["_start"] <= datetime(sel_year, sel_month, last_day_num)) &
+            (df_plan["_end"]   >= datetime(sel_year, sel_month, 1))
+        ].copy()
+
+        # Events par jour
         events_by_day = {}
         for _, row in df_month.iterrows():
-            start_d = max(row["_start"].date(), datetime(sel_period.year, sel_period.month, 1).date())
-            _, last_day = calendar.monthrange(sel_period.year, sel_period.month)
-            end_d = min(row["_end"].date(), datetime(sel_period.year, sel_period.month, last_day).date())
+            start_d = max(row["_start"].date(), datetime(sel_year, sel_month, 1).date())
+            end_d   = min(row["_end"].date(), datetime(sel_year, sel_month, last_day_num).date())
             cur = start_d
             while cur <= end_d:
                 d = cur.day
                 if d not in events_by_day:
                     events_by_day[d] = []
                 chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else str(row[COL_CLIENT]) if COL_CLIENT else "Chantier"
-                statut = row["_statut"]
-                color = "#4f8ef7" if statut == "🟡 En cours" else "#ff5c7a" if statut == "🔴 En retard" else "#00d68f"
-                events_by_day[d].append({"label": chantier[:18], "color": color})
+                client   = str(row[COL_CLIENT]) if COL_CLIENT else ""
+                statut   = row["_statut_code"]
+                color    = "#4f8ef7" if statut == "en-cours" else "#ff5c7a" if statut == "retard" else "#00d68f"
+                bg       = "rgba(79,142,247,0.15)" if statut == "en-cours" else "rgba(255,92,122,0.15)" if statut == "retard" else "rgba(0,214,143,0.15)"
+                events_by_day[d].append({"label": chantier[:20], "client": client, "color": color, "bg": bg})
                 cur += timedelta(days=1)
 
-        # Rendu HTML du calendrier
-        header_html = "".join(f'<div style="text-align:center;font-size:0.75rem;font-weight:700;color:#6b84a3;padding:8px 0;letter-spacing:0.05em;">{d}</div>' for d in days_fr)
+        # Grille HTML
+        days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+        header_html = "".join(
+            f'<div style="text-align:center;font-size:0.75rem;font-weight:700;color:#6b84a3;'
+            f'padding:10px 0;letter-spacing:0.06em;text-transform:uppercase;">{d}</div>'
+            for d in days_fr
+        )
 
+        cal_grid = calendar.monthcalendar(sel_year, sel_month)
         cells_html = ""
-        for week in cal:
+        for week in cal_grid:
             for day in week:
                 if day == 0:
-                    cells_html += '<div style="background:rgba(0,0,0,0);border:1px solid transparent;border-radius:10px;min-height:90px;padding:6px;"></div>'
+                    cells_html += '<div style="background:rgba(0,0,0,0);border:1px solid transparent;border-radius:10px;min-height:110px;padding:8px;"></div>'
                 else:
-                    is_today = (day == today.day and sel_period.year == today.year and sel_period.month == today.month)
-                    day_style = "background:#132238;border:1px solid rgba(79,142,247,0.5);border-radius:10px;min-height:90px;padding:6px;" if is_today else "background:#0f1e30;border:1px solid rgba(255,255,255,0.04);border-radius:10px;min-height:90px;padding:6px;"
-                    day_num_style = f"font-size:0.82rem;font-weight:700;margin-bottom:4px;color:{'#4f8ef7' if is_today else '#6b84a3'};"
+                    is_today = (day == today.day and sel_year == today.year and sel_month == today.month)
+                    if is_today:
+                        cell_style = "background:#132238;border:1px solid rgba(79,142,247,0.5);border-radius:10px;min-height:110px;padding:8px;"
+                        num_style  = "width:26px;height:26px;border-radius:50%;background:#4f8ef7;display:flex;align-items:center;justify-content:center;font-size:0.82rem;font-weight:700;color:#fff;margin-bottom:4px;"
+                    else:
+                        cell_style = "background:#0f1e30;border:1px solid rgba(255,255,255,0.04);border-radius:10px;min-height:110px;padding:8px;"
+                        num_style  = "font-size:0.82rem;font-weight:600;color:#6b84a3;margin-bottom:4px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;"
+
                     events = events_by_day.get(day, [])
                     events_html = ""
-                    for ev in events[:2]:
-                        events_html += f'<div style="background:{ev["color"]}22;border-left:2px solid {ev["color"]};border-radius:3px;padding:2px 5px;font-size:0.68rem;color:{ev["color"]};margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{ev["label"]}</div>'
-                    if len(events) > 2:
-                        events_html += f'<div style="font-size:0.65rem;color:#6b84a3;padding:1px 3px;">+{len(events)-2} autres</div>'
-                    cells_html += f'<div style="{day_style}"><div style="{day_num_style}">{day}</div>{events_html}</div>'
+                    for ev in events[:3]:
+                        events_html += (
+                            f'<div style="background:{ev["bg"]};border-left:2px solid {ev["color"]};'
+                            f'border-radius:0 4px 4px 0;padding:2px 6px;font-size:0.68rem;'
+                            f'color:{ev["color"]};margin-bottom:2px;white-space:nowrap;overflow:hidden;'
+                            f'text-overflow:ellipsis;font-weight:600;" title="{ev["label"]} — {ev["client"]}">'
+                            f'{ev["label"]}</div>'
+                        )
+                    if len(events) > 3:
+                        events_html += f'<div style="font-size:0.65rem;color:#6b84a3;padding:1px 4px;">+{len(events)-3} autres</div>'
+
+                    cells_html += f'<div style="{cell_style}"><div style="{num_style}">{day}</div>{events_html}</div>'
 
         st.markdown(f"""
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:20px;">
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;">
+        <div style="background:#0f1e30;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:20px;margin-bottom:20px;">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;">
                 {header_html}
             </div>
             <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
@@ -1404,11 +1162,144 @@ elif page == "📅 Planning":
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.caption(f"{len(df_month)} chantier(s) actif(s) sur ce mois")
+        # Légende
+        st.markdown("""
+        <div style="display:flex;gap:20px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
+                <div style="width:12px;height:12px;border-radius:3px;background:#4f8ef7;"></div> En cours
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
+                <div style="width:12px;height:12px;border-radius:3px;background:#ff5c7a;"></div> En retard
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
+                <div style="width:12px;height:12px;border-radius:3px;background:#00d68f;"></div> Terminé
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if not df_month.empty:
-            detail_cols2 = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_MONTANT, "_statut"] if c]
-            show_table(df_month[detail_cols2].reset_index(drop=True), "cal_detail")
+            st.caption(f"{len(df_month)} chantier(s) ce mois")
+            detail_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_MONTANT] if c]
+            show_table(df_month[detail_cols].reset_index(drop=True), "cal_detail")
+
+    # ════════════════════════════════════════════════════════════════
+    # VUE GANTT
+    # ════════════════════════════════════════════════════════════════
+    elif view_mode == "📊 Gantt":
+        show_all_gantt = st.toggle("Inclure les terminés", value=False, key="gantt_all")
+        df_gantt = df_plan.copy()
+        if not show_all_gantt:
+            df_gantt = df_gantt[df_gantt["_statut_code"] != "termine"]
+
+        if df_gantt.empty:
+            st.info("Aucun chantier à afficher.")
+        else:
+            df_gantt_sorted = df_gantt.sort_values("_start")
+            nom_col = COL_CHANTIER or COL_CLIENT or df_gantt.columns[0]
+            label_map = {"en-cours": "🟡 En cours", "retard": "🔴 En retard", "termine": "✅ Terminé"}
+            df_gantt_sorted["_statut_label"] = df_gantt_sorted["_statut_code"].map(label_map)
+            color_map = {"🟡 En cours": "#4f8ef7", "🔴 En retard": "#ff5c7a", "✅ Terminé": "#00d68f"}
+
+            fig_gantt = px.timeline(
+                df_gantt_sorted,
+                x_start="_start", x_end="_end", y=nom_col,
+                color="_statut_label",
+                color_discrete_map=color_map,
+                hover_name=nom_col,
+                labels={"_start": "Début", "_end": "Fin", "_statut_label": "Statut"},
+            )
+            fig_gantt.add_vline(
+                x=today.timestamp() * 1000,
+                line_width=2, line_dash="dash", line_color="#ffb84d",
+                annotation_text="Aujourd'hui",
+                annotation_font_color="#ffb84d",
+                annotation_position="top right",
+            )
+            fig_gantt.update_yaxes(autorange="reversed", showgrid=False)
+            fig_gantt.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat="%d %b", tickfont_color="#6b84a3")
+            fig_gantt.update_traces(marker_line_width=0, opacity=0.9)
+            fig_gantt.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,30,48,0.6)",
+                font_color="#e8f0fe", font_family="DM Sans",
+                title=None, xaxis_title="", yaxis_title="",
+                height=max(380, len(df_gantt_sorted) * 42 + 80),
+                legend=dict(bgcolor="rgba(13,30,48,0.8)", bordercolor="rgba(255,255,255,0.08)", borderwidth=1, font_color="#6b84a3", title_text=""),
+                margin=dict(t=20, b=20, l=10, r=10),
+                bargap=0.25,
+            )
+            with st.container(border=True):
+                st.plotly_chart(fig_gantt, use_container_width=True)
+
+            with st.expander("📋 Détail", expanded=False):
+                detail_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_MONTANT, COL_ADRESSE] if c]
+                show_table(df_gantt_sorted[detail_cols].reset_index(drop=True), "gantt_detail")
+
+    # ════════════════════════════════════════════════════════════════
+    # VUE LISTE
+    # ════════════════════════════════════════════════════════════════
+    elif view_mode == "📋 Liste":
+        filtre_statut = st.multiselect(
+            "Filtrer par statut",
+            ["En cours", "En retard", "Terminé"],
+            default=["En cours", "En retard"],
+            key="list_filter"
+        )
+        code_map = {"En cours": "en-cours", "En retard": "retard", "Terminé": "termine"}
+        codes_actifs = [code_map[f] for f in filtre_statut]
+
+        df_list = df_plan[df_plan["_statut_code"].isin(codes_actifs)].sort_values("_start").copy()
+
+        if df_list.empty:
+            st.info("Aucun chantier correspondant.")
+        else:
+            df_list["_mois_str"] = df_list["_start"].dt.strftime("%B %Y").str.capitalize()
+            df_list["_mois_ord"] = df_list["_start"].dt.to_period("M")
+
+            color_map  = {"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"}
+            bg_map     = {"en-cours": "rgba(79,142,247,0.08)", "retard": "rgba(255,92,122,0.08)", "termine": "rgba(0,214,143,0.08)"}
+            label_map  = {"en-cours": "En cours", "retard": "En retard", "termine": "Terminé"}
+            border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)", "termine": "rgba(0,214,143,0.3)"}
+
+            for period, group in df_list.groupby("_mois_ord", sort=True):
+                mois_label = group["_mois_str"].iloc[0]
+                st.markdown(f'<div class="timeline-month">📅 {mois_label} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
+
+                for _, row in group.iterrows():
+                    client   = str(row[COL_CLIENT]) if COL_CLIENT else ""
+                    chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
+                    adresse  = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
+                    montant  = fmt(row["_montant"])
+                    debut    = row["_start"].strftime("%d/%m/%Y")
+                    fin      = row["_end"].strftime("%d/%m/%Y")
+                    duree    = (row["_end"] - row["_start"]).days + 1
+                    statut   = row["_statut_code"]
+                    color    = color_map[statut]
+                    bg       = bg_map[statut]
+                    border   = border_map[statut]
+                    label    = label_map[statut]
+
+                    st.markdown(f"""
+                    <div style="background:{bg};border:1px solid {border};border-left:3px solid {color};border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                            <div style="flex:1;">
+                                <div style="font-weight:700;font-size:0.95rem;color:#e8f0fe;margin-bottom:3px;">{chantier}</div>
+                                <div style="font-size:0.8rem;color:#6b84a3;">
+                                    👤 {client}{"  •  📍 " + adresse if adresse and adresse != "nan" else ""}
+                                </div>
+                                <div style="margin-top:8px;">
+                                    <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;background:rgba(255,255,255,0.05);color:{color};border:1px solid {border};">{label}</span>
+                                    <span style="font-size:0.75rem;color:#3d5473;margin-left:8px;">{duree} jour(s)</span>
+                                </div>
+                            </div>
+                            <div style="text-align:right;flex-shrink:0;">
+                                <div style="font-weight:700;color:{color};font-size:1rem;">{montant}</div>
+                                <div style="font-size:0.78rem;color:#6b84a3;margin-top:4px;">📅 {debut}</div>
+                                <div style="font-size:0.78rem;color:#6b84a3;">→ {fin}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
@@ -1425,7 +1316,8 @@ elif page == "📁 Tous les dossiers":
         d = d[mask]
 
     st.caption(f"{len(d)} dossier(s) trouvé(s)")
-    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste","_statut_ch","_start","_end","_statut","_mois_str","_mois_ord"]
+    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
+                 "_statut_ch","_start","_end","_statut","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
 
 # ── AUTO-REFRESH ───────────────────────────────────────────────────────────────
