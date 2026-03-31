@@ -1,8 +1,19 @@
-Voici le code complet et définitif. J'ai pris l'intégralité de ton script et j'ai appliqué **uniquement** les deux changements que nous avons vus :
-1. **Le calcul automatique en direct** du Total HT pour l'ajout et la modification des Prestations.
-2. **Le forçage de l'insertion sur une nouvelle ligne (`insert_row`)** au lieu de `append_row` pour régler le bug d'écrasement sur les feuilles Prestations et Catalogue.
+Ah ! L'erreur classique du copier-coller ! 😄
 
-Tu peux copier-coller tout ce bloc pour remplacer intégralement ton fichier `main.py` (ou `app.py`) sur GitHub / Replit :
+L'erreur `SyntaxError` à la ligne 1 indique que tu as copié **tout mon message précédent** (y compris mon texte d'introduction en français) directement dans ton fichier `app.py`. 
+
+Le serveur Streamlit (qui lit le langage Python) a essayé de lire la phrase *"Voici le code complet..."* et a logiquement planté car ce n'est pas du code informatique.
+
+### 🛠️ Comment réparer ça en 1 minute :
+
+1. Retourne sur ton **GitHub** et ouvre ton fichier `app.py`.
+2. Clique sur le petit crayon ✏️ pour le modifier.
+3. **Supprime tout le texte en français** qui se trouve tout en haut du fichier.
+4. Ton fichier **DOIT absolument commencer par cette ligne exacte** :
+   `import streamlit as st`
+5. Clique sur "Commit changes" (Enregistrer) en haut à droite.
+
+Pour être sûr à 100%, voici le bloc de code brut. Utilise le petit bouton **"Copier"** (en haut à droite du cadre noir ci-dessous) pour ne prendre **que** le code, et colle ça dans ton fichier GitHub à la place de tout le reste :
 
 ```python
 import streamlit as st
