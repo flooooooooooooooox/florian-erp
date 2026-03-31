@@ -334,8 +334,8 @@ elif page == "📝 Éditeur Google Sheet":
                     cols1     = st.columns(3)
                     for i, h in enumerate(headers_p):
                         hl = h.lower()
-                        # On ignore visuellement les champs gérés en haut
-                        if hl in ["prix mo ht", "prix fourn. ht", "marge (%)", "quantité", "quantite", "total ht"]:
+                        # On ignore visuellement les champs gérés en haut (plus robuste)
+                        if "mo ht" in hl or "fourn. ht" in hl or "marge" in hl or "quantit" in hl or "total ht" in hl:
                             continue
                             
                         with cols1[i % 3]:
@@ -364,7 +364,6 @@ elif page == "📝 Éditeur Google Sheet":
                             st.error(err2)
                         else:
                             new_row = [inputs_p.get(h, "") for h in headers_p]
-                            # CORRECTION: On insère une vraie nouvelle ligne
                             next_row = len(df_p) + 2
                             ws_p2.insert_row(new_row, index=next_row, value_input_option="USER_ENTERED")
                             
@@ -413,8 +412,8 @@ elif page == "📝 Éditeur Google Sheet":
                         cols2 = st.columns(3)
                         for i, h in enumerate(headers_p2):
                             hl = h.lower()
-                            # On ignore les champs gérés en haut
-                            if hl in ["prix mo ht", "prix fourn. ht", "marge (%)", "quantité", "quantite", "total ht"]:
+                            # On ignore les champs gérés en haut (plus robuste)
+                            if "mo ht" in hl or "fourn. ht" in hl or "marge" in hl or "quantit" in hl or "total ht" in hl:
                                 continue
                                 
                             with cols2[i % 3]:
@@ -542,8 +541,8 @@ elif page == "📝 Éditeur Google Sheet":
                     
                     for i, h in enumerate(headers_c):
                         hl = h.lower()
-                        # On ignore visuellement les champs calculés
-                        if hl in ["prix achat ht", "% marge", "marge", "prix vente ht"]:
+                        # On ignore visuellement les champs calculés (CORRIGÉ POUR MARGE)
+                        if "achat ht" in hl or "marge" in hl or "vente ht" in hl:
                             continue
                             
                         with cols3[i % 3]:
@@ -610,8 +609,8 @@ elif page == "📝 Éditeur Google Sheet":
                         cols4        = st.columns(3)
                         for i, h in enumerate(headers_c2):
                             hl = h.lower()
-                            # On ignore les champs gérés en haut
-                            if hl in ["prix achat ht", "% marge", "marge", "prix vente ht"]:
+                            # On ignore les champs gérés en haut (CORRIGÉ POUR MARGE)
+                            if "achat ht" in hl or "marge" in hl or "vente ht" in hl:
                                 continue
                                 
                             with cols4[i % 3]:
