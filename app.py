@@ -111,7 +111,7 @@ h1, h2, h3 {
 
 /* Inputs form */
 .stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #0f172a80 !important; /* Léger transparence */
+    background-color: #0f172a80 !important; /* Lége transparence */
     border-radius: 6px !important;
     border: 1px solid var(--border) !important;
 }
@@ -422,7 +422,8 @@ elif page == "📝 Éditeur Google Sheet":
                         cols1     = st.columns(3)
                         for i, h in enumerate(headers_p):
                             hl = h.lower()
-                            if "mo ht" in hl or "fourn. ht" in hl or "marge" in hl or "quantit" in hl or "total ht" in hl:
+                            # Vérification ultra-robuste pour cacher les champs
+                            if any(mot in hl for mot in ["mo ht", "fourn", "marge", "quantit", "total"]):
                                 continue
                             with cols1[i % 3]:
                                 if "categ" in hl or "colonne" in hl:
@@ -438,10 +439,10 @@ elif page == "📝 Éditeur Google Sheet":
                         for h in headers_p:
                             hl = h.lower()
                             if "mo ht" in hl: inputs_p[h] = str(val_mo)
-                            elif "fourn. ht" in hl: inputs_p[h] = str(val_fourn)
+                            elif "fourn" in hl: inputs_p[h] = str(val_fourn)
                             elif "marge" in hl: inputs_p[h] = str(val_marge)
                             elif "quantit" in hl: inputs_p[h] = str(val_qte)
-                            elif "total ht" in hl: inputs_p[h] = str(round(calcul_total, 2))
+                            elif "total" in hl: inputs_p[h] = str(round(calcul_total, 2))
 
                         try:
                             ws_p2, err2 = get_worksheet(user, "Feuille 1")
@@ -472,7 +473,7 @@ elif page == "📝 Éditeur Google Sheet":
                             hl = h.lower()
                             val = df_p.iloc[sel_idx][h]
                             if "mo ht" in hl: cur_mo = clean_amount(val)
-                            elif "fourn. ht" in hl: cur_fourn = clean_amount(val)
+                            elif "fourn" in hl: cur_fourn = clean_amount(val)
                             elif "marge" in hl: cur_marge = clean_amount(val)
                             elif "quantit" in hl: cur_qte = clean_amount(val)
                         
@@ -490,7 +491,7 @@ elif page == "📝 Éditeur Google Sheet":
                             cols2 = st.columns(3)
                             for i, h in enumerate(headers_p2):
                                 hl = h.lower()
-                                if "mo ht" in hl or "fourn. ht" in hl or "marge" in hl or "quantit" in hl or "total ht" in hl:
+                                if any(mot in hl for mot in ["mo ht", "fourn", "marge", "quantit", "total"]):
                                     continue
                                 with cols2[i % 3]:
                                     cur_val = str(df_p.iloc[sel_idx][h])
@@ -509,10 +510,10 @@ elif page == "📝 Éditeur Google Sheet":
                             for h in headers_p2:
                                 hl = h.lower()
                                 if "mo ht" in hl: mod_inputs[h] = str(mod_mo)
-                                elif "fourn. ht" in hl: mod_inputs[h] = str(mod_fourn)
+                                elif "fourn" in hl: mod_inputs[h] = str(mod_fourn)
                                 elif "marge" in hl: mod_inputs[h] = str(mod_marge)
                                 elif "quantit" in hl: mod_inputs[h] = str(mod_qte)
-                                elif "total ht" in hl: mod_inputs[h] = str(round(mod_calcul_total, 2))
+                                elif "total" in hl: mod_inputs[h] = str(round(mod_calcul_total, 2))
 
                             try:
                                 ws_p3, err3 = get_worksheet(user, "Feuille 1")
@@ -611,7 +612,8 @@ elif page == "📝 Éditeur Google Sheet":
                         
                         for i, h in enumerate(headers_c):
                             hl = h.lower()
-                            if "achat ht" in hl or "marge" in hl or "vente ht" in hl:
+                            # Vérification ultra-robuste pour cacher les champs
+                            if any(mot in hl for mot in ["achat", "marge", "vente"]):
                                 continue
                             with cols3[i % 3]:
                                 if "catégorie" in hl or "categorie" in hl:
@@ -624,9 +626,9 @@ elif page == "📝 Éditeur Google Sheet":
                     if submit_add_c:
                         for h in headers_c:
                             hl = h.lower()
-                            if "achat ht" in hl: inputs_c[h] = str(val_achat)
+                            if "achat" in hl: inputs_c[h] = str(val_achat)
                             elif "marge" in hl: inputs_c[h] = str(val_marge_c)
-                            elif "vente ht" in hl: inputs_c[h] = str(round(calcul_vente, 2))
+                            elif "vente" in hl: inputs_c[h] = str(round(calcul_vente, 2))
 
                         try:
                             ws_c2, err_c2 = get_worksheet(user, "catalogue")
@@ -656,7 +658,7 @@ elif page == "📝 Éditeur Google Sheet":
                         for h in headers_c2:
                             hl = h.lower()
                             val = df_c.iloc[sel_idx_c][h]
-                            if "achat ht" in hl: cur_achat = clean_amount(val)
+                            if "achat" in hl: cur_achat = clean_amount(val)
                             elif "marge" in hl: cur_marge_c = clean_amount(val)
                         
                         c_achat_m, c_marge_m = st.columns(2)
@@ -671,7 +673,7 @@ elif page == "📝 Éditeur Google Sheet":
                             cols4        = st.columns(3)
                             for i, h in enumerate(headers_c2):
                                 hl = h.lower()
-                                if "achat ht" in hl or "marge" in hl or "vente ht" in hl:
+                                if any(mot in hl for mot in ["achat", "marge", "vente"]):
                                     continue
                                 with cols4[i % 3]:
                                     cur_val = str(df_c.iloc[sel_idx_c][h])
@@ -686,9 +688,9 @@ elif page == "📝 Éditeur Google Sheet":
                         if submit_mod_c:
                             for h in headers_c2:
                                 hl = h.lower()
-                                if "achat ht" in hl: mod_inputs_c[h] = str(mod_achat)
+                                if "achat" in hl: mod_inputs_c[h] = str(mod_achat)
                                 elif "marge" in hl: mod_inputs_c[h] = str(mod_marge_c)
-                                elif "vente ht" in hl: mod_inputs_c[h] = str(round(mod_calcul_vente, 2))
+                                elif "vente" in hl: mod_inputs_c[h] = str(round(mod_calcul_vente, 2))
 
                             try:
                                 ws_c3, err_c3 = get_worksheet(user, "catalogue")
@@ -790,7 +792,7 @@ if page == "📊 Vue Générale":
     # Ligne 1 : Performance Commerciale
     st.markdown("### 🎯 Performance Commerciale")
     c1, c2, c3, c4 = st.columns(4)
-    # Intégration du nombre de dossiers dans le titre pour éviter la flèche verte
+    # Intégration du nombre de dossiers dans le titre pour éviter la flèche verte de Streamlit
     c1.metric(f"💰 CA Sécurisé ({nb_signes} validés)", fmt(ca_signe))
     c2.metric(f"⏳ CA en négo ({nb_attente} en cours)", fmt(ca_non_s))
     c3.metric("📈 Taux de conversion", f"{taux_conv} %")
