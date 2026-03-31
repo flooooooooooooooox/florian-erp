@@ -264,16 +264,28 @@ elif page == "📝 Éditeur Google Sheet":
             "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"
         ]
 
+        def _dedup(headers):
+            seen, out = {}, []
+            for h in headers:
+                h = h.strip() or "_col"
+                if h in seen:
+                    seen[h] += 1
+                    out.append(f"{h}_{seen[h]}")
+                else:
+                    seen[h] = 0
+                    out.append(h)
+            return out
+
         @st.cache_resource(ttl=10)
         def load_presta(u):
             ws, err = get_worksheet(u, "Feuille 1")
             if err:
-                return None, err, []
+                return None, err, pd.DataFrame()
             try:
                 all_vals = ws.get_all_values()
                 if not all_vals:
-                    return ws, None, []
-                headers = all_vals[0]
+                    return ws, None, pd.DataFrame()
+                headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
                 n       = len(headers)
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
@@ -281,7 +293,7 @@ elif page == "📝 Éditeur Google Sheet":
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
                 return ws, None, df
             except Exception as e:
-                return None, str(e), []
+                return None, str(e), pd.DataFrame()
 
         ws_p, err_p, df_p = load_presta(user)
 
@@ -398,12 +410,12 @@ elif page == "📝 Éditeur Google Sheet":
         def load_catalogue(u):
             ws, err = get_worksheet(u, "catalogue")
             if err:
-                return None, err, []
+                return None, err, pd.DataFrame()
             try:
                 all_vals = ws.get_all_values()
                 if not all_vals:
-                    return ws, None, []
-                headers = all_vals[0]
+                    return ws, None, pd.DataFrame()
+                headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
                 n       = len(headers)
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
@@ -411,7 +423,7 @@ elif page == "📝 Éditeur Google Sheet":
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
                 return ws, None, df
             except Exception as e:
-                return None, str(e), []
+                return None, str(e), pd.DataFrame()
 
         ws_c, err_c, df_c = load_catalogue(user)
 
