@@ -89,7 +89,6 @@ SCOPES = [
 ]
 
 def get_gc(username: str):
-    """Retourne un client gspread authentifié pour le user."""
     _, gsa_json = get_user_credentials(username)
     if not gsa_json:
         return None, "GOOGLE_SERVICE_ACCOUNT non configuré."
@@ -97,7 +96,6 @@ def get_gc(username: str):
     return gspread.authorize(creds), None
 
 def get_worksheet(username: str, tab_name: str):
-    """Retourne un worksheet gspread pour l'onglet demandé."""
     sheet_name, gsa_json = get_user_credentials(username)
     if not sheet_name or not gsa_json:
         return None, "Credentials non configurés."
@@ -208,8 +206,7 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         st.image("logo.png", width=130)
     else:
-        st.markdown("<div style='text-align:center;font-size:2rem;padding:8px 0'>⚡</div>",
-                    unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center;font-size:2rem;padding:8px 0'>⚡</div>", unsafe_allow_html=True)
 
     user = st.session_state.get("username", "")
     role = st.session_state.get("role", "viewer")
@@ -225,16 +222,12 @@ with st.sidebar:
     page = st.selectbox("Navigation", pages, label_visibility="collapsed")
 
     st.divider()
-    st.markdown('<span class="refresh-dot"></span>'
-                '<span style="font-size:0.75rem;color:#94A3B8;">Sync toutes les 30s</span>',
-                unsafe_allow_html=True)
+    st.markdown('<span class="refresh-dot"></span><span style="font-size:0.75rem;color:#94A3B8;">Sync toutes les 30s</span>', unsafe_allow_html=True)
     if st.button("🔄 Actualiser"):
         st.cache_resource.clear()
         st.rerun()
     st.divider()
-    st.markdown(f'<div style="font-size:0.8rem;color:#94A3B8;">'
-                f'👤 <b style="color:#F8FAFC">{user}</b> &nbsp;·&nbsp; {role}</div>',
-                unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:0.8rem;color:#94A3B8;">👤 <b style="color:#F8FAFC">{user}</b> &nbsp;·&nbsp; {role}</div>', unsafe_allow_html=True)
     if st.button("🚪 Déconnexion"):
         logout()
         st.rerun()
@@ -258,7 +251,6 @@ elif page == "📝 Éditeur Google Sheet":
     with tab_presta:
         st.markdown("### Feuille 1 — Prestations")
 
-        # Colonnes attendues
         PRESTA_COLS = [
             "categorie", "Type de poste", "Sous-prestation", "Description",
             "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"
@@ -291,7 +283,6 @@ elif page == "📝 Éditeur Google Sheet":
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
-                # Garder seulement les colonnes utiles (pas les _col_*)
                 useful = [c for c in df.columns if not c.startswith("_col")]
                 df = df[useful]
                 return ws, None, df
@@ -303,7 +294,6 @@ elif page == "📝 Éditeur Google Sheet":
         if err_p:
             st.error(f"❌ {err_p}")
         else:
-            # ── Affichage ──────────────────────────────────────────────────────
             st.caption(f"{len(df_p)} lignes")
             search_p = st.text_input("🔍 Rechercher", placeholder="Salle de bain, Installation...", key="search_presta")
             df_show  = df_p.copy()
@@ -316,29 +306,59 @@ elif page == "📝 Éditeur Google Sheet":
 
             st.divider()
 
+            CATEGORIES  = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
+            TYPES_POSTE = ["Préparation / Démolition", "Gros œuvre", "Charpente / Couverture", "Isolation", "Plâtrerie / Cloisons", "Menuiserie intérieure", "Menuiserie extérieure", "Plomberie / Sanitaire", "Chauffage / VMC / Climatisation", "Électricité", "Domotique / Alarme", "Carrelage / Revêtement sol", "Peinture / Revêtement mur", "Parquet / Stratifié", "Faïence", "Finition", "Installation", "Mobilier / Agencement", "Serrurerie / Métallerie", "Terrassement / VRD", "Maçonnerie", "Enduit / Ravalement", "Étanchéité / Hydrofuge", "Nettoyage / Évacuation", "Autre"]
+
             # ── Ajouter une ligne ──────────────────────────────────────────────
             with st.expander("➕ Ajouter une ligne"):
-                CATEGORIES  = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
-                TYPES_POSTE = ["Préparation / Démolition", "Gros œuvre", "Charpente / Couverture", "Isolation", "Plâtrerie / Cloisons", "Menuiserie intérieure", "Menuiserie extérieure", "Plomberie / Sanitaire", "Chauffage / VMC / Climatisation", "Électricité", "Domotique / Alarme", "Carrelage / Revêtement sol", "Peinture / Revêtement mur", "Parquet / Stratifié", "Faïence", "Finition", "Installation", "Mobilier / Agencement", "Serrurerie / Métallerie", "Terrassement / VRD", "Maçonnerie", "Enduit / Ravalement", "Étanchéité / Hydrofuge", "Nettoyage / Évacuation", "Autre"]
+                st.markdown("**Calcul automatique du Total HT**")
+                
+                # Champs numériques extraits pour le calcul en direct
+                c_mo, c_fourn, c_marge, c_qte = st.columns(4)
+                with c_mo:
+                    val_mo = st.number_input("Prix MO HT", min_value=0.0, value=0.0, step=10.0, key="add_mo")
+                with c_fourn:
+                    val_fourn = st.number_input("Prix Fourn. HT", min_value=0.0, value=0.0, step=10.0, key="add_fourn")
+                with c_marge:
+                    val_marge = st.number_input("Marge (%)", min_value=0.0, value=30.0, step=5.0, key="add_marge")
+                with c_qte:
+                    val_qte = st.number_input("Quantité", min_value=1.0, value=1.0, step=1.0, key="add_qte")
+                
+                # Calcul mathématique
+                calcul_total = (val_mo + (val_fourn * (1 + (val_marge / 100)))) * val_qte
+                st.info(f"💡 **Total HT Calculé : {calcul_total:.2f} €**")
 
                 with st.form("form_add_presta"):
                     headers_p = list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS
                     inputs_p  = {}
                     cols1     = st.columns(3)
                     for i, h in enumerate(headers_p):
+                        hl = h.lower()
+                        # On ignore visuellement les champs gérés en haut
+                        if hl in ["prix mo ht", "prix fourn. ht", "marge (%)", "quantité", "quantite", "total ht"]:
+                            continue
+                            
                         with cols1[i % 3]:
-                            hl = h.lower()
                             if "categ" in hl or "colonne" in hl:
                                 inputs_p[h] = st.selectbox(h, CATEGORIES, key=f"add_p_{h}")
                             elif "type" in hl and "poste" in hl:
                                 inputs_p[h] = st.selectbox(h, TYPES_POSTE, key=f"add_p_{h}")
                             else:
                                 inputs_p[h] = st.text_input(h, key=f"add_p_{h}")
+                                
                     submit_add_p = st.form_submit_button("✅ Ajouter", use_container_width=True)
 
                 if submit_add_p:
+                    # Injection des valeurs calculées
+                    for h in headers_p:
+                        hl = h.lower()
+                        if "mo ht" in hl: inputs_p[h] = str(val_mo)
+                        elif "fourn. ht" in hl: inputs_p[h] = str(val_fourn)
+                        elif "marge" in hl: inputs_p[h] = str(val_marge)
+                        elif "quantit" in hl: inputs_p[h] = str(val_qte)
+                        elif "total ht" in hl: inputs_p[h] = str(round(calcul_total, 2))
+
                     try:
-                        ws_p2, _, _ = load_presta.__wrapped__(user) if hasattr(load_presta, '__wrapped__') else (get_worksheet(user, "Feuille 1")[0], None, None)
                         ws_p2, err2 = get_worksheet(user, "Feuille 1")
                         if err2:
                             st.error(err2)
@@ -346,7 +366,7 @@ elif page == "📝 Éditeur Google Sheet":
                             new_row = [inputs_p.get(h, "") for h in headers_p]
                             ws_p2.append_row(new_row, value_input_option="USER_ENTERED")
                             st.cache_resource.clear()
-                            st.success("✅ Ligne ajoutée !")
+                            st.success("✅ Ligne ajoutée avec calcul auto !")
                             st.rerun()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
@@ -357,21 +377,44 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucune ligne à modifier.")
                 else:
                     headers_p2 = list(df_p.columns)
-                    # Choix de la ligne par index
-                    row_labels = [f"Ligne {i+2} — {df_p.iloc[i, 0]} / {df_p.iloc[i, 1] if len(headers_p2)>1 else ''}"
-                                  for i in range(len(df_p))]
-                    sel_idx = st.selectbox("Sélectionner la ligne à modifier", range(len(df_p)),
-                                           format_func=lambda i: row_labels[i], key="sel_mod_presta")
+                    row_labels = [f"Ligne {i+2} — {df_p.iloc[i, 0]} / {df_p.iloc[i, 1] if len(headers_p2)>1 else ''}" for i in range(len(df_p))]
+                    sel_idx = st.selectbox("Sélectionner la ligne à modifier", range(len(df_p)), format_func=lambda i: row_labels[i], key="sel_mod_presta")
 
-                    CATEGORIES  = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
-                    TYPES_POSTE = ["Préparation / Démolition", "Gros œuvre", "Charpente / Couverture", "Isolation", "Plâtrerie / Cloisons", "Menuiserie intérieure", "Menuiserie extérieure", "Plomberie / Sanitaire", "Chauffage / VMC / Climatisation", "Électricité", "Domotique / Alarme", "Carrelage / Revêtement sol", "Peinture / Revêtement mur", "Parquet / Stratifié", "Faïence", "Finition", "Installation", "Mobilier / Agencement", "Serrurerie / Métallerie", "Terrassement / VRD", "Maçonnerie", "Enduit / Ravalement", "Étanchéité / Hydrofuge", "Nettoyage / Évacuation", "Autre"]
+                    # Récupération sécurisée des anciennes valeurs
+                    cur_mo = 0.0; cur_fourn = 0.0; cur_marge = 30.0; cur_qte = 1.0
+                    for h in headers_p2:
+                        hl = h.lower()
+                        val = df_p.iloc[sel_idx][h]
+                        if "mo ht" in hl: cur_mo = clean_amount(val)
+                        elif "fourn. ht" in hl: cur_fourn = clean_amount(val)
+                        elif "marge" in hl: cur_marge = clean_amount(val)
+                        elif "quantit" in hl: cur_qte = clean_amount(val)
+
+                    st.markdown("**Calcul automatique du Total HT**")
+                    
+                    c_mo_m, c_fourn_m, c_marge_m, c_qte_m = st.columns(4)
+                    with c_mo_m:
+                        mod_mo = st.number_input("Prix MO HT", min_value=0.0, value=float(cur_mo), step=10.0, key="mod_mo")
+                    with c_fourn_m:
+                        mod_fourn = st.number_input("Prix Fourn. HT", min_value=0.0, value=float(cur_fourn), step=10.0, key="mod_fourn")
+                    with c_marge_m:
+                        mod_marge = st.number_input("Marge (%)", min_value=0.0, value=float(cur_marge), step=5.0, key="mod_marge")
+                    with c_qte_m:
+                        mod_qte = st.number_input("Quantité", min_value=1.0, value=float(cur_qte) if float(cur_qte) > 0 else 1.0, step=1.0, key="mod_qte")
+
+                    mod_calcul_total = (mod_mo + (mod_fourn * (1 + (mod_marge / 100)))) * mod_qte
+                    st.info(f"💡 **Total HT Calculé : {mod_calcul_total:.2f} €**")
 
                     with st.form("form_mod_presta"):
                         mod_inputs = {}
-                        cols2      = st.columns(3)
+                        cols2 = st.columns(3)
                         for i, h in enumerate(headers_p2):
+                            hl = h.lower()
+                            # On ignore les champs gérés en haut
+                            if hl in ["prix mo ht", "prix fourn. ht", "marge (%)", "quantité", "quantite", "total ht"]:
+                                continue
+                                
                             with cols2[i % 3]:
-                                hl = h.lower()
                                 cur_val = str(df_p.iloc[sel_idx][h])
                                 if "categ" in hl or "colonne" in hl:
                                     idx_cat = CATEGORIES.index(cur_val) if cur_val in CATEGORIES else 0
@@ -381,19 +424,29 @@ elif page == "📝 Éditeur Google Sheet":
                                     mod_inputs[h] = st.selectbox(h, TYPES_POSTE, index=idx_tp, key=f"mod_p_{h}")
                                 else:
                                     mod_inputs[h] = st.text_input(h, value=cur_val, key=f"mod_p_{h}")
+                                    
                         submit_mod_p = st.form_submit_button("💾 Enregistrer", use_container_width=True)
 
                     if submit_mod_p:
+                        # Injection des valeurs calculées
+                        for h in headers_p2:
+                            hl = h.lower()
+                            if "mo ht" in hl: mod_inputs[h] = str(mod_mo)
+                            elif "fourn. ht" in hl: mod_inputs[h] = str(mod_fourn)
+                            elif "marge" in hl: mod_inputs[h] = str(mod_marge)
+                            elif "quantit" in hl: mod_inputs[h] = str(mod_qte)
+                            elif "total ht" in hl: mod_inputs[h] = str(round(mod_calcul_total, 2))
+
                         try:
                             ws_p3, err3 = get_worksheet(user, "Feuille 1")
                             if err3:
                                 st.error(err3)
                             else:
-                                sheet_row = sel_idx + 2  # +1 header, +1 base 1
+                                sheet_row = sel_idx + 2 
                                 for col_idx, h in enumerate(headers_p2, start=1):
                                     ws_p3.update_cell(sheet_row, col_idx, mod_inputs[h])
                                 st.cache_resource.clear()
-                                st.success("✅ Ligne modifiée !")
+                                st.success("✅ Ligne modifiée avec calcul auto !")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
@@ -404,10 +457,8 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucune ligne à supprimer.")
                 else:
                     headers_p3 = list(df_p.columns)
-                    row_labels2 = [f"Ligne {i+2} — {df_p.iloc[i, 0]} / {df_p.iloc[i, 1] if len(headers_p3)>1 else ''}"
-                                   for i in range(len(df_p))]
-                    del_idx = st.selectbox("Sélectionner la ligne à supprimer", range(len(df_p)),
-                                           format_func=lambda i: row_labels2[i], key="sel_del_presta")
+                    row_labels2 = [f"Ligne {i+2} — {df_p.iloc[i, 0]} / {df_p.iloc[i, 1] if len(headers_p3)>1 else ''}" for i in range(len(df_p))]
+                    del_idx = st.selectbox("Sélectionner la ligne à supprimer", range(len(df_p)), format_func=lambda i: row_labels2[i], key="sel_del_presta")
                     st.warning(f"⚠️ Tu vas supprimer : **{row_labels2[del_idx]}**")
                     if st.button("🗑️ Confirmer la suppression", key="btn_del_presta"):
                         try:
@@ -495,19 +546,15 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucun article à modifier.")
                 else:
                     headers_c2  = list(df_c.columns)
-                    art_labels  = [f"Ligne {i+2} — {df_c.iloc[i, 0]} / {df_c.iloc[i, 1] if len(headers_c2)>1 else ''}"
-                                   for i in range(len(df_c))]
-                    sel_idx_c   = st.selectbox("Sélectionner l'article à modifier", range(len(df_c)),
-                                               format_func=lambda i: art_labels[i], key="sel_mod_cata")
+                    art_labels  = [f"Ligne {i+2} — {df_c.iloc[i, 0]} / {df_c.iloc[i, 1] if len(headers_c2)>1 else ''}" for i in range(len(df_c))]
+                    sel_idx_c   = st.selectbox("Sélectionner l'article à modifier", range(len(df_c)), format_func=lambda i: art_labels[i], key="sel_mod_cata")
 
                     with st.form("form_mod_cata"):
                         mod_inputs_c = {}
                         cols4        = st.columns(3)
                         for i, h in enumerate(headers_c2):
                             with cols4[i % 3]:
-                                mod_inputs_c[h] = st.text_input(
-                                    h, value=str(df_c.iloc[sel_idx_c][h]), key=f"mod_c_{h}"
-                                )
+                                mod_inputs_c[h] = st.text_input(h, value=str(df_c.iloc[sel_idx_c][h]), key=f"mod_c_{h}")
                         submit_mod_c = st.form_submit_button("💾 Enregistrer", use_container_width=True)
 
                     if submit_mod_c:
@@ -531,10 +578,8 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucun article à supprimer.")
                 else:
                     headers_c3  = list(df_c.columns)
-                    art_labels2 = [f"Ligne {i+2} — {df_c.iloc[i, 0]} / {df_c.iloc[i, 1] if len(headers_c3)>1 else ''}"
-                                   for i in range(len(df_c))]
-                    del_idx_c   = st.selectbox("Sélectionner l'article à supprimer", range(len(df_c)),
-                                               format_func=lambda i: art_labels2[i], key="sel_del_cata")
+                    art_labels2 = [f"Ligne {i+2} — {df_c.iloc[i, 0]} / {df_c.iloc[i, 1] if len(headers_c3)>1 else ''}" for i in range(len(df_c))]
+                    del_idx_c   = st.selectbox("Sélectionner l'article à supprimer", range(len(df_c)), format_func=lambda i: art_labels2[i], key="sel_del_cata")
                     st.warning(f"⚠️ Tu vas supprimer : **{art_labels2[del_idx_c]}**")
                     if st.button("🗑️ Confirmer la suppression", key="btn_del_cata"):
                         try:
