@@ -492,7 +492,7 @@ elif page == "📝 Éditeur Google Sheet":
             with sub_p_del:
                 st.subheader("Supprimer une prestation")
                 if len(df_p) == 0:
-                    st.info("Aucune ligne à supprimer.")
+                    st.info("Aucune ligne à modifier.")
                 else:
                     headers_p3 = list(df_p.columns)
                     row_labels2 = [f"Ligne {i+2} — {df_p.iloc[i, 0]} / {df_p.iloc[i, 1] if len(headers_p3)>1 else ''}" for i in range(len(df_p))]
@@ -721,9 +721,9 @@ COL_ACOMPTE1 = fcol(df, "acompte 1")
 COL_ACOMPTE2 = fcol(df, "acompte 2")
 COL_RESERVE  = fcol(df, "réserve", "reserve")
 
-# Colonnes Spéciales Planning (Gantt)
-COL_DATE_DEBUT = fcol(df, "date début", "date debut", "début chantier", "debut chantier")
-COL_DATE_FIN   = fcol(df, "date fin", "fin chantier")
+# Colonnes Spéciales Planning (Gantt) - MISES À JOUR AVEC TES NOMS EXACTS
+COL_DATE_DEBUT = fcol(df, "Date de début des travaux")
+COL_DATE_FIN   = fcol(df, "Date de fin des travaux")
 COL_EQUIPE     = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien", "artisan")
 
 # Nouvelles colonnes et calculs pour les métriques
@@ -908,32 +908,28 @@ elif page == "🏗️ Chantiers":
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : PLANNING (NOUVELLE PAGE)
+# PAGE : PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Planning":
     st.title("📅 Planning des Chantiers")
-    st.markdown("Vue chronologique des interventions prévues et en cours.")
+    st.markdown("Vue chronologique des interventions à partir des colonnes de dates.")
 
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
-        st.warning("⚠️ Les colonnes **'Date début'** et **'Date fin'** ne sont pas détectées dans votre fichier.")
-        st.info("Pour activer le planning, assurez-vous d'avoir des colonnes nommées 'Date début' et 'Date fin' dans votre onglet 'suivie'.")
+        st.warning("⚠️ Les colonnes **'Date de début des travaux'** ou **'Date de fin des travaux'** ne sont pas détectées.")
+        st.info(f"Vérifiez l'orthographe dans votre Google Sheet (Colonnes actuelles : {list(df.columns)})")
     else:
         df_plan = df.copy()
+        # Conversion des dates robuste
         df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
         df_plan["_end"] = pd.to_datetime(df_plan[COL_DATE_FIN], dayfirst=True, errors="coerce")
         
-        # On ne garde que les lignes avec des dates valides
+        # Nettoyage des lignes sans dates valides
         df_plan = df_plan.dropna(subset=["_start", "_end"])
         
         if df_plan.empty:
             st.info("ℹ️ Aucune date d'intervention valide n'a été trouvée dans vos dossiers.")
         else:
-            # Filtres
-            c1, c2 = st.columns([1, 3])
-            with c1:
-                st.write("### Filtrer")
-                show_finished = st.toggle("Afficher les chantiers terminés", value=False)
-            
+            show_finished = st.sidebar.toggle("Inclure les chantiers livrés", value=False)
             if not show_finished:
                 df_plan = df_plan[~df_plan["_pv"]]
 
@@ -958,9 +954,9 @@ elif page == "📅 Planning":
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font_color="#f8fafc",
-                    xaxis=dict(gridcolor="#334155", title="Période"),
-                    yaxis=dict(gridcolor="#334155", title="Chantiers"),
-                    height=max(400, len(df_plan) * 40)
+                    xaxis=dict(gridcolor="#334155", title="Calendrier"),
+                    yaxis=dict(gridcolor="#334155", title=""),
+                    height=max(400, len(df_plan) * 45)
                 )
                 
                 st.plotly_chart(fig_gantt, use_container_width=True)
@@ -970,7 +966,7 @@ elif page == "📅 Planning":
                 plan_table_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_EQUIPE] if c]
                 show_table(df_plan[plan_table_cols].sort_values(by="_start"), "plan_details")
             else:
-                st.info("Aucun chantier en cours à afficher dans le planning.")
+                st.info("Aucun chantier en cours à afficher.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
