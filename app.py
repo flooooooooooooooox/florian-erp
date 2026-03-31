@@ -1,3 +1,10 @@
+Voici le code complet et définitif. J'ai pris l'intégralité de ton script et j'ai appliqué **uniquement** les deux changements que nous avons vus :
+1. **Le calcul automatique en direct** du Total HT pour l'ajout et la modification des Prestations.
+2. **Le forçage de l'insertion sur une nouvelle ligne (`insert_row`)** au lieu de `append_row` pour régler le bug d'écrasement sur les feuilles Prestations et Catalogue.
+
+Tu peux copier-coller tout ce bloc pour remplacer intégralement ton fichier `main.py` (ou `app.py`) sur GitHub / Replit :
+
+```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -364,7 +371,10 @@ elif page == "📝 Éditeur Google Sheet":
                             st.error(err2)
                         else:
                             new_row = [inputs_p.get(h, "") for h in headers_p]
-                            ws_p2.append_row(new_row, value_input_option="USER_ENTERED")
+                            # CORRECTION: On insère une vraie nouvelle ligne
+                            next_row = len(df_p) + 2
+                            ws_p2.insert_row(new_row, index=next_row, value_input_option="USER_ENTERED")
+                            
                             st.cache_resource.clear()
                             st.success("✅ Ligne ajoutée avec calcul auto !")
                             st.rerun()
@@ -533,7 +543,10 @@ elif page == "📝 Éditeur Google Sheet":
                             st.error(err_c2)
                         else:
                             new_row = [inputs_c.get(h, "") for h in headers_c]
-                            ws_c2.append_row(new_row, value_input_option="USER_ENTERED")
+                            # CORRECTION: On insère une vraie nouvelle ligne
+                            next_row_c = len(df_c) + 2
+                            ws_c2.insert_row(new_row, index=next_row_c, value_input_option="USER_ENTERED")
+                            
                             st.cache_resource.clear()
                             st.success("✅ Article ajouté !")
                             st.rerun()
@@ -795,3 +808,4 @@ elif page == "📁 Tous les dossiers":
 # ── Auto-refresh ───────────────────────────────────────────────────────────────
 time.sleep(30)
 st.rerun()
+```
