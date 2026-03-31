@@ -35,7 +35,6 @@ st.markdown("""
     --border: #334155;       /* Slate 700 - Bordures discrètes */
 }
 
-/* Base de l'application */
 html, body, [data-testid="stAppViewContainer"] {
     background-color: var(--bg-app) !important;
     font-family: 'Inter', sans-serif;
@@ -47,13 +46,11 @@ html, body, [data-testid="stAppViewContainer"] {
     border-right: 1px solid var(--border);
 }
 
-/* Titres plus élégants */
 h1, h2, h3 { 
     font-weight: 700 !important; 
     letter-spacing: -0.025em;
 }
 
-/* Cartes Métriques (KPIs) - Look Dashboard Pro */
 [data-testid="stMetric"] {
     background-color: var(--bg-surface);
     border: 1px solid var(--border);
@@ -77,10 +74,7 @@ h1, h2, h3 {
     font-weight: 700 !important;
 }
 
-/* Onglets (Tabs) plus lisibles */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 24px;
-}
+.stTabs [data-baseweb="tab-list"] { gap: 24px; }
 .stTabs [data-baseweb="tab"] {
     height: 50px;
     white-space: pre-wrap;
@@ -95,7 +89,6 @@ h1, h2, h3 {
     border-bottom-color: var(--primary) !important;
 }
 
-/* Boutons d'action */
 .stButton > button {
     border-radius: 8px !important;
     font-weight: 600 !important;
@@ -109,9 +102,8 @@ h1, h2, h3 {
     color: var(--primary) !important;
 }
 
-/* Inputs form */
 .stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #0f172a80 !important; /* Lége transparence */
+    background-color: #0f172a80 !important; 
     border-radius: 6px !important;
     border: 1px solid var(--border) !important;
 }
@@ -120,7 +112,6 @@ h1, h2, h3 {
     box-shadow: 0 0 0 1px var(--primary) !important;
 }
 
-/* Dot de synchronisation */
 .refresh-dot {
     display: inline-block; width: 8px; height: 8px;
     border-radius: 50%; background: var(--success);
@@ -129,11 +120,9 @@ h1, h2, h3 {
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* ======= SUPER MENU DE NAVIGATION LATÉRAL ======= */
-/* Cache le cercle des boutons radio */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label > div:first-child {
     display: none !important;
 }
-/* Style des boutons du menu */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {
     padding: 12px 16px;
     background-color: transparent;
@@ -144,12 +133,10 @@ h1, h2, h3 {
     transition: all 0.2s ease;
     width: 100%;
 }
-/* Survol des boutons */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {
     background-color: var(--bg-surface);
     border-color: var(--border);
 }
-/* Bouton actif / Sélectionné */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] {
     background-color: var(--primary) !important;
     border-color: var(--primary) !important;
@@ -158,12 +145,10 @@ h1, h2, h3 {
     color: #ffffff !important;
     font-weight: 700 !important;
 }
-/* Alignement du texte */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p {
     margin: 0;
     font-size: 1rem;
 }
-/* Espacement du conteneur radio */
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] {
     gap: 4px;
 }
@@ -180,13 +165,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-def get_gc(username: str):
-    _, gsa_json = get_user_credentials(username)
-    if not gsa_json:
-        return None, "GOOGLE_SERVICE_ACCOUNT non configuré."
-    creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-    return gspread.authorize(creds), None
-
 def get_worksheet(username: str, tab_name: str):
     sheet_name, gsa_json = get_user_credentials(username)
     if not sheet_name or not gsa_json:
@@ -200,16 +178,18 @@ def get_worksheet(username: str, tab_name: str):
     except Exception as e:
         return None, str(e)
 
-# ── Cache données suivie ───────────────────────────────────────────────────────
-@st.cache_resource(ttl=30)
+# ── Cache données avec robustesse anti-erreurs (st.cache_data) ────────────────
+@st.cache_data(ttl=30, show_spinner=False)
 def get_sheet_data(username: str):
     try:
         sheet_name, gsa_json = get_user_credentials(username)
         if not sheet_name or not gsa_json:
             return pd.DataFrame(), "Credentials non configurés."
+        
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
         gc    = gspread.authorize(creds)
         sh    = gc.open(sheet_name)
+        
         try:
             ws = sh.worksheet("suivie")
         except Exception:
@@ -224,8 +204,7 @@ def get_sheet_data(username: str):
         clean_headers = []
         for i, h in enumerate(raw_headers):
             h = h.strip()
-            if h == "":
-                h = f"_col_{i}"
+            if h == "": h = f"_col_{i}"
             if h in seen:
                 seen[h] += 1
                 h = f"{h}_{seen[h]}"
@@ -240,32 +219,27 @@ def get_sheet_data(username: str):
         df    = df.loc[:, ~df.columns.str.startswith("_col_")]
         df    = df.replace("", pd.NA).dropna(how="all").fillna("")
         return df, None
+        
     except Exception as e:
         return pd.DataFrame(), str(e)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def clean_amount(val):
-    if pd.isna(val) or str(val).strip() == "":
-        return 0.0
+    if pd.isna(val) or str(val).strip() == "": return 0.0
     s = str(val).replace("\xa0","").replace("\u202f","").replace(" ","").replace(",",".").replace("€","").strip()
-    try:
-        return float(s)
-    except:
-        return 0.0
+    try: return float(s)
+    except: return 0.0
 
 def is_checked(val):
-    if pd.isna(val):
-        return False
+    if pd.isna(val): return False
     s = str(val).strip()
-    if s in {"✅","✓","✔","TRUE","true","oui","Oui","OUI","1","x","X","yes","Yes"}:
-        return True
+    if s in {"✅","✓","✔","TRUE","true","oui","Oui","OUI","1","x","X","yes","Yes"}: return True
     return "✅" in s
 
 def fcol(df, *keywords):
     for kw in keywords:
         for c in df.columns:
-            if kw.lower() in str(c).strip().lower():
-                return c
+            if kw.lower() in str(c).strip().lower(): return c
     return None
 
 def fmt(v):
@@ -295,30 +269,22 @@ def show_table(dataframe, key_suffix=""):
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=130)
-    else:
-        st.markdown("<div style='text-align:center;font-size:2.5rem;padding:10px 0;color:#3b82f6;'>⚡</div>", unsafe_allow_html=True)
+    if os.path.exists("logo.png"): st.image("logo.png", width=130)
+    else: st.markdown("<div style='text-align:center;font-size:2.5rem;padding:10px 0;color:#3b82f6;'>⚡</div>", unsafe_allow_html=True)
 
     user = st.session_state.get("username", "")
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    pages = [
-        "📊 Vue Générale", "📋 Devis",
-        "💶 Factures & Paiements", "🏗️ Chantiers",
-        "📁 Tous les dossiers", "📝 Éditeur Google Sheet",
-    ]
-    if role == "admin":
-        pages.append("👥 Utilisateurs")
+    pages = ["📊 Vue Générale", "📋 Devis", "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers", "📝 Éditeur Google Sheet"]
+    if role == "admin": pages.append("👥 Utilisateurs")
 
     page = st.radio("Navigation", pages, label_visibility="collapsed")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown('<span class="refresh-dot"></span><span style="font-size:0.8rem;color:#94a3b8;">Synchronisation auto (30s)</span>', unsafe_allow_html=True)
     if st.button("🔄 Forcer l'actualisation", use_container_width=True):
-        st.cache_resource.clear()
+        st.cache_data.clear() # On nettoie tout le cache
         st.rerun()
         
     st.divider()
@@ -328,9 +294,6 @@ with st.sidebar:
         logout()
         st.rerun()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : ADMIN USERS
-# ══════════════════════════════════════════════════════════════════════════════
 if page == "👥 Utilisateurs":
     admin_panel()
     st.stop()
@@ -365,13 +328,13 @@ elif page == "📝 Éditeur Google Sheet":
                     out.append(h)
             return out
 
-        @st.cache_resource(ttl=10)
+        @st.cache_data(ttl=10, show_spinner=False)
         def load_presta(u):
             ws, err = get_worksheet(u, "Feuille 1")
-            if err: return None, err, pd.DataFrame()
+            if err: return err, pd.DataFrame()
             try:
                 all_vals = ws.get_all_values()
-                if not all_vals: return ws, None, pd.DataFrame()
+                if not all_vals: return None, pd.DataFrame()
                 headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
                 n       = len(headers)
@@ -379,14 +342,16 @@ elif page == "📝 Éditeur Google Sheet":
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
                 useful = [c for c in df.columns if not c.startswith("_col")]
-                return ws, None, df[useful]
+                return None, df[useful]
             except Exception as e:
-                return None, str(e), pd.DataFrame()
+                return str(e), pd.DataFrame()
 
-        ws_p, err_p, df_p = load_presta(user)
+        err_p, df_p = load_presta(user)
 
         if err_p:
-            st.error(f"❌ {err_p}")
+            load_presta.clear(user) # On force l'oubli de l'erreur
+            st.error(f"❌ Impossible de charger les prestations. Un problème réseau est survenu ({err_p}).")
+            if st.button("🔄 Retenter la connexion"): st.rerun()
         else:
             sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["👁️ Voir les données", "➕ Ajouter une ligne", "✏️ Modifier", "🗑️ Supprimer"])
 
@@ -448,7 +413,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 new_row = [inputs_p.get(h, "") for h in headers_p]
                                 next_row = len(df_p) + 2
                                 ws_p2.insert_row(new_row, index=next_row, value_input_option="USER_ENTERED")
-                                st.cache_resource.clear()
+                                st.cache_data.clear()
                                 st.success("✅ Ligne ajoutée avec succès !")
                                 st.rerun()
                         except Exception as e:
@@ -518,7 +483,7 @@ elif page == "📝 Éditeur Google Sheet":
                                     sheet_row = sel_idx + 2 
                                     for col_idx, h in enumerate(headers_p2, start=1):
                                         ws_p3.update_cell(sheet_row, col_idx, mod_inputs[h])
-                                    st.cache_resource.clear()
+                                    st.cache_data.clear()
                                     st.success("✅ Ligne modifiée avec succès !")
                                     st.rerun()
                             except Exception as e:
@@ -541,7 +506,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 if err4: st.error(err4)
                                 else:
                                     ws_p4.delete_rows(del_idx + 2)
-                                    st.cache_resource.clear()
+                                    st.cache_data.clear()
                                     st.success("✅ Ligne supprimée !")
                                     st.rerun()
                             except Exception as e:
@@ -552,27 +517,29 @@ elif page == "📝 Éditeur Google Sheet":
         CATA_COLS = ["Catégorie", "Article", "Description", "Prix Achat HT", "% Marge", "Prix Vente HT"]
         CATEGORIES_CATA = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
 
-        @st.cache_resource(ttl=10)
+        @st.cache_data(ttl=10, show_spinner=False)
         def load_catalogue(u):
             ws, err = get_worksheet(u, "catalogue")
-            if err: return None, err, pd.DataFrame()
+            if err: return err, pd.DataFrame()
             try:
                 all_vals = ws.get_all_values()
-                if not all_vals: return ws, None, pd.DataFrame()
+                if not all_vals: return None, pd.DataFrame()
                 headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
                 n       = len(headers)
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
-                return ws, None, df
+                return None, df
             except Exception as e:
-                return None, str(e), pd.DataFrame()
+                return str(e), pd.DataFrame()
 
-        ws_c, err_c, df_c = load_catalogue(user)
+        err_c, df_c = load_catalogue(user)
 
         if err_c:
-            st.error(f"❌ {err_c}")
+            load_catalogue.clear(user)
+            st.error(f"❌ Erreur réseau pour le catalogue : {err_c}")
+            if st.button("🔄 Retenter", key="btn_retry_cata"): st.rerun()
         else:
             sub_c_view, sub_c_add, sub_c_edit, sub_c_del = st.tabs(["👁️ Voir les articles", "➕ Ajouter un article", "✏️ Modifier", "🗑️ Supprimer"])
 
@@ -629,7 +596,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 new_row = [inputs_c.get(h, "") for h in headers_c]
                                 next_row_c = len(df_c) + 2
                                 ws_c2.insert_row(new_row, index=next_row_c, value_input_option="USER_ENTERED")
-                                st.cache_resource.clear()
+                                st.cache_data.clear()
                                 st.success("✅ Article ajouté avec succès !")
                                 st.rerun()
                         except Exception as e:
@@ -690,7 +657,7 @@ elif page == "📝 Éditeur Google Sheet":
                                     sheet_row_c = sel_idx_c + 2
                                     for col_idx, h in enumerate(headers_c2, start=1):
                                         ws_c3.update_cell(sheet_row_c, col_idx, mod_inputs_c[h])
-                                    st.cache_resource.clear()
+                                    st.cache_data.clear()
                                     st.success("✅ Article modifié avec succès !")
                                     st.rerun()
                             except Exception as e:
@@ -713,7 +680,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 if err_c4: st.error(err_c4)
                                 else:
                                     ws_c4.delete_rows(del_idx_c + 2)
-                                    st.cache_resource.clear()
+                                    st.cache_data.clear()
                                     st.success("✅ Article supprimé !")
                                     st.rerun()
                             except Exception as e:
@@ -725,7 +692,9 @@ elif page == "📝 Éditeur Google Sheet":
 df_raw, error = get_sheet_data(user)
 
 if error:
-    st.error(f"❌ Impossible de charger le Google Sheet : {error}")
+    get_sheet_data.clear(user) # Oublie l'erreur pour la prochaine fois
+    st.error(f"❌ Impossible de se connecter à Google Sheets.")
+    st.info(f"Détail technique : {error}. Cliquez sur 'Forcer l'actualisation' dans le menu pour réessayer.")
     st.stop()
 if df_raw.empty:
     st.warning("📭 Le Google Sheet est vide ou inaccessible.")
@@ -955,7 +924,6 @@ elif page == "🏗️ Chantiers":
                 nom_chantier_col = COL_CHANTIER if COL_CHANTIER else COL_CLIENT
                 color_col = COL_EQUIPE if COL_EQUIPE else COL_CLIENT
                 
-                # S'assure que la colonne équipe est traitée comme du texte pour avoir des couleurs distinctes
                 if COL_EQUIPE:
                     d_plan[COL_EQUIPE] = d_plan[COL_EQUIPE].fillna("Non assigné").astype(str)
 
