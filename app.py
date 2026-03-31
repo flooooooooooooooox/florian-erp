@@ -111,7 +111,7 @@ h1, h2, h3 {
 
 /* Inputs form */
 .stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #0f172a80 !important; /* Lége transparence */
+    background-color: #0f172a80 !important; /* Léger transparence */
     border-radius: 6px !important;
     border: 1px solid var(--border) !important;
 }
@@ -313,8 +313,6 @@ with st.sidebar:
     if role == "admin":
         pages.append("👥 Utilisateurs")
 
-    # On utilise st.radio qui affiche tous les choix d'un coup, 
-    # mais le CSS plus haut le transforme en boutons modernes !
     page = st.radio("Navigation", pages, label_visibility="collapsed")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -344,7 +342,7 @@ elif page == "📝 Éditeur Google Sheet":
     st.title("📝 Éditeur Google Sheet")
     st.markdown("Gérez votre base de données en temps réel directement depuis cette interface.")
 
-    tab_presta, tab_catalogue = st.tabs(["📋 Base de données Prestations", "🗂️ Base de données Catalogue"])
+    tab_presta, tab_catalogue = st.tabs(["📋 Feuille Prestations", "🗂️ Catalogue"])
 
     # ── ONGLET PRESTATIONS ─────────────────────────────────────────────────────
     with tab_presta:
@@ -390,7 +388,6 @@ elif page == "📝 Éditeur Google Sheet":
         if err_p:
             st.error(f"❌ {err_p}")
         else:
-            # Création de sous-onglets pour une UX fluide
             sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["👁️ Voir les données", "➕ Ajouter une ligne", "✏️ Modifier", "🗑️ Supprimer"])
 
             # -- VUE --
@@ -793,10 +790,11 @@ if page == "📊 Vue Générale":
     # Ligne 1 : Performance Commerciale
     st.markdown("### 🎯 Performance Commerciale")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 CA Sécurisé (Signé)", fmt(ca_signe), f"{nb_signes} dossiers")
-    c2.metric("⏳ CA en cours de négo", fmt(ca_non_s), f"{nb_attente} dossiers")
-    c3.metric("📈 Taux de conversion", f"{taux_conv} %", "Devis signés / totaux")
-    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement), "Sur chantiers signés")
+    # Intégration du nombre de dossiers dans le titre pour éviter la flèche verte
+    c1.metric(f"💰 CA Sécurisé ({nb_signes} validés)", fmt(ca_signe))
+    c2.metric(f"⏳ CA en négo ({nb_attente} en cours)", fmt(ca_non_s))
+    c3.metric("📈 Taux de conversion", f"{taux_conv} %")
+    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -883,7 +881,6 @@ elif page == "💶 Factures & Paiements":
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # On ajoute la colonne _reste_a_payer explicitement pour mieux suivre les finances
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1,
                          COL_ACOMPTE2, "_reste_a_payer", COL_FACT_FIN, COL_PV, COL_RESERVE,
                          COL_MODALITE, COL_TVA, COL_STATUT] if c]
