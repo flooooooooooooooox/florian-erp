@@ -476,11 +476,13 @@ elif page == "📝 Éditeur Google Sheet":
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-    # ── ONGLET CATALOGUE ───────────────────────────────────────────────────────
+# ── ONGLET CATALOGUE ───────────────────────────────────────────────────────
     with tab_catalogue:
         st.markdown("### Catalogue — Articles")
 
         CATA_COLS = ["Catégorie", "Article", "Description", "Prix Achat HT", "% Marge", "Prix Vente HT"]
+        # On reprend la même liste de catégories que pour les prestations
+        CATEGORIES_CATA = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
 
         @st.cache_resource(ttl=10)
         def load_catalogue(u):
@@ -520,28 +522,57 @@ elif page == "📝 Éditeur Google Sheet":
 
             # ── Ajouter un article ─────────────────────────────────────────────
             with st.expander("➕ Ajouter un article"):
+                st.markdown("**Calcul automatique du Prix de Vente HT**")
+                
+                # Champs numériques extraits pour le calcul en direct
+                c_achat, c_marge_c = st.columns(2)
+                with c_achat:
+                    val_achat = st.number_input("Prix Achat HT", min_value=0.0, value=0.0, step=10.0, key="add_c_achat")
+                with c_marge_c:
+                    val_marge_c = st.number_input("% Marge", min_value=0.0, value=30.0, step=5.0, key="add_c_marge")
+                
+                # Calcul mathématique
+                calcul_vente = val_achat * (1 + (val_marge_c / 100))
+                st.info(f"💡 **Prix Vente HT Calculé : {calcul_vente:.2f} €**")
+
                 with st.form("form_add_cata"):
                     headers_c  = list(df_c.columns) if len(df_c) > 0 else CATA_COLS
                     inputs_c   = {}
                     cols3      = st.columns(3)
+                    
                     for i, h in enumerate(headers_c):
+                        hl = h.lower()
+                        # On ignore visuellement les champs calculés
+                        if hl in ["prix achat ht", "% marge", "marge", "prix vente ht"]:
+                            continue
+                            
                         with cols3[i % 3]:
-                            inputs_c[h] = st.text_input(h, key=f"add_c_{h}")
+                            if "catégorie" in hl or "categorie" in hl:
+                                inputs_c[h] = st.selectbox(h, CATEGORIES_CATA, key=f"add_c_{h}")
+                            else:
+                                inputs_c[h] = st.text_input(h, key=f"add_c_{h}")
+                                
                     submit_add_c = st.form_submit_button("✅ Ajouter", use_container_width=True)
 
                 if submit_add_c:
+                    # Injection des valeurs calculées
+                    for h in headers_c:
+                        hl = h.lower()
+                        if "achat ht" in hl: inputs_c[h] = str(val_achat)
+                        elif "marge" in hl: inputs_c[h] = str(val_marge_c)
+                        elif "vente ht" in hl: inputs_c[h] = str(round(calcul_vente, 2))
+
                     try:
                         ws_c2, err_c2 = get_worksheet(user, "catalogue")
                         if err_c2:
                             st.error(err_c2)
                         else:
                             new_row = [inputs_c.get(h, "") for h in headers_c]
-                            # CORRECTION: On insère une vraie nouvelle ligne
                             next_row_c = len(df_c) + 2
                             ws_c2.insert_row(new_row, index=next_row_c, value_input_option="USER_ENTERED")
                             
                             st.cache_resource.clear()
-                            st.success("✅ Article ajouté !")
+                            st.success("✅ Article ajouté avec calcul auto !")
                             st.rerun()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
@@ -555,15 +586,52 @@ elif page == "📝 Éditeur Google Sheet":
                     art_labels  = [f"Ligne {i+2} — {df_c.iloc[i, 0]} / {df_c.iloc[i, 1] if len(headers_c2)>1 else ''}" for i in range(len(df_c))]
                     sel_idx_c   = st.selectbox("Sélectionner l'article à modifier", range(len(df_c)), format_func=lambda i: art_labels[i], key="sel_mod_cata")
 
+                    # Récupération sécurisée des anciennes valeurs
+                    cur_achat = 0.0; cur_marge_c = 30.0
+                    for h in headers_c2:
+                        hl = h.lower()
+                        val = df_c.iloc[sel_idx_c][h]
+                        if "achat ht" in hl: cur_achat = clean_amount(val)
+                        elif "marge" in hl: cur_marge_c = clean_amount(val)
+
+                    st.markdown("**Calcul automatique du Prix de Vente HT**")
+                    
+                    c_achat_m, c_marge_m = st.columns(2)
+                    with c_achat_m:
+                        mod_achat = st.number_input("Prix Achat HT", min_value=0.0, value=float(cur_achat), step=10.0, key="mod_c_achat")
+                    with c_marge_m:
+                        mod_marge_c = st.number_input("% Marge", min_value=0.0, value=float(cur_marge_c), step=5.0, key="mod_c_marge")
+
+                    mod_calcul_vente = mod_achat * (1 + (mod_marge_c / 100))
+                    st.info(f"💡 **Prix Vente HT Calculé : {mod_calcul_vente:.2f} €**")
+
                     with st.form("form_mod_cata"):
                         mod_inputs_c = {}
                         cols4        = st.columns(3)
                         for i, h in enumerate(headers_c2):
+                            hl = h.lower()
+                            # On ignore les champs gérés en haut
+                            if hl in ["prix achat ht", "% marge", "marge", "prix vente ht"]:
+                                continue
+                                
                             with cols4[i % 3]:
-                                mod_inputs_c[h] = st.text_input(h, value=str(df_c.iloc[sel_idx_c][h]), key=f"mod_c_{h}")
+                                cur_val = str(df_c.iloc[sel_idx_c][h])
+                                if "catégorie" in hl or "categorie" in hl:
+                                    idx_cat = CATEGORIES_CATA.index(cur_val) if cur_val in CATEGORIES_CATA else 0
+                                    mod_inputs_c[h] = st.selectbox(h, CATEGORIES_CATA, index=idx_cat, key=f"mod_c_{h}")
+                                else:
+                                    mod_inputs_c[h] = st.text_input(h, value=cur_val, key=f"mod_c_{h}")
+                                    
                         submit_mod_c = st.form_submit_button("💾 Enregistrer", use_container_width=True)
 
                     if submit_mod_c:
+                        # Injection des valeurs calculées
+                        for h in headers_c2:
+                            hl = h.lower()
+                            if "achat ht" in hl: mod_inputs_c[h] = str(mod_achat)
+                            elif "marge" in hl: mod_inputs_c[h] = str(mod_marge_c)
+                            elif "vente ht" in hl: mod_inputs_c[h] = str(round(mod_calcul_vente, 2))
+
                         try:
                             ws_c3, err_c3 = get_worksheet(user, "catalogue")
                             if err_c3:
@@ -573,7 +641,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 for col_idx, h in enumerate(headers_c2, start=1):
                                     ws_c3.update_cell(sheet_row_c, col_idx, mod_inputs_c[h])
                                 st.cache_resource.clear()
-                                st.success("✅ Article modifié !")
+                                st.success("✅ Article modifié avec calcul auto !")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
