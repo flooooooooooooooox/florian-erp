@@ -260,7 +260,7 @@ elif page == "📝 Éditeur Google Sheet":
 
         # Colonnes attendues
         PRESTA_COLS = [
-            "Colonne 1", "Type de poste", "Sous-prestation", "Description",
+            "categorie", "Type de poste", "Sous-prestation", "Description",
             "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"
         ]
 
@@ -291,6 +291,9 @@ elif page == "📝 Éditeur Google Sheet":
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
+                # Garder seulement les colonnes utiles (pas les _col_*)
+                useful = [c for c in df.columns if not c.startswith("_col")]
+                df = df[useful]
                 return ws, None, df
             except Exception as e:
                 return None, str(e), pd.DataFrame()
