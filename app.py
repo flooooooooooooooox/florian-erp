@@ -30,6 +30,7 @@ st.markdown("""
     --text-muted: #94a3b8;   /* Slate 400 - Texte secondaire */
     --primary: #3b82f6;      /* Blue 500 - Couleur principale d'accentuation */
     --success: #10b981;      /* Emerald 500 - Succès/Validation */
+    --warning: #f59e0b;      /* Amber 500 - Alertes */
     --danger: #ef4444;       /* Red 500 - Suppression */
     --border: #334155;       /* Slate 700 - Bordures discrètes */
 }
@@ -761,10 +762,16 @@ COL_ACOMPTE1 = fcol(df, "acompte 1")
 COL_ACOMPTE2 = fcol(df, "acompte 2")
 COL_RESERVE  = fcol(df, "réserve", "reserve")
 
-df["_montant"]  = df[COL_MONTANT].apply(clean_amount)  if COL_MONTANT  else 0.0
-df["_signe"]    = df[COL_SIGN].apply(is_checked)        if COL_SIGN     else False
-df["_fact_fin"] = df[COL_FACT_FIN].apply(is_checked)   if COL_FACT_FIN else False
-df["_pv"]       = df[COL_PV].apply(is_checked)          if COL_PV       else False
+# Nouvelles colonnes et calculs pour les métriques
+df["_montant"]  = df[COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
+df["_acompte1"] = df[COL_ACOMPTE1].apply(clean_amount) if COL_ACOMPTE1 else 0.0
+df["_acompte2"] = df[COL_ACOMPTE2].apply(clean_amount) if COL_ACOMPTE2 else 0.0
+df["_reste_a_payer"] = df["_montant"] - df["_acompte1"] - df["_acompte2"]
+df["_reste_a_payer"] = df["_reste_a_payer"].apply(lambda x: max(0, x)) # Empêche d'avoir du négatif
+
+df["_signe"]    = df[COL_SIGN].apply(is_checked) if COL_SIGN else False
+df["_fact_fin"] = df[COL_FACT_FIN].apply(is_checked) if COL_FACT_FIN else False
+df["_pv"]       = df[COL_PV].apply(is_checked) if COL_PV else False
 
 total_ca   = df["_montant"].sum()
 nb_devis   = len(df)
@@ -773,23 +780,27 @@ nb_attente = nb_devis - nb_signes
 nb_fact_ok = int(df["_fact_fin"].sum())
 ca_signe   = df[df["_signe"]]["_montant"].sum()
 ca_non_s   = df[~df["_signe"]]["_montant"].sum()
+taux_conv  = int((nb_signes / nb_devis) * 100) if nb_devis > 0 else 0
+reste_encaissement = df[(df["_signe"]) & (~df["_fact_fin"])]["_reste_a_payer"].sum()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "📊 Vue Générale":
-    st.title("📊 Vue Générale")
-    st.caption(f"Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    st.title("📊 Tableau de Bord")
+    st.caption(f"Dernière synchronisation : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
+    # Ligne 1 : Performance Commerciale
+    st.markdown("### 🎯 Performance Commerciale")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 CA Total TTC", fmt(total_ca))
-    c2.metric("📋 Devis créés", nb_devis, f"{nb_signes} signés")
-    c3.metric("⏳ En attente signature", nb_attente)
-    c4.metric("🏁 Factures finales", nb_fact_ok)
+    c1.metric("💰 CA Sécurisé (Signé)", fmt(ca_signe), f"{nb_signes} dossiers")
+    c2.metric("⏳ CA en cours de négo", fmt(ca_non_s), f"{nb_attente} dossiers")
+    c3.metric("📈 Taux de conversion", f"{taux_conv} %", "Devis signés / totaux")
+    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement), "Sur chantiers signés")
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    cl, cr = st.columns([3, 2])
+    cl, cr = st.columns([2, 1])
     with cl:
         with st.container(border=True):
             if COL_DATE:
@@ -798,41 +809,44 @@ if page == "📊 Vue Générale":
                 d2 = d2.dropna(subset=["_date"])
                 if not d2.empty:
                     d2["_mois"] = d2["_date"].dt.to_period("M").astype(str)
-                    cm = d2.groupby("_mois")["_montant"].sum().reset_index()
-                    cm.columns = ["Mois", "CA (€)"]
-                    fig = px.bar(cm, x="Mois", y="CA (€)", title="📈 Évolution du CA par mois",
-                                 color_discrete_sequence=["#3b82f6"])
+                    d2["Statut"] = d2["_signe"].map({True: "Signé", False: "En attente"})
+                    cm = d2.groupby(["_mois", "Statut"])["_montant"].sum().reset_index()
+                    fig = px.bar(cm, x="_mois", y="_montant", color="Statut", title="📈 Évolution du CA par mois",
+                                 color_discrete_map={"Signé": "#10b981", "En attente": "#334155"})
                     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                                       font_color="#f8fafc", title_font_family="Inter",
+                                      xaxis_title="", yaxis_title="CA (€)",
                                       xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#334155"))
                     st.plotly_chart(fig, use_container_width=True)
+    
     with cr:
+        # Zone d'alerte proactive
         with st.container(border=True):
-            pct  = int(nb_signes / nb_devis * 100) if nb_devis else 0
-            fig2 = go.Figure(go.Pie(
-                labels=["Signés", "En attente"],
-                values=[max(nb_signes, 0), max(nb_attente, 0)],
-                hole=0.65, marker_colors=["#10b981", "#334155"], textinfo="none",
-            ))
-            fig2.update_layout(
-                title="📋 Taux de conversion devis", paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#f8fafc", title_font_family="Inter", showlegend=True,
-                legend=dict(font=dict(color="#94a3b8"), orientation="h", y=-0.1),
-                annotations=[dict(text=f"<b>{pct}%</b>", x=0.5, y=0.5,
-                                   font_size=32, showarrow=False, font_color="#f8fafc")],
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-    st.markdown("### 🕐 Derniers dossiers enregistrés")
-    with st.container(border=True):
-        cols_show = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_STATUT] if c]
-        show_table(df[cols_show].tail(10).iloc[::-1] if cols_show else df.tail(10), "home")
+            st.markdown("<h4 style='color: var(--warning);'>🚨 Actions Requises</h4>", unsafe_allow_html=True)
+            df_alertes = df[~df["_signe"]].head(5)
+            if len(df_alertes) > 0:
+                st.write(f"**{nb_attente} devis** attendent une relance :")
+                for _, row in df_alertes.iterrows():
+                    client = row[COL_CLIENT] if COL_CLIENT else "Inconnu"
+                    st.markdown(f"- 📄 **{client}** ({fmt(row['_montant'])})")
+                if nb_attente > 5:
+                    st.caption(f"+ {nb_attente - 5} autres devis...")
+            else:
+                st.success("✅ Aucun devis en attente !")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📋 Devis":
     st.title("📋 Gestion des Devis")
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Devis Émis", nb_devis)
+    c2.metric("Taux de Transformation", f"{taux_conv} %")
+    c3.metric("Volume CA Global", fmt(total_ca))
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE,
                          COL_RELANCE1, COL_RELANCE2, COL_RELANCE3, COL_STATUT] if c]
     
@@ -865,12 +879,13 @@ elif page == "💶 Factures & Paiements":
     c1, c2, c3 = st.columns(3)
     c1.metric("✅ Factures finales émises", nb_fact_ok)
     c2.metric("⚠️ Dossiers sans facture finale", len(df_imp))
-    c3.metric("💸 CA restant à facturer", fmt(df_imp["_montant"].sum()))
+    c3.metric("💸 CA restant à facturer", fmt(reste_encaissement))
     
     st.markdown("<br>", unsafe_allow_html=True)
     
+    # On ajoute la colonne _reste_a_payer explicitement pour mieux suivre les finances
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1,
-                         COL_ACOMPTE2, COL_FACT_FIN, COL_PV, COL_RESERVE,
+                         COL_ACOMPTE2, "_reste_a_payer", COL_FACT_FIN, COL_PV, COL_RESERVE,
                          COL_MODALITE, COL_TVA, COL_STATUT] if c]
                          
     with st.container(border=True):
@@ -882,7 +897,7 @@ elif page == "💶 Factures & Paiements":
                 if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
             df_f = df_f[mask]
             
-    t1, t2 = st.tabs(["⚠️ Factures à émettre", "✅ Factures payées/réglées"])
+    t1, t2 = st.tabs(["⚠️ Factures à émettre (Reste à encaisser)", "✅ Factures payées/réglées"])
     with t1:
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_attente")
@@ -940,7 +955,7 @@ elif page == "📁 Tous les dossiers":
                 if col: mask |= d[col].astype(str).str.contains(search, case=False, na=False)
             d = d[mask]
         st.caption(f"{len(d)} dossier(s) trouvé(s)")
-        drop_cols = ["_montant", "_signe", "_fact_fin", "_pv", "_statut_ch"]
+        drop_cols = ["_montant", "_signe", "_fact_fin", "_pv", "_acompte1", "_acompte2", "_reste_a_payer", "_statut_ch"]
         show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
 
 # ── Auto-refresh ───────────────────────────────────────────────────────────────
