@@ -1,3 +1,14 @@
+C'est très frustrant de tomber sur ce genre d'erreur quand on vient de faire une modification ! 
+
+Cependant, il faut que tu saches une chose importante : l'erreur **`❌ APIError: [503]: The service is currently unavailable.`** ne vient pas de notre code. 
+
+Le code `503` est un code d'erreur universel d'Internet qui signifie "Service Indisponible". Dans ton cas, cela veut dire que **les serveurs de l'API Google Sheets sont temporairement surchargés ou inaccessibles**. La seule vraie solution pour cette erreur spécifique est d'attendre quelques minutes et de réessayer de rafraîchir ton application.
+
+Pour être sûr à 100% que tu n'as pas de problème d'indentation ou de copier-coller qui pourrait causer d'autres soucis une fois que Google remarchera, **voici l'intégralité de ton code d'un seul bloc**, incluant les modifications pour le catalogue.
+
+Tu peux copier et remplacer tout le contenu de ton fichier par ceci :
+
+```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -476,7 +487,7 @@ elif page == "📝 Éditeur Google Sheet":
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-# ── ONGLET CATALOGUE ───────────────────────────────────────────────────────
+    # ── ONGLET CATALOGUE ───────────────────────────────────────────────────────
     with tab_catalogue:
         st.markdown("### Catalogue — Articles")
 
@@ -869,4 +880,4 @@ elif page == "📁 Tous les dossiers":
 # ── Auto-refresh ───────────────────────────────────────────────────────────────
 time.sleep(30)
 st.rerun()
-
+```
