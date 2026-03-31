@@ -318,13 +318,22 @@ elif page == "📝 Éditeur Google Sheet":
 
             # ── Ajouter une ligne ──────────────────────────────────────────────
             with st.expander("➕ Ajouter une ligne"):
+                CATEGORIES  = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
+                TYPES_POSTE = ["Préparation / Démolition", "Gros œuvre", "Charpente / Couverture", "Isolation", "Plâtrerie / Cloisons", "Menuiserie intérieure", "Menuiserie extérieure", "Plomberie / Sanitaire", "Chauffage / VMC / Climatisation", "Électricité", "Domotique / Alarme", "Carrelage / Revêtement sol", "Peinture / Revêtement mur", "Parquet / Stratifié", "Faïence", "Finition", "Installation", "Mobilier / Agencement", "Serrurerie / Métallerie", "Terrassement / VRD", "Maçonnerie", "Enduit / Ravalement", "Étanchéité / Hydrofuge", "Nettoyage / Évacuation", "Autre"]
+
                 with st.form("form_add_presta"):
                     headers_p = list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS
                     inputs_p  = {}
                     cols1     = st.columns(3)
                     for i, h in enumerate(headers_p):
                         with cols1[i % 3]:
-                            inputs_p[h] = st.text_input(h, key=f"add_p_{h}")
+                            hl = h.lower()
+                            if "categ" in hl or "colonne" in hl:
+                                inputs_p[h] = st.selectbox(h, CATEGORIES, key=f"add_p_{h}")
+                            elif "type" in hl and "poste" in hl:
+                                inputs_p[h] = st.selectbox(h, TYPES_POSTE, key=f"add_p_{h}")
+                            else:
+                                inputs_p[h] = st.text_input(h, key=f"add_p_{h}")
                     submit_add_p = st.form_submit_button("✅ Ajouter", use_container_width=True)
 
                 if submit_add_p:
@@ -354,14 +363,24 @@ elif page == "📝 Éditeur Google Sheet":
                     sel_idx = st.selectbox("Sélectionner la ligne à modifier", range(len(df_p)),
                                            format_func=lambda i: row_labels[i], key="sel_mod_presta")
 
+                    CATEGORIES  = ["Salle de bain", "Cuisine", "Chambre", "Salon", "WC / Toilettes", "Entrée / Couloir", "Garage", "Cave / Sous-sol", "Combles / Grenier", "Buanderie", "Bureau / Bibliothèque", "Terrasse / Balcon", "Jardin / Extérieur", "Façade", "Toiture", "Escalier", "Piscine", "Véranda / Pergola", "Parties communes", "Local technique", "Autre"]
+                    TYPES_POSTE = ["Préparation / Démolition", "Gros œuvre", "Charpente / Couverture", "Isolation", "Plâtrerie / Cloisons", "Menuiserie intérieure", "Menuiserie extérieure", "Plomberie / Sanitaire", "Chauffage / VMC / Climatisation", "Électricité", "Domotique / Alarme", "Carrelage / Revêtement sol", "Peinture / Revêtement mur", "Parquet / Stratifié", "Faïence", "Finition", "Installation", "Mobilier / Agencement", "Serrurerie / Métallerie", "Terrassement / VRD", "Maçonnerie", "Enduit / Ravalement", "Étanchéité / Hydrofuge", "Nettoyage / Évacuation", "Autre"]
+
                     with st.form("form_mod_presta"):
                         mod_inputs = {}
                         cols2      = st.columns(3)
                         for i, h in enumerate(headers_p2):
                             with cols2[i % 3]:
-                                mod_inputs[h] = st.text_input(
-                                    h, value=str(df_p.iloc[sel_idx][h]), key=f"mod_p_{h}"
-                                )
+                                hl = h.lower()
+                                cur_val = str(df_p.iloc[sel_idx][h])
+                                if "categ" in hl or "colonne" in hl:
+                                    idx_cat = CATEGORIES.index(cur_val) if cur_val in CATEGORIES else 0
+                                    mod_inputs[h] = st.selectbox(h, CATEGORIES, index=idx_cat, key=f"mod_p_{h}")
+                                elif "type" in hl and "poste" in hl:
+                                    idx_tp = TYPES_POSTE.index(cur_val) if cur_val in TYPES_POSTE else 0
+                                    mod_inputs[h] = st.selectbox(h, TYPES_POSTE, index=idx_tp, key=f"mod_p_{h}")
+                                else:
+                                    mod_inputs[h] = st.text_input(h, value=cur_val, key=f"mod_p_{h}")
                         submit_mod_p = st.form_submit_button("💾 Enregistrer", use_container_width=True)
 
                     if submit_mod_p:
