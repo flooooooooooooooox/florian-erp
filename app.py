@@ -23,16 +23,16 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-    --bg-app: #0f172a;       /* Slate 900 - Fond principal plus profond */
-    --bg-surface: #1e293b;   /* Slate 800 - Cartes et éléments */
-    --bg-sidebar: #0b1120;   /* Slate 950 - Sidebar très sombre */
-    --text-main: #f8fafc;    /* Slate 50 - Texte principal */
-    --text-muted: #94a3b8;   /* Slate 400 - Texte secondaire */
-    --primary: #3b82f6;      /* Blue 500 - Couleur principale d'accentuation */
-    --success: #10b981;      /* Emerald 500 - Succès/Validation */
-    --warning: #f59e0b;      /* Amber 500 - Alertes */
-    --danger: #ef4444;       /* Red 500 - Suppression */
-    --border: #334155;       /* Slate 700 - Bordures discrètes */
+    --bg-app: #0f172a;        /* Slate 900 - Fond principal plus profond */
+    --bg-surface: #1e293b;    /* Slate 800 - Cartes et éléments */
+    --bg-sidebar: #0b1120;    /* Slate 950 - Sidebar très sombre */
+    --text-main: #f8fafc;     /* Slate 50 - Texte principal */
+    --text-muted: #94a3b8;    /* Slate 400 - Texte secondaire */
+    --primary: #3b82f6;       /* Blue 500 - Couleur principale d'accentuation */
+    --success: #10b981;       /* Emerald 500 - Succès/Validation */
+    --warning: #f59e0b;       /* Amber 500 - Alertes */
+    --danger: #ef4444;        /* Red 500 - Suppression */
+    --border: #334155;        /* Slate 700 - Bordures discrètes */
 }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -276,7 +276,7 @@ with st.sidebar:
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    pages = ["📊 Vue Générale", "📋 Devis", "💶 Factures & Paiements", "🏗️ Chantiers", "📁 Tous les dossiers", "📝 Éditeur Google Sheet"]
+    pages = ["📊 Vue Générale", "📋 Devis", "💶 Factures & Paiements", "🏗️ Chantiers", "📅 Planning", "📁 Tous les dossiers", "📝 Éditeur Google Sheet"]
     if role == "admin": pages.append("👥 Utilisateurs")
 
     page = st.radio("Navigation", pages, label_visibility="collapsed")
@@ -337,7 +337,7 @@ elif page == "📝 Éditeur Google Sheet":
                 if not all_vals: return None, pd.DataFrame()
                 headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
-                n       = len(headers)
+                n        = len(headers)
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
@@ -526,7 +526,7 @@ elif page == "📝 Éditeur Google Sheet":
                 if not all_vals: return None, pd.DataFrame()
                 headers = _dedup(all_vals[0])
                 rows    = all_vals[1:]
-                n       = len(headers)
+                n        = len(headers)
                 padded  = [r + [""]*(n-len(r)) if len(r)<n else r[:n] for r in rows]
                 df      = pd.DataFrame(padded, columns=headers)
                 df      = df.replace("", pd.NA).dropna(how="all").fillna("")
@@ -735,7 +735,7 @@ df["_reste_a_payer"] = df["_reste_a_payer"].apply(lambda x: max(0, x)) # Empêch
 
 df["_signe"]    = df[COL_SIGN].apply(is_checked) if COL_SIGN else False
 df["_fact_fin"] = df[COL_FACT_FIN].apply(is_checked) if COL_FACT_FIN else False
-df["_pv"]       = df[COL_PV].apply(is_checked) if COL_PV else False
+df["_pv"]        = df[COL_PV].apply(is_checked) if COL_PV else False
 
 total_ca   = df["_montant"].sum()
 nb_devis   = len(df)
@@ -870,10 +870,10 @@ elif page == "💶 Factures & Paiements":
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_ok")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CHANTIERS & PLANNING
+# PAGE : CHANTIERS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🏗️ Chantiers":
-    st.title("🏗️ Suivi des Chantiers & Planning")
+    st.title("🏗️ Suivi des Chantiers")
     df["_statut_ch"] = df["_pv"].apply(lambda x: "✅ Terminé" if x else "🟡 En cours")
     
     c1, c2, c3, c4  = st.columns(4)
@@ -895,7 +895,7 @@ elif page == "🏗️ Chantiers":
             
     cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, COL_RESERVE, "_statut_ch"] if c]
     
-    t1, t2, t3  = st.tabs(["🟡 Travaux en cours", "✅ Livrés (PV signé)", "📅 Planning Graphique (Gantt)"])
+    t1, t2  = st.tabs(["🟡 Travaux en cours", "✅ Livrés (PV signé)"])
     
     with t1:
         d = df_ch[~df_ch["_pv"]]
@@ -906,51 +906,71 @@ elif page == "🏗️ Chantiers":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
-        
-    with t3:
-        st.subheader("Planning des interventions")
-        
-        if not COL_DATE_DEBUT or not COL_DATE_FIN:
-            st.info("💡 **Astuce Planning** : Ajoutez des colonnes **'Date début'** et **'Date fin'** dans votre Google Sheet pour afficher le calendrier. Ajoutez aussi une colonne **'Équipe'** ou **'Employé'** pour colorer le graphique par intervenant !")
-        else:
-            d_plan = df_ch[~df_ch["_pv"]].copy()
-            d_plan["_start"] = pd.to_datetime(d_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
-            d_plan["_end"] = pd.to_datetime(d_plan[COL_DATE_FIN], dayfirst=True, errors="coerce")
-            d_plan = d_plan.dropna(subset=["_start", "_end"])
 
-            if d_plan.empty:
-                st.warning("⚠️ Aucune date de début ou de fin valide n'a été trouvée pour les chantiers actuellement en cours.")
-            else:
-                nom_chantier_col = COL_CHANTIER if COL_CHANTIER else COL_CLIENT
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : PLANNING (NOUVELLE PAGE)
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "📅 Planning":
+    st.title("📅 Planning des Chantiers")
+    st.markdown("Vue chronologique des interventions prévues et en cours.")
+
+    if not COL_DATE_DEBUT or not COL_DATE_FIN:
+        st.warning("⚠️ Les colonnes **'Date début'** et **'Date fin'** ne sont pas détectées dans votre fichier.")
+        st.info("Pour activer le planning, assurez-vous d'avoir des colonnes nommées 'Date début' et 'Date fin' dans votre onglet 'suivie'.")
+    else:
+        df_plan = df.copy()
+        df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
+        df_plan["_end"] = pd.to_datetime(df_plan[COL_DATE_FIN], dayfirst=True, errors="coerce")
+        
+        # On ne garde que les lignes avec des dates valides
+        df_plan = df_plan.dropna(subset=["_start", "_end"])
+        
+        if df_plan.empty:
+            st.info("ℹ️ Aucune date d'intervention valide n'a été trouvée dans vos dossiers.")
+        else:
+            # Filtres
+            c1, c2 = st.columns([1, 3])
+            with c1:
+                st.write("### Filtrer")
+                show_finished = st.toggle("Afficher les chantiers terminés", value=False)
+            
+            if not show_finished:
+                df_plan = df_plan[~df_plan["_pv"]]
+
+            if not df_plan.empty:
+                nom_col = COL_CHANTIER if COL_CHANTIER else COL_CLIENT
                 color_col = COL_EQUIPE if COL_EQUIPE else COL_CLIENT
-                
-                if COL_EQUIPE:
-                    d_plan[COL_EQUIPE] = d_plan[COL_EQUIPE].fillna("Non assigné").astype(str)
 
                 fig_gantt = px.timeline(
-                    d_plan, 
+                    df_plan, 
                     x_start="_start", 
                     x_end="_end", 
-                    y=nom_chantier_col,
+                    y=nom_col,
                     color=color_col,
-                    hover_name=nom_chantier_col,
-                    title="Calendrier d'intervention par équipe" if COL_EQUIPE else "Calendrier d'intervention"
-                )
-                fig_gantt.update_yaxes(autorange="reversed")
-                fig_gantt.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="#f8fafc",
-                    showlegend=True if COL_EQUIPE else False,
-                    xaxis=dict(showgrid=True, gridcolor="#334155"), 
-                    yaxis=dict(gridcolor="#334155", title="")
+                    hover_name=nom_col,
+                    text=nom_col,
+                    template="plotly_dark",
+                    title="Calendrier des interventions"
                 )
                 
-                if COL_EQUIPE:
-                    st.success(f"✅ Équipes détectées ! Le planning est coloré selon la colonne : **{COL_EQUIPE}**")
-                else:
-                    st.info("💡 Astuce : Ajoutez une colonne **'Équipe'** ou **'Employé'** dans votre Google Sheet pour voir qui travaille sur quel chantier.")
-                    
+                fig_gantt.update_yaxes(autorange="reversed")
+                fig_gantt.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#f8fafc",
+                    xaxis=dict(gridcolor="#334155", title="Période"),
+                    yaxis=dict(gridcolor="#334155", title="Chantiers"),
+                    height=max(400, len(df_plan) * 40)
+                )
+                
                 st.plotly_chart(fig_gantt, use_container_width=True)
+                
+                # Tableau récapitulatif
+                st.markdown("### 📋 Détails du planning")
+                plan_table_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_EQUIPE] if c]
+                show_table(df_plan[plan_table_cols].sort_values(by="_start"), "plan_details")
+            else:
+                st.info("Aucun chantier en cours à afficher dans le planning.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
@@ -967,7 +987,7 @@ elif page == "📁 Tous les dossiers":
                 if col: mask |= d[col].astype(str).str.contains(search, case=False, na=False)
             d = d[mask]
         st.caption(f"{len(d)} dossier(s) trouvé(s)")
-        drop_cols = ["_montant", "_signe", "_fact_fin", "_pv", "_acompte1", "_acompte2", "_reste_a_payer", "_statut_ch"]
+        drop_cols = ["_montant", "_signe", "_fact_fin", "_pv", "_acompte1", "_acompte2", "_reste_a_payer", "_statut_ch", "_start", "_end"]
         show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
 
 # ── Auto-refresh ───────────────────────────────────────────────────────────────
