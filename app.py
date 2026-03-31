@@ -390,7 +390,6 @@ elif page == "📝 Éditeur Google Sheet":
         else:
             sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["👁️ Voir les données", "➕ Ajouter une ligne", "✏️ Modifier", "🗑️ Supprimer"])
 
-            # -- VUE --
             with sub_p_view:
                 st.caption(f"Base de données actuelle ({len(df_p)} lignes)")
                 with st.container(border=True):
@@ -403,7 +402,6 @@ elif page == "📝 Éditeur Google Sheet":
                         df_show = df_show[mask]
                     show_table(df_show.reset_index(drop=True), "presta_view")
 
-            # -- AJOUTER --
             with sub_p_add:
                 st.subheader("Nouvelle prestation")
                 with st.container(border=True):
@@ -422,7 +420,6 @@ elif page == "📝 Éditeur Google Sheet":
                         cols1     = st.columns(3)
                         for i, h in enumerate(headers_p):
                             hl = h.lower()
-                            # Vérification ultra-robuste pour cacher les champs
                             if any(mot in hl for mot in ["mo ht", "fourn", "marge", "quantit", "total"]):
                                 continue
                             with cols1[i % 3]:
@@ -457,7 +454,6 @@ elif page == "📝 Éditeur Google Sheet":
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-            # -- MODIFIER --
             with sub_p_edit:
                 st.subheader("Modifier une prestation existante")
                 if len(df_p) == 0:
@@ -528,7 +524,6 @@ elif page == "📝 Éditeur Google Sheet":
                             except Exception as e:
                                 st.error(f"Erreur : {e}")
 
-            # -- SUPPRIMER --
             with sub_p_del:
                 st.subheader("Supprimer une prestation")
                 if len(df_p) == 0:
@@ -581,7 +576,6 @@ elif page == "📝 Éditeur Google Sheet":
         else:
             sub_c_view, sub_c_add, sub_c_edit, sub_c_del = st.tabs(["👁️ Voir les articles", "➕ Ajouter un article", "✏️ Modifier", "🗑️ Supprimer"])
 
-            # -- VUE --
             with sub_c_view:
                 st.caption(f"Catalogue actuel ({len(df_c)} articles)")
                 with st.container(border=True):
@@ -594,7 +588,6 @@ elif page == "📝 Éditeur Google Sheet":
                         df_show_c = df_show_c[mask]
                     show_table(df_show_c.reset_index(drop=True), "cata_view")
 
-            # -- AJOUTER --
             with sub_c_add:
                 st.subheader("Nouvel article")
                 with st.container(border=True):
@@ -612,7 +605,6 @@ elif page == "📝 Éditeur Google Sheet":
                         
                         for i, h in enumerate(headers_c):
                             hl = h.lower()
-                            # Vérification ultra-robuste pour cacher les champs
                             if any(mot in hl for mot in ["achat", "marge", "vente"]):
                                 continue
                             with cols3[i % 3]:
@@ -643,7 +635,6 @@ elif page == "📝 Éditeur Google Sheet":
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-            # -- MODIFIER --
             with sub_c_edit:
                 st.subheader("Modifier un article")
                 if len(df_c) == 0:
@@ -705,7 +696,6 @@ elif page == "📝 Éditeur Google Sheet":
                             except Exception as e:
                                 st.error(f"Erreur : {e}")
 
-            # -- SUPPRIMER --
             with sub_c_del:
                 st.subheader("Supprimer un article")
                 if len(df_c) == 0:
@@ -743,6 +733,7 @@ if df_raw.empty:
 
 df = df_raw.copy()
 
+# Extraction dynamique des colonnes
 COL_CLIENT   = fcol(df, "client")
 COL_CHANTIER = fcol(df, "objet", "chantier")
 COL_NUM      = fcol(df, "n° devis", "n°", "num")
@@ -760,6 +751,11 @@ COL_RELANCE3 = fcol(df, "relance 3")
 COL_ACOMPTE1 = fcol(df, "acompte 1")
 COL_ACOMPTE2 = fcol(df, "acompte 2")
 COL_RESERVE  = fcol(df, "réserve", "reserve")
+
+# Colonnes Spéciales Planning (Gantt)
+COL_DATE_DEBUT = fcol(df, "date début", "date debut", "début chantier", "debut chantier")
+COL_DATE_FIN   = fcol(df, "date fin", "fin chantier")
+COL_EQUIPE     = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien", "artisan")
 
 # Nouvelles colonnes et calculs pour les métriques
 df["_montant"]  = df[COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
@@ -905,10 +901,10 @@ elif page == "💶 Factures & Paiements":
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_ok")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CHANTIERS
+# PAGE : CHANTIERS & PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🏗️ Chantiers":
-    st.title("🏗️ Suivi des Chantiers")
+    st.title("🏗️ Suivi des Chantiers & Planning")
     df["_statut_ch"] = df["_pv"].apply(lambda x: "✅ Terminé" if x else "🟡 En cours")
     
     c1, c2, c3, c4  = st.columns(4)
@@ -929,15 +925,64 @@ elif page == "🏗️ Chantiers":
             df_ch = df_ch[mask]
             
     cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_DATE, COL_RESERVE, "_statut_ch"] if c]
-    t1, t2  = st.tabs(["🟡 Travaux en cours", "✅ Livrés (PV signé)"])
+    
+    t1, t2, t3  = st.tabs(["🟡 Travaux en cours", "✅ Livrés (PV signé)", "📅 Planning Graphique (Gantt)"])
+    
     with t1:
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_cours")
+        
     with t2:
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
         show_table(d[cols_ch].reset_index(drop=True) if cols_ch else d, "ch_termines")
+        
+    with t3:
+        st.subheader("Planning des interventions")
+        
+        if not COL_DATE_DEBUT or not COL_DATE_FIN:
+            st.info("💡 **Astuce Planning** : Ajoutez des colonnes **'Date début'** et **'Date fin'** dans votre Google Sheet pour afficher le calendrier. Ajoutez aussi une colonne **'Équipe'** ou **'Employé'** pour colorer le graphique par intervenant !")
+        else:
+            d_plan = df_ch[~df_ch["_pv"]].copy()
+            d_plan["_start"] = pd.to_datetime(d_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
+            d_plan["_end"] = pd.to_datetime(d_plan[COL_DATE_FIN], dayfirst=True, errors="coerce")
+            d_plan = d_plan.dropna(subset=["_start", "_end"])
+
+            if d_plan.empty:
+                st.warning("⚠️ Aucune date de début ou de fin valide n'a été trouvée pour les chantiers actuellement en cours.")
+            else:
+                nom_chantier_col = COL_CHANTIER if COL_CHANTIER else COL_CLIENT
+                color_col = COL_EQUIPE if COL_EQUIPE else COL_CLIENT
+                
+                # S'assure que la colonne équipe est traitée comme du texte pour avoir des couleurs distinctes
+                if COL_EQUIPE:
+                    d_plan[COL_EQUIPE] = d_plan[COL_EQUIPE].fillna("Non assigné").astype(str)
+
+                fig_gantt = px.timeline(
+                    d_plan, 
+                    x_start="_start", 
+                    x_end="_end", 
+                    y=nom_chantier_col,
+                    color=color_col,
+                    hover_name=nom_chantier_col,
+                    title="Calendrier d'intervention par équipe" if COL_EQUIPE else "Calendrier d'intervention"
+                )
+                fig_gantt.update_yaxes(autorange="reversed")
+                fig_gantt.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#f8fafc",
+                    showlegend=True if COL_EQUIPE else False,
+                    xaxis=dict(showgrid=True, gridcolor="#334155"), 
+                    yaxis=dict(gridcolor="#334155", title="")
+                )
+                
+                if COL_EQUIPE:
+                    st.success(f"✅ Équipes détectées ! Le planning est coloré selon la colonne : **{COL_EQUIPE}**")
+                else:
+                    st.info("💡 Astuce : Ajoutez une colonne **'Équipe'** ou **'Employé'** dans votre Google Sheet pour voir qui travaille sur quel chantier.")
+                    
+                st.plotly_chart(fig_gantt, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
