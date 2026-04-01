@@ -74,10 +74,9 @@ html, body, [data-testid="stAppViewContainer"] {{
     background-color: var(--bg-app) !important;
     font-family: 'Inter', sans-serif;
     color: var(--text-main);
-    -webkit-font-smoothing: antialiased; /* Écriture plus propre et nette */
+    -webkit-font-smoothing: antialiased;
 }}
 
-/* Surlignage de ligne au survol */
 [data-testid="stDataFrame"] div[role="grid"] div[role="row"]:hover {{
     background-color: rgba(79, 142, 247, 0.15) !important;
     transition: background 0.2s ease;
@@ -120,7 +119,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 [data-testid="stMetricValue"] {{
     color: var(--text-main) !important;
-    font-family: 'Inter', sans-serif !important; /* CHANGEMENT ICI POUR PLUS DE LISIBILITÉ */
+    font-family: 'Inter', sans-serif !important;
     font-size: 1.8rem !important;
     font-weight: 700 !important;
     letter-spacing: -0.02em;
@@ -219,7 +218,7 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 if not check_login():
     st.stop()
 
-# ── CONFIG GOOGLE SHEETS ───────────────────────────────────────────────────────
+# ── CONFIG GOOGLE SHEETS & DRIVE ───────────────────────────────────────────────
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -308,7 +307,6 @@ def fmt(v):
 
 # Fonction 100% sécurisée pour surligner les relances en rouge
 def style_relances(row):
-    # Cherche dynamiquement les colonnes dans la ligne
     r3_col = next((c for c in row.index if "relance 3" in str(c).lower()), None)
     st_col = next((c for c in row.index if "statut" in str(c).lower()), None)
     
@@ -330,7 +328,6 @@ def show_table(dataframe, key_suffix=""):
     show_all = st.session_state.get(f"show_all_{key_suffix}", False)
     displayed = dataframe if show_all else dataframe.head(LIMIT)
     
-    # Applique le style rouge automatiquement si c'est possible
     if isinstance(displayed, pd.DataFrame):
         styled_df = displayed.style.apply(style_relances, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
@@ -382,12 +379,15 @@ with st.sidebar:
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
+    
+    # ── NOUVEL ONGLET AJOUTÉ ICI ──
     pages = [
         "📊 Vue Générale",
         "📋 Devis",
         "💶 Factures & Paiements",
         "🏗️ Chantiers",
         "📅 Planning",
+        "🗂️ Espace Clients", 
         "📁 Tous les dossiers",
         "📝 Éditeur Google Sheet"
     ]
@@ -442,6 +442,88 @@ if st.session_state["current_page"] != page:
 if page == "👥 Utilisateurs":
     admin_panel()
     st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NOUVELLE PAGE : ESPACE CLIENTS (GOOGLE DRIVE)
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🗂️ Espace Clients":
+    page_header("🗂️ Espace Clients", "Documents et dossiers synchronisés avec Google Drive")
+
+    try:
+        from googleapiclient.discovery import build
+        
+        # 1. Connexion au Drive
+        sheet_name, gsa_json = get_user_credentials(user)
+        if not gsa_json:
+            st.error("Identifiants Google introuvables pour ce compte.")
+            st.stop()
+            
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        # 2. Chercher le grand dossier principal "espace clients"
+        query_main = "name = 'espace clients' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        res_main = drive_service.files().list(q=query_main, fields="files(id, name)").execute()
+        main_folders = res_main.get('files', [])
+
+        if not main_folders:
+            st.warning("⚠️ Dossier principal 'espace clients' introuvable sur le Google Drive.")
+            st.info("Créez un dossier nommé exactement **espace clients** à la racine de votre Drive lié pour que cela fonctionne.")
+        else:
+            main_folder_id = main_folders[0]['id']
+
+            # 3. Lister les sous-dossiers (les clients)
+            query_clients = f"'{main_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            res_clients = drive_service.files().list(q=query_clients, fields="files(id, name)", pageSize=1000).execute()
+            client_folders = res_clients.get('files', [])
+
+            if not client_folders:
+                st.info("Aucun dossier client trouvé. Créez un dossier au nom de votre client dans 'espace clients' sur Drive.")
+            else:
+                # Trier les clients par ordre alphabétique
+                client_folders = sorted(client_folders, key=lambda x: x['name'].lower())
+                client_names = [f["name"] for f in client_folders]
+                
+                selected_client_name = st.selectbox("👤 Sélectionnez un client :", client_names)
+                selected_client_id = next(f['id'] for f in client_folders if f['name'] == selected_client_name)
+
+                st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
+                st.subheader(f"📂 Fichiers de : {selected_client_name}")
+
+                # 4. Lister le contenu du dossier du client sélectionné
+                query_files = f"'{selected_client_id}' in parents and trashed = false"
+                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)").execute()
+                files = res_files.get('files', [])
+
+                if not files:
+                    st.info("Ce dossier client est vide.")
+                else:
+                    for file in files:
+                        # Attribution des icônes selon le type de fichier
+                        mime = file.get('mimeType', '')
+                        icon = "📄"
+                        if "folder" in mime: icon = "📁"
+                        elif "pdf" in mime: icon = "📕"
+                        elif "image" in mime: icon = "🖼️"
+                        elif "spreadsheet" in mime or "excel" in mime: icon = "📊"
+                        elif "document" in mime or "word" in mime: icon = "📝"
+
+                        # Affichage du fichier sous forme de bouton cliquable
+                        st.markdown(f"""
+                        <a href="{file.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
+                            <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:10px; margin-bottom:8px; transition:0.2s;">
+                                <div style="font-size:1.4rem;">{icon}</div>
+                                <div style="color:var(--text-main); font-weight:600; font-size:0.95rem;">{file.get('name')}</div>
+                                <div style="margin-left:auto; color:var(--primary); font-size:0.8rem; font-weight:600;">Ouvrir ↗</div>
+                            </div>
+                        </a>
+                        """, unsafe_allow_html=True)
+
+    except ImportError:
+        st.error("🚨 La bibliothèque 'google-api-python-client' n'est pas installée.")
+        st.info("Ajoute `google-api-python-client>=2.0.0` dans ton fichier **requirements.txt**.")
+    except Exception as e:
+        st.error(f"Erreur de communication avec Google Drive : {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ÉDITEUR GOOGLE SHEET
