@@ -378,6 +378,7 @@ with st.sidebar:
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
+    
     pages = [
         "📊 Vue Générale",
         "📋 Devis",
@@ -446,6 +447,19 @@ if page == "👥 Utilisateurs":
 elif page == "🗂️ Espace Clients":
     page_header("🗂️ Espace Clients", "Documents et dossiers synchronisés avec Google Drive")
 
+    # Fonction pour lire en clair un Google Doc ou Fichier Texte
+    def get_google_doc_content(file_id, mime_type, drive_service):
+        try:
+            if 'application/vnd.google-apps.document' in mime_type:
+                request = drive_service.files().export_media(fileId=file_id, mimeType='text/plain')
+                return request.execute().decode('utf-8')
+            elif 'text/plain' in mime_type:
+                request = drive_service.files().get_media(fileId=file_id)
+                return request.execute().decode('utf-8')
+            return None
+        except Exception:
+            return None
+
     try:
         from googleapiclient.discovery import build
         
@@ -483,11 +497,9 @@ elif page == "🗂️ Espace Clients":
                 st.subheader(f"📂 Fichiers de : {selected_client_name}")
 
                 query_files = f"'{selected_client_id}' in parents and trashed = false"
-                # On trie d'abord par type (dossiers en premier), puis par nom
-                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name").execute()
+                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
                 files = res_files.get('files', [])
 
-                # Petite fonction pour afficher joliment un fichier (PDF, image, doc...)
                 def display_file(f_dict):
                     mime = f_dict.get('mimeType', '').lower()
                     icon = "📄"
@@ -495,7 +507,7 @@ elif page == "🗂️ Espace Clients":
                     elif "pdf" in mime: icon = "📕"
                     elif "image" in mime: icon = "🖼️"
                     elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
-                    elif "document" in mime or "word" in mime: icon = "📝" # Détecte les Google Docs et Word
+                    elif "document" in mime or "word" in mime: icon = "📝"
 
                     st.markdown(f"""
                     <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
@@ -513,21 +525,38 @@ elif page == "🗂️ Espace Clients":
                     for file in files:
                         mime_type = file.get('mimeType', '')
                         
-                        # Si c'est un SOUS-DOSSIER (comme Facture, Prestations, etc.) -> on crée un menu déroulant
                         if mime_type == 'application/vnd.google-apps.folder':
                             with st.expander(f"📁 **{file.get('name')}**"):
-                                # On va chercher ce qu'il y a l'intérieur de ce sous-dossier
                                 sub_query = f"'{file.get('id')}' in parents and trashed = false"
-                                sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="name").execute()
+                                # AJOUT DE pageSize=1000 pour être sûr de charger tous les fichiers dans Prestations
+                                sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
                                 sub_files = sub_res.get('files', [])
                                 
                                 if not sub_files:
                                     st.caption("Ce dossier est vide.")
                                 else:
+                                    # Détection spécifique du dossier "Infos clients"
+                                    is_infos_clients = (file.get('name').strip().lower() in ["infos clients", "info client", "infos client"])
+                                    
                                     for sub_file in sub_files:
-                                        display_file(sub_file)
-                        
-                        # Si c'est un fichier posé directement à la racine du client
+                                        sub_mime = sub_file.get('mimeType', '').lower()
+                                        
+                                        # Si on est dans "Infos clients" ET que c'est un Google Doc ou Fichier Texte
+                                        if is_infos_clients and ('document' in sub_mime or 'text' in sub_mime):
+                                            content = get_google_doc_content(sub_file['id'], sub_mime, drive_service)
+                                            if content:
+                                                # Affichage du texte en clair sous forme de jolie carte
+                                                st.markdown(f"""
+                                                <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px;">
+                                                    <div style="font-weight:700; color:var(--primary); margin-bottom:8px;">📝 {sub_file.get('name')}</div>
+                                                    <div style="white-space: pre-wrap; font-size:0.9rem; color:var(--text-main);">{content}</div>
+                                                </div>
+                                                """, unsafe_allow_html=True)
+                                            else:
+                                                display_file(sub_file) # Sécurité si impossible à lire
+                                        else:
+                                            # Pour les autres fichiers (Prestations, Factures, etc.), affichage classique
+                                            display_file(sub_file)
                         else:
                             display_file(file)
 
