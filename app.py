@@ -305,7 +305,6 @@ def fcol(df, *keywords):
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
-# Fonction 100% sécurisée pour surligner les relances en rouge
 def style_relances(row):
     r3_col = next((c for c in row.index if "relance 3" in str(c).lower()), None)
     st_col = next((c for c in row.index if "statut" in str(c).lower()), None)
@@ -379,8 +378,6 @@ with st.sidebar:
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
-    
-    # ── NOUVEL ONGLET AJOUTÉ ICI ──
     pages = [
         "📊 Vue Générale",
         "📋 Devis",
@@ -452,7 +449,6 @@ elif page == "🗂️ Espace Clients":
     try:
         from googleapiclient.discovery import build
         
-        # 1. Connexion au Drive
         sheet_name, gsa_json = get_user_credentials(user)
         if not gsa_json:
             st.error("Identifiants Google introuvables pour ce compte.")
@@ -461,26 +457,22 @@ elif page == "🗂️ Espace Clients":
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
         drive_service = build('drive', 'v3', credentials=creds)
 
-        # 2. Chercher le grand dossier principal "espace clients"
         query_main = "name = 'espace clients' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         res_main = drive_service.files().list(q=query_main, fields="files(id, name)").execute()
         main_folders = res_main.get('files', [])
 
         if not main_folders:
             st.warning("⚠️ Dossier principal 'espace clients' introuvable sur le Google Drive.")
-            st.info("Créez un dossier nommé exactement **espace clients** à la racine de votre Drive lié pour que cela fonctionne.")
         else:
             main_folder_id = main_folders[0]['id']
 
-            # 3. Lister les sous-dossiers (les clients)
             query_clients = f"'{main_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
             res_clients = drive_service.files().list(q=query_clients, fields="files(id, name)", pageSize=1000).execute()
             client_folders = res_clients.get('files', [])
 
             if not client_folders:
-                st.info("Aucun dossier client trouvé. Créez un dossier au nom de votre client dans 'espace clients' sur Drive.")
+                st.info("Aucun dossier client trouvé dans 'espace clients'.")
             else:
-                # Trier les clients par ordre alphabétique
                 client_folders = sorted(client_folders, key=lambda x: x['name'].lower())
                 client_names = [f["name"] for f in client_folders]
                 
@@ -490,34 +482,54 @@ elif page == "🗂️ Espace Clients":
                 st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
                 st.subheader(f"📂 Fichiers de : {selected_client_name}")
 
-                # 4. Lister le contenu du dossier du client sélectionné
                 query_files = f"'{selected_client_id}' in parents and trashed = false"
-                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)").execute()
+                # On trie d'abord par type (dossiers en premier), puis par nom
+                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name").execute()
                 files = res_files.get('files', [])
+
+                # Petite fonction pour afficher joliment un fichier (PDF, image, doc...)
+                def display_file(f_dict):
+                    mime = f_dict.get('mimeType', '').lower()
+                    icon = "📄"
+                    if "folder" in mime: icon = "📁"
+                    elif "pdf" in mime: icon = "📕"
+                    elif "image" in mime: icon = "🖼️"
+                    elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
+                    elif "document" in mime or "word" in mime: icon = "📝" # Détecte les Google Docs et Word
+
+                    st.markdown(f"""
+                    <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
+                        <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; transition:0.2s;">
+                            <div style="font-size:1.2rem;">{icon}</div>
+                            <div style="color:var(--text-main); font-weight:600; font-size:0.9rem;">{f_dict.get('name')}</div>
+                            <div style="margin-left:auto; color:var(--primary); font-size:0.75rem; font-weight:600;">Ouvrir ↗</div>
+                        </div>
+                    </a>
+                    """, unsafe_allow_html=True)
 
                 if not files:
                     st.info("Ce dossier client est vide.")
                 else:
                     for file in files:
-                        # Attribution des icônes selon le type de fichier
-                        mime = file.get('mimeType', '')
-                        icon = "📄"
-                        if "folder" in mime: icon = "📁"
-                        elif "pdf" in mime: icon = "📕"
-                        elif "image" in mime: icon = "🖼️"
-                        elif "spreadsheet" in mime or "excel" in mime: icon = "📊"
-                        elif "document" in mime or "word" in mime: icon = "📝"
-
-                        # Affichage du fichier sous forme de bouton cliquable
-                        st.markdown(f"""
-                        <a href="{file.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
-                            <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:10px; margin-bottom:8px; transition:0.2s;">
-                                <div style="font-size:1.4rem;">{icon}</div>
-                                <div style="color:var(--text-main); font-weight:600; font-size:0.95rem;">{file.get('name')}</div>
-                                <div style="margin-left:auto; color:var(--primary); font-size:0.8rem; font-weight:600;">Ouvrir ↗</div>
-                            </div>
-                        </a>
-                        """, unsafe_allow_html=True)
+                        mime_type = file.get('mimeType', '')
+                        
+                        # Si c'est un SOUS-DOSSIER (comme Facture, Prestations, etc.) -> on crée un menu déroulant
+                        if mime_type == 'application/vnd.google-apps.folder':
+                            with st.expander(f"📁 **{file.get('name')}**"):
+                                # On va chercher ce qu'il y a l'intérieur de ce sous-dossier
+                                sub_query = f"'{file.get('id')}' in parents and trashed = false"
+                                sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="name").execute()
+                                sub_files = sub_res.get('files', [])
+                                
+                                if not sub_files:
+                                    st.caption("Ce dossier est vide.")
+                                else:
+                                    for sub_file in sub_files:
+                                        display_file(sub_file)
+                        
+                        # Si c'est un fichier posé directement à la racine du client
+                        else:
+                            display_file(file)
 
     except ImportError:
         st.error("🚨 La bibliothèque 'google-api-python-client' n'est pas installée.")
@@ -1116,7 +1128,6 @@ elif page == "🏗️ Chantiers":
     cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE,
                              COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_statut_ch"] if c]
     
-    # Dictionnaire pour mettre les colonnes en français propre
     rename_map = {
         COL_CLIENT: "Client",
         COL_CHANTIER: "Projet / Chantier",
@@ -1142,7 +1153,7 @@ elif page == "🏗️ Chantiers":
         show_table(d_renamed.reset_index(drop=True), "ch_termines")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : PLANNING — STYLE GOOGLE CALENDAR
+# PAGE : PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
@@ -1174,7 +1185,6 @@ elif page == "📅 Planning":
 
     df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
 
-    # KPI
     nb_en_cours  = int((df_plan["_statut_code"] == "en-cours").sum())
     nb_retard    = int((df_plan["_statut_code"] == "retard").sum())
     nb_termine   = int((df_plan["_statut_code"] == "termine").sum())
@@ -1198,9 +1208,6 @@ elif page == "📅 Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ════════════════════════════════════════════════════════════════
-    # VUE CALENDRIER MENSUEL (INTERACTIF)
-    # ════════════════════════════════════════════════════════════════
     if view_mode == "📅 Calendrier mensuel":
 
         if "plan_year" not in st.session_state:
@@ -1244,7 +1251,6 @@ elif page == "📅 Planning":
             (df_plan["_end"]   >= datetime(sel_year, sel_month, 1))
         ].copy()
 
-        # Events par jour
         events_by_day = {}
         for _, row in df_month.iterrows():
             start_d = max(row["_start"].date(), datetime(sel_year, sel_month, 1).date())
@@ -1258,7 +1264,6 @@ elif page == "📅 Planning":
                 events_by_day[d].append(statut)
                 cur += timedelta(days=1)
 
-        # Grille de boutons (INTERACTIF)
         days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
         cal_grid = calendar.monthcalendar(sel_year, sel_month)
         
@@ -1284,7 +1289,6 @@ elif page == "📅 Planning":
                             if st.button(label, key=f"btn_day_{day}", use_container_width=True):
                                 st.session_state["selected_date"] = datetime(sel_year, sel_month, day)
 
-        # Affichage du planning du jour cliqué en dessous du calendrier
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
             st.markdown(f"### 📋 Emploi du temps du {sd.strftime('%d/%m/%Y')}")
@@ -1309,9 +1313,6 @@ elif page == "📅 Planning":
             else:
                 st.info("Aucun chantier prévu ce jour-là.")
 
-    # ════════════════════════════════════════════════════════════════
-    # VUE GANTT
-    # ════════════════════════════════════════════════════════════════
     elif view_mode == "📊 Gantt":
         show_all_gantt = st.toggle("Inclure les terminés", value=False, key="gantt_all")
         df_gantt = df_plan.copy()
@@ -1362,9 +1363,6 @@ elif page == "📅 Planning":
                 detail_cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_DATE_DEBUT, COL_DATE_FIN, COL_MONTANT, COL_ADRESSE] if c]
                 show_table(df_gantt_sorted[detail_cols].reset_index(drop=True), "gantt_detail")
 
-    # ════════════════════════════════════════════════════════════════
-    # VUE LISTE
-    # ════════════════════════════════════════════════════════════════
     elif view_mode == "📋 Liste":
         filtre_statut = st.multiselect(
             "Filtrer par statut",
