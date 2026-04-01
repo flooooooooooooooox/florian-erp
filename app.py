@@ -53,7 +53,7 @@ else:
 # ── CSS PREMIUM ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {{
     {theme_css_vars}
@@ -120,9 +120,9 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 [data-testid="stMetricValue"] {{
     color: var(--text-main) !important;
-    font-family: 'Syne', sans-serif !important;
-    font-size: 1.7rem !important;
-    font-weight: 800 !important;
+    font-family: 'Inter', sans-serif !important; /* CHANGEMENT ICI POUR PLUS DE LISIBILITÉ */
+    font-size: 1.8rem !important;
+    font-weight: 700 !important;
     letter-spacing: -0.02em;
 }}
 
@@ -210,7 +210,7 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 @keyframes pulse-anim {{ 0%, 100% {{ opacity: 1; transform: scale(1); }} 50% {{ opacity: 0.4; transform: scale(0.85); }} }}
 
 .page-header {{ padding: 8px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }}
-.page-header h1 {{ font-family: 'Syne', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }}
+.page-header h1 {{ font-family: 'Inter', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }}
 .page-header .subtitle {{ color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }}
 </style>
 """, unsafe_allow_html=True)
@@ -368,7 +368,7 @@ with st.sidebar:
             <div style='width:36px;height:36px;background:linear-gradient(135deg,#4f8ef7,#2563eb);
                 border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;'>⚡</div>
             <div>
-                <div style='font-family:Syne,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Florian AI</div>
+                <div style='font-family:Inter,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Florian AI</div>
                 <div style='font-size:0.72rem;color:var(--text-muted);letter-spacing:0.04em;'>Bâtiment ERP</div>
             </div>
         </div>
@@ -889,7 +889,6 @@ if page == "📊 Vue Générale":
                     if date_creation and str(date_creation).strip():
                         tooltip += f" • {date_creation}"
                         
-                    # INJECTION DU STYLE EN LIGNE POUR FORCER LE FLEXBOX (Résout le bug visuel Streamlit)
                     st.markdown(f"""
                     <div title="{tooltip}" style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:8px; cursor:pointer;">
                         <div style="font-size:1.1rem; flex-shrink:0;">📄</div>
@@ -917,7 +916,7 @@ if page == "📊 Vue Générale":
             )])
             fig_donut.add_annotation(text=f"{taux_conv}%", x=0.5, y=0.5,
                                      font_size=28, font_color="var(--text-main)",
-                                     font_family="Syne", showarrow=False)
+                                     font_family="Inter", showarrow=False)
             fig_donut.update_layout(
                 title="Taux de transformation", title_font_color="var(--text-main)",
                 paper_bgcolor="rgba(0,0,0,0)", showlegend=True,
@@ -1141,7 +1140,7 @@ elif page == "📅 Planning":
                 st.rerun()
         with nav2:
             st.markdown(
-                f"<h2 style='text-align:center;margin:0;padding:8px 0;color:var(--text-main);font-family:Syne,sans-serif;font-weight:800;'>"
+                f"<h2 style='text-align:center;margin:0;padding:8px 0;color:var(--text-main);font-family:Inter,sans-serif;font-weight:800;'>"
                 f"{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h2>",
                 unsafe_allow_html=True
             )
