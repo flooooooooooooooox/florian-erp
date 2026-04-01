@@ -306,8 +306,14 @@ def fcol(df, *keywords):
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
+# ── INITIALISATION SÉCURISÉE ───────────────────────────────────────────────────
+# On déclare ces variables ici pour éviter le NameError sur la page Éditeur
+COL_RELANCE3 = None
+COL_STATUT = None
+
 # Fonction pour colorer la ligne en rouge selon les relances
 def highlight_relance(row):
+    # Si les variables n'ont pas encore été trouvées, on ne colorie rien
     if not COL_RELANCE3 or not COL_STATUT:
         return [''] * len(row)
     
@@ -318,6 +324,26 @@ def highlight_relance(row):
     if relance3 != "" and "envoyé" not in statut:
         return ['background-color: rgba(255, 92, 122, 0.25); color: #ff5c7a; font-weight: bold;'] * len(row)
     return [''] * len(row)
+
+LIMIT = 100
+
+def show_table(dataframe, key_suffix=""):
+    total = len(dataframe)
+    if total == 0:
+        st.info("Aucun dossier trouvé.")
+        return
+    show_all = st.session_state.get(f"show_all_{key_suffix}", False)
+    displayed = dataframe if show_all else dataframe.head(LIMIT)
+    
+    # 🔴 AJOUT D'UNE SÉCURITÉ ICI : On vérifie que COL_RELANCE3 et COL_STATUT ne sont pas None
+    if isinstance(displayed, pd.DataFrame) and COL_RELANCE3 and COL_STATUT and COL_RELANCE3 in displayed.columns and COL_STATUT in displayed.columns:
+        styled_df = displayed.style.apply(highlight_relance, axis=1)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(displayed, use_container_width=True, hide_index=True)
+
+    if total > LIMIT:
+# ... la suite reste identique
 
 LIMIT = 100
 
