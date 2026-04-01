@@ -249,7 +249,7 @@ def _dedup_headers(headers):
             out.append(h)
     return out
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_sheet_data(username: str):
     try:
         sheet_name, gsa_json = get_user_credentials(username)
@@ -398,6 +398,18 @@ with st.sidebar:
             logout()
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ── SCROLL TO TOP ──────────────────────────────────────────────────────────────
+if "current_page" not in st.session_state:
+    st.session_state["current_page"] = page
+
+if st.session_state["current_page"] != page:
+    st.session_state["current_page"] = page
+    st.markdown("""
+        <script>
+            window.parent.document.querySelector('section.main').scrollTo(0, 0);
+        </script>
+    """, unsafe_allow_html=True)
 
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "👥 Utilisateurs":
@@ -796,10 +808,10 @@ if page == "📊 Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
+    c1.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
     c2.metric(f"⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
     c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement))
+    c4.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1060,9 +1072,12 @@ elif page == "📅 Planning":
         if "plan_month" not in st.session_state:
             st.session_state["plan_month"] = today.month
 
-        nav1, nav2, nav3 = st.columns([1, 3, 1])
+        mois_fr = ["","Janvier","Février","Mars","Avril","Mai","Juin",
+                   "Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+
+        nav1, nav2, nav3 = st.columns([1, 2, 1])
         with nav1:
-            if st.button("◀ Mois précédent", use_container_width=True):
+            if st.button("◀", use_container_width=True, key="prev_month"):
                 if st.session_state["plan_month"] == 1:
                     st.session_state["plan_month"] = 12
                     st.session_state["plan_year"] -= 1
@@ -1070,15 +1085,13 @@ elif page == "📅 Planning":
                     st.session_state["plan_month"] -= 1
                 st.rerun()
         with nav2:
-            mois_fr = ["","Janvier","Février","Mars","Avril","Mai","Juin",
-                       "Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
             st.markdown(
-                f"<h3 style='text-align:center;margin:0;color:#e8f0fe;'>"
-                f"{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h3>",
+                f"<h2 style='text-align:center;margin:0;padding:8px 0;color:#e8f0fe;font-family:Syne,sans-serif;font-weight:800;'>"
+                f"{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h2>",
                 unsafe_allow_html=True
             )
         with nav3:
-            if st.button("Mois suivant ▶", use_container_width=True):
+            if st.button("▶", use_container_width=True, key="next_month"):
                 if st.session_state["plan_month"] == 12:
                     st.session_state["plan_month"] = 1
                     st.session_state["plan_year"] += 1
@@ -1113,11 +1126,11 @@ elif page == "📅 Planning":
                 events_by_day[d].append({"label": chantier[:20], "client": client, "color": color, "bg": bg})
                 cur += timedelta(days=1)
 
-        # Grille HTML
+        # Grille HTML améliorée
         days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
         header_html = "".join(
-            f'<div style="text-align:center;font-size:0.75rem;font-weight:700;color:#6b84a3;'
-            f'padding:10px 0;letter-spacing:0.06em;text-transform:uppercase;">{d}</div>'
+            f'<div style="text-align:center;font-size:0.8rem;font-weight:700;color:#4f8ef7;'
+            f'padding:12px 0;letter-spacing:0.08em;text-transform:uppercase;">{d}</div>'
             for d in days_fr
         )
 
@@ -1126,53 +1139,53 @@ elif page == "📅 Planning":
         for week in cal_grid:
             for day in week:
                 if day == 0:
-                    cells_html += '<div style="background:rgba(0,0,0,0);border:1px solid transparent;border-radius:10px;min-height:110px;padding:8px;"></div>'
+                    cells_html += '<div style="background:rgba(0,0,0,0);border:1px solid transparent;border-radius:12px;min-height:120px;padding:10px;"></div>'
                 else:
                     is_today = (day == today.day and sel_year == today.year and sel_month == today.month)
                     if is_today:
-                        cell_style = "background:#132238;border:1px solid rgba(79,142,247,0.5);border-radius:10px;min-height:110px;padding:8px;"
-                        num_style  = "width:26px;height:26px;border-radius:50%;background:#4f8ef7;display:flex;align-items:center;justify-content:center;font-size:0.82rem;font-weight:700;color:#fff;margin-bottom:4px;"
+                        cell_style = "background:linear-gradient(135deg, rgba(79,142,247,0.15), rgba(79,142,247,0.05));border:2px solid rgba(79,142,247,0.6);border-radius:12px;min-height:120px;padding:10px;transition:all 0.2s ease;"
+                        num_style  = "width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#2563eb);display:flex;align-items:center;justify-content:center;font-size:0.9rem;font-weight:800;color:#fff;margin-bottom:6px;box-shadow:0 2px 8px rgba(79,142,247,0.4);"
                     else:
-                        cell_style = "background:#0f1e30;border:1px solid rgba(255,255,255,0.04);border-radius:10px;min-height:110px;padding:8px;"
-                        num_style  = "font-size:0.82rem;font-weight:600;color:#6b84a3;margin-bottom:4px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;"
+                        cell_style = "background:linear-gradient(135deg, #0f1e30, #132238);border:1px solid rgba(255,255,255,0.06);border-radius:12px;min-height:120px;padding:10px;transition:all 0.2s ease;cursor:default;"
+                        num_style  = "font-size:0.9rem;font-weight:700;color:#6b84a3;margin-bottom:6px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;"
 
                     events = events_by_day.get(day, [])
                     events_html = ""
-                    for ev in events[:3]:
+                    for ev in events[:2]:
                         events_html += (
-                            f'<div style="background:{ev["bg"]};border-left:2px solid {ev["color"]};'
-                            f'border-radius:0 4px 4px 0;padding:2px 6px;font-size:0.68rem;'
-                            f'color:{ev["color"]};margin-bottom:2px;white-space:nowrap;overflow:hidden;'
-                            f'text-overflow:ellipsis;font-weight:600;" title="{ev["label"]} — {ev["client"]}">'
+                            f'<div style="background:{ev["bg"]};border-left:3px solid {ev["color"]};'
+                            f'border-radius:0 6px 6px 0;padding:4px 8px;font-size:0.7rem;'
+                            f'color:{ev["color"]};margin-bottom:3px;white-space:nowrap;overflow:hidden;'
+                            f'text-overflow:ellipsis;font-weight:700;" title="{ev["label"]} — {ev["client"]}">'
                             f'{ev["label"]}</div>'
                         )
-                    if len(events) > 3:
-                        events_html += f'<div style="font-size:0.65rem;color:#6b84a3;padding:1px 4px;">+{len(events)-3} autres</div>'
+                    if len(events) > 2:
+                        events_html += f'<div style="font-size:0.68rem;color:#ffb84d;padding:2px 6px;font-weight:600;">+{len(events)-2} autres</div>'
 
                     cells_html += f'<div style="{cell_style}"><div style="{num_style}">{day}</div>{events_html}</div>'
 
         st.markdown(f"""
-        <div style="background:#0f1e30;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:20px;margin-bottom:20px;">
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;">
+        <div style="background:linear-gradient(135deg, #0a1628, #0f1e30);border:1px solid rgba(79,142,247,0.2);border-radius:16px;padding:24px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:12px;">
                 {header_html}
             </div>
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
                 {cells_html}
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Légende
+        # Légende améliorée
         st.markdown("""
-        <div style="display:flex;gap:20px;margin-bottom:16px;">
-            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
-                <div style="width:12px;height:12px;border-radius:3px;background:#4f8ef7;"></div> En cours
+        <div style="display:flex;gap:24px;margin-bottom:20px;padding:16px;background:rgba(13,30,48,0.4);border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#e8f0fe;font-weight:600;">
+                <div style="width:14px;height:14px;border-radius:4px;background:#4f8ef7;box-shadow:0 2px 6px rgba(79,142,247,0.4);"></div> En cours
             </div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
-                <div style="width:12px;height:12px;border-radius:3px;background:#ff5c7a;"></div> En retard
+            <div style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#e8f0fe;font-weight:600;">
+                <div style="width:14px;height:14px;border-radius:4px;background:#ff5c7a;box-shadow:0 2px 6px rgba(255,92,122,0.4);"></div> En retard
             </div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#6b84a3;">
-                <div style="width:12px;height:12px;border-radius:3px;background:#00d68f;"></div> Terminé
+            <div style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#e8f0fe;font-weight:600;">
+                <div style="width:14px;height:14px;border-radius:4px;background:#00d68f;box-shadow:0 2px 6px rgba(0,214,143,0.4);"></div> Terminé
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1320,6 +1333,3 @@ elif page == "📁 Tous les dossiers":
                  "_statut_ch","_start","_end","_statut","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
 
-# ── AUTO-REFRESH ───────────────────────────────────────────────────────────────
-time.sleep(30)
-st.rerun()
