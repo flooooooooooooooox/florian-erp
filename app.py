@@ -202,8 +202,25 @@ hr { border-color: var(--border) !important; margin: 16px 0 !important; }
 .page-header h1 { font-family: 'Syne', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }
 .page-header .subtitle { color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }
 
-.alert-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: rgba(255,184,77,0.06); border: 1px solid rgba(255,184,77,0.15); border-radius: var(--radius-sm); margin-bottom: 8px; }
-.alert-item .icon { font-size: 1.1rem; }
+.alert-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    background: rgba(255,184,77,0.06); border: 1px solid rgba(255,184,77,0.15);
+    border-radius: var(--radius-sm); margin-bottom: 8px;
+    transition: all 0.2s ease; cursor: pointer; position: relative;
+}
+.alert-item:hover {
+    background: rgba(255,184,77,0.12); border-color: rgba(255,184,77,0.35);
+    transform: translateX(4px); box-shadow: 0 2px 8px rgba(255,184,77,0.2);
+}
+.alert-item::after {
+    content: attr(title); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    background: #0a1628; color: #ffb84d; padding: 8px 12px; border-radius: 6px;
+    font-size: 0.75rem; white-space: nowrap; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease; margin-bottom: 6px; border: 1px solid rgba(255,184,77,0.3);
+    z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.alert-item:hover::after { opacity: 1; }
+.alert-item .icon { font-size: 1.1rem; flex-shrink: 0; }
 .alert-item .info { flex: 1; }
 .alert-item .info .name { font-weight: 600; font-size: 0.9rem; color: var(--text-main); }
 .alert-item .info .amount { font-size: 0.8rem; color: var(--text-muted); }
@@ -851,8 +868,18 @@ if page == "📊 Vue Générale":
                 for _, row in df_alertes.iterrows():
                     client = row[COL_CLIENT] if COL_CLIENT else "Inconnu"
                     montant = fmt(row["_montant"])
+                    chantier = row[COL_CHANTIER] if COL_CHANTIER else ""
+                    num_devis = row[COL_NUM] if COL_NUM else ""
+                    date_creation = row[COL_DATE] if COL_DATE else ""
+                    tooltip = f"{client}"
+                    if chantier and str(chantier).strip():
+                        tooltip += f" • {chantier}"
+                    if num_devis and str(num_devis).strip():
+                        tooltip += f" • Devis: {num_devis}"
+                    if date_creation and str(date_creation).strip():
+                        tooltip += f" • {date_creation}"
                     st.markdown(f"""
-                    <div class="alert-item">
+                    <div class="alert-item" title="{tooltip}">
                         <div class="icon">📄</div>
                         <div class="info">
                             <div class="name">{client}</div>
