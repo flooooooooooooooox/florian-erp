@@ -825,10 +825,10 @@ if page == "📊 Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
+    c1.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
     c2.metric(f"⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
     c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
+    c4.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
