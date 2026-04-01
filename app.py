@@ -74,9 +74,10 @@ html, body, [data-testid="stAppViewContainer"] {{
     background-color: var(--bg-app) !important;
     font-family: 'Inter', sans-serif;
     color: var(--text-main);
-    -webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased; /* Écriture plus propre et nette */
 }}
 
+/* Surlignage de ligne au survol */
 [data-testid="stDataFrame"] div[role="grid"] div[role="row"]:hover {{
     background-color: rgba(79, 142, 247, 0.15) !important;
     transition: background 0.2s ease;
@@ -279,7 +280,7 @@ def get_sheet_data(username: str):
     except Exception as e:
         return pd.DataFrame(), str(e)
 
-# ── HELPERS & INITIALISATIONS ──────────────────────────────────────────────────
+# ── HELPERS & FONCTIONS D'AFFICHAGE ────────────────────────────────────────────
 def clean_amount(val):
     if pd.isna(val) or str(val).strip() == "":
         return 0.0
@@ -305,25 +306,18 @@ def fcol(df, *keywords):
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
-
-# 🔴 INITIALISATION SÉCURISÉE DES VARIABLES GLOBALES 🔴
-# Cela évite le NameError si l'utilisateur va sur l'onglet Éditeur Sheet en premier
-COL_RELANCE3 = None
-COL_STATUT = None
-
-def highlight_relance(row):
-    # Si les variables n'ont pas encore été trouvées, on ne colorie rien
-    if not COL_RELANCE3 or not COL_STATUT:
-        return [''] * len(row)
+# Fonction 100% sécurisée pour surligner les relances en rouge
+def style_relances(row):
+    # Cherche dynamiquement les colonnes dans la ligne
+    r3_col = next((c for c in row.index if "relance 3" in str(c).lower()), None)
+    st_col = next((c for c in row.index if "statut" in str(c).lower()), None)
     
-    statut = str(row.get(COL_STATUT, "")).lower()
-    relance3 = str(row.get(COL_RELANCE3, "")).strip()
-    
-    # 3 relances présentes ET statut n'est pas "devis envoyé"
-    if relance3 != "" and "envoyé" not in statut:
-        return ['background-color: rgba(255, 92, 122, 0.25); color: #ff5c7a; font-weight: bold;'] * len(row)
+    if r3_col and st_col:
+        r3_val = str(row.get(r3_col, "")).strip()
+        st_val = str(row.get(st_col, "")).lower()
+        if r3_val != "" and "envoyé" not in st_val:
+            return ['background-color: rgba(255, 92, 122, 0.25); color: #ff5c7a; font-weight: bold;'] * len(row)
     return [''] * len(row)
-
 
 LIMIT = 100
 
@@ -336,9 +330,9 @@ def show_table(dataframe, key_suffix=""):
     show_all = st.session_state.get(f"show_all_{key_suffix}", False)
     displayed = dataframe if show_all else dataframe.head(LIMIT)
     
-    # Vérification sécurisée que les colonnes existent bien dans la base de données actuelle
-    if isinstance(displayed, pd.DataFrame) and COL_RELANCE3 and COL_STATUT and COL_RELANCE3 in displayed.columns and COL_STATUT in displayed.columns:
-        styled_df = displayed.style.apply(highlight_relance, axis=1)
+    # Applique le style rouge automatiquement si c'est possible
+    if isinstance(displayed, pd.DataFrame):
+        styled_df = displayed.style.apply(style_relances, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.dataframe(displayed, use_container_width=True, hide_index=True)
@@ -841,10 +835,10 @@ if page == "📊 Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
+    c1.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
     c2.metric(f"⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
     c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
+    c4.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -894,12 +888,14 @@ if page == "📊 Vue Générale":
                         tooltip += f" • Devis: {num_devis}"
                     if date_creation and str(date_creation).strip():
                         tooltip += f" • {date_creation}"
+                        
+                    # INJECTION DU STYLE EN LIGNE POUR FORCER LE FLEXBOX (Résout le bug visuel Streamlit)
                     st.markdown(f"""
-                    <div class="alert-item" title="{tooltip}">
-                        <div class="icon">📄</div>
-                        <div class="info">
-                            <div class="name">{client}</div>
-                            <div class="amount">{montant}</div>
+                    <div title="{tooltip}" style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:8px; cursor:pointer;">
+                        <div style="font-size:1.1rem; flex-shrink:0;">📄</div>
+                        <div style="flex:1;">
+                            <div style="font-weight:600; font-size:0.9rem; color:var(--text-main);">{client}</div>
+                            <div style="font-size:0.8rem; color:var(--text-muted);">{montant}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1044,23 +1040,24 @@ elif page == "🏗️ Chantiers":
         COL_CLIENT: "Client",
         COL_CHANTIER: "Projet / Chantier",
         COL_MONTANT: "Budget (€)",
-        COL_ADRESSE: "Adresse",
+        COL_ADRESSE: "Lieu des travaux",
         COL_DATE_DEBUT: "Début",
         COL_DATE_FIN: "Fin prévue",
         COL_RESERVE: "Réserves",
         "_statut_ch": "État d'avancement"
     }
+    valid_rename_map = {k: v for k, v in rename_map.items() if k}
 
     t1, t2 = st.tabs(["🟡 En cours", "✅ Livrés (PV signé)"])
     with t1:
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
-        d_renamed = d[cols_ch].rename(columns=rename_map) if cols_ch else d
+        d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
         show_table(d_renamed.reset_index(drop=True), "ch_cours")
     with t2:
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
-        d_renamed = d[cols_ch].rename(columns=rename_map) if cols_ch else d
+        d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
         show_table(d_renamed.reset_index(drop=True), "ch_termines")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1180,7 +1177,7 @@ elif page == "📅 Planning":
                 events_by_day[d].append(statut)
                 cur += timedelta(days=1)
 
-        # Grille de boutons
+        # Grille de boutons (INTERACTIF)
         days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
         cal_grid = calendar.monthcalendar(sel_year, sel_month)
         
@@ -1196,7 +1193,6 @@ elif page == "📅 Planning":
                 for i, day in enumerate(week):
                     with cols_week[i]:
                         if day != 0:
-                            # Ajout d'indicateur si chantier en cours
                             events = events_by_day.get(day, [])
                             label = str(day)
                             if events:
@@ -1221,6 +1217,7 @@ elif page == "📅 Planning":
                 for _, row in day_events.iterrows():
                     statut = row['_statut_code']
                     color = "#ff5c7a" if statut == "retard" else "#00d68f" if statut == "termine" else "#4f8ef7"
+                    
                     st.markdown(f"""
                     <div style="border-left: 4px solid {color}; padding-left: 12px; margin-bottom: 10px; background-color: var(--bg-surface); padding: 10px; border-radius: 6px;">
                         <div style="font-weight:bold; font-size:1.1rem; color:var(--text-main);">{row[COL_CHANTIER]}</div>
