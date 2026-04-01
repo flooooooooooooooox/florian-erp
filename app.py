@@ -1,16 +1,3 @@
-Je comprends tout à fait. La dernière fois, j'ai résumé le code pour te montrer uniquement les parties modifiées. 
-
-Cette fois-ci, voici **l'intégralité de ton code (sans aucune ligne supprimée ou oubliée)**, avec toutes tes demandes parfaitement intégrées :
-1. **White Mode / Dark Mode** activable depuis le menu latéral avec adaptation des couleurs.
-2. **Écriture plus propre** avec la police "Inter" et le lissage activé.
-3. **Surlignage complet de la ligne au survol** de la souris sur les tableaux.
-4. **Ligne en rouge** si la colonne "Relance 3" est remplie **sauf** si le statut contient "envoyé" (intégré à la fonction `show_table`).
-5. **Chantiers au propre (Français)** avec des noms de colonnes propres pour le tableau final.
-6. **Calendrier interactif cliquable** : les jours sont devenus des boutons, et en cliquant dessus, le planning complet du jour s'affiche juste en dessous.
-
-Voici le code complet de ton fichier `app.py` à copier-coller :
-
-```python
 import streamlit as st
 import pandas as pd
 import gspread
@@ -1374,4 +1361,3 @@ elif page == "📁 Tous les dossiers":
     drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
                  "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
-```
