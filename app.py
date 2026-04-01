@@ -359,13 +359,13 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         st.image("logo.png", width=120)
     else:
+        # SUPPRESSION de "Bâtiment ERP"
         st.markdown("""
         <div style='display:flex;align-items:center;gap:10px;padding-bottom:8px;'>
             <div style='width:36px;height:36px;background:linear-gradient(135deg,#4f8ef7,#2563eb);
                 border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;'>⚡</div>
             <div>
                 <div style='font-family:Inter,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Florian AI</div>
-                <div style='font-size:0.72rem;color:var(--text-muted);letter-spacing:0.04em;'>Bâtiment ERP</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -490,75 +490,80 @@ elif page == "🗂️ Espace Clients":
                 client_folders = sorted(client_folders, key=lambda x: x['name'].lower())
                 client_names = [f["name"] for f in client_folders]
                 
-                selected_client_name = st.selectbox("👤 Sélectionnez un client :", client_names)
-                selected_client_id = next(f['id'] for f in client_folders if f['name'] == selected_client_name)
-
-                st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
-                st.subheader(f"📂 Fichiers de : {selected_client_name}")
-
-                query_files = f"'{selected_client_id}' in parents and trashed = false"
-                res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
-                files = res_files.get('files', [])
-
-                def display_file(f_dict):
-                    mime = f_dict.get('mimeType', '').lower()
-                    icon = "📄"
-                    if "folder" in mime: icon = "📁"
-                    elif "pdf" in mime: icon = "📕"
-                    elif "image" in mime: icon = "🖼️"
-                    elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
-                    elif "document" in mime or "word" in mime: icon = "📝"
-
-                    st.markdown(f"""
-                    <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
-                        <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; transition:0.2s;">
-                            <div style="font-size:1.2rem;">{icon}</div>
-                            <div style="color:var(--text-main); font-weight:600; font-size:0.9rem;">{f_dict.get('name')}</div>
-                            <div style="margin-left:auto; color:var(--primary); font-size:0.75rem; font-weight:600;">Ouvrir ↗</div>
-                        </div>
-                    </a>
-                    """, unsafe_allow_html=True)
-
-                if not files:
-                    st.info("Ce dossier client est vide.")
+                # MODIFICATION : Barre de recherche dynamique + Selectbox
+                search_client = st.text_input("🔍 Rechercher un client :", placeholder="Tapez le nom d'un client...")
+                
+                # On filtre la liste selon ce qui est tapé
+                filtered_client_names = [name for name in client_names if search_client.lower() in name.lower()]
+                
+                if not filtered_client_names:
+                    st.warning("Aucun client ne correspond à votre recherche.")
                 else:
-                    for file in files:
-                        mime_type = file.get('mimeType', '')
-                        
-                        if mime_type == 'application/vnd.google-apps.folder':
-                            with st.expander(f"📁 **{file.get('name')}**"):
-                                sub_query = f"'{file.get('id')}' in parents and trashed = false"
-                                # AJOUT DE pageSize=1000 pour être sûr de charger tous les fichiers dans Prestations
-                                sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
-                                sub_files = sub_res.get('files', [])
-                                
-                                if not sub_files:
-                                    st.caption("Ce dossier est vide.")
-                                else:
-                                    # Détection spécifique du dossier "Infos clients"
-                                    is_infos_clients = (file.get('name').strip().lower() in ["infos clients", "info client", "infos client"])
+                    # Le menu déroulant ne montre que les résultats filtrés
+                    selected_client_name = st.selectbox("👤 Sélectionnez un client :", filtered_client_names)
+                    selected_client_id = next(f['id'] for f in client_folders if f['name'] == selected_client_name)
+
+                    st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
+                    st.subheader(f"📂 Fichiers de : {selected_client_name}")
+
+                    query_files = f"'{selected_client_id}' in parents and trashed = false"
+                    res_files = drive_service.files().list(q=query_files, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
+                    files = res_files.get('files', [])
+
+                    def display_file(f_dict):
+                        mime = f_dict.get('mimeType', '').lower()
+                        icon = "📄"
+                        if "folder" in mime: icon = "📁"
+                        elif "pdf" in mime: icon = "📕"
+                        elif "image" in mime: icon = "🖼️"
+                        elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
+                        elif "document" in mime or "word" in mime: icon = "📝"
+
+                        st.markdown(f"""
+                        <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
+                            <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; transition:0.2s;">
+                                <div style="font-size:1.2rem;">{icon}</div>
+                                <div style="color:var(--text-main); font-weight:600; font-size:0.9rem;">{f_dict.get('name')}</div>
+                                <div style="margin-left:auto; color:var(--primary); font-size:0.75rem; font-weight:600;">Ouvrir ↗</div>
+                            </div>
+                        </a>
+                        """, unsafe_allow_html=True)
+
+                    if not files:
+                        st.info("Ce dossier client est vide.")
+                    else:
+                        for file in files:
+                            mime_type = file.get('mimeType', '')
+                            
+                            if mime_type == 'application/vnd.google-apps.folder':
+                                with st.expander(f"📁 **{file.get('name')}**"):
+                                    sub_query = f"'{file.get('id')}' in parents and trashed = false"
+                                    sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
+                                    sub_files = sub_res.get('files', [])
                                     
-                                    for sub_file in sub_files:
-                                        sub_mime = sub_file.get('mimeType', '').lower()
+                                    if not sub_files:
+                                        st.caption("Ce dossier est vide.")
+                                    else:
+                                        is_infos_clients = (file.get('name').strip().lower() in ["infos clients", "info client", "infos client"])
                                         
-                                        # Si on est dans "Infos clients" ET que c'est un Google Doc ou Fichier Texte
-                                        if is_infos_clients and ('document' in sub_mime or 'text' in sub_mime):
-                                            content = get_google_doc_content(sub_file['id'], sub_mime, drive_service)
-                                            if content:
-                                                # Affichage du texte en clair sous forme de jolie carte
-                                                st.markdown(f"""
-                                                <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px;">
-                                                    <div style="font-weight:700; color:var(--primary); margin-bottom:8px;">📝 {sub_file.get('name')}</div>
-                                                    <div style="white-space: pre-wrap; font-size:0.9rem; color:var(--text-main);">{content}</div>
-                                                </div>
-                                                """, unsafe_allow_html=True)
+                                        for sub_file in sub_files:
+                                            sub_mime = sub_file.get('mimeType', '').lower()
+                                            
+                                            if is_infos_clients and ('document' in sub_mime or 'text' in sub_mime):
+                                                content = get_google_doc_content(sub_file['id'], sub_mime, drive_service)
+                                                if content:
+                                                    st.markdown(f"""
+                                                    <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px;">
+                                                        <div style="font-weight:700; color:var(--primary); margin-bottom:8px;">📝 {sub_file.get('name')}</div>
+                                                        <div style="white-space: pre-wrap; font-size:0.9rem; color:var(--text-main);">{content}</div>
+                                                    </div>
+                                                    """, unsafe_allow_html=True)
+                                                else:
+                                                    display_file(sub_file) 
                                             else:
-                                                display_file(sub_file) # Sécurité si impossible à lire
-                                        else:
-                                            # Pour les autres fichiers (Prestations, Factures, etc.), affichage classique
-                                            display_file(sub_file)
-                        else:
-                            display_file(file)
+                                                display_file(sub_file)
+                            else:
+                                display_file(file)
 
     except ImportError:
         st.error("🚨 La bibliothèque 'google-api-python-client' n'est pas installée.")
@@ -972,24 +977,51 @@ if page == "📊 Vue Générale":
                 d2 = df.copy()
                 d2["_date"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
                 d2 = d2.dropna(subset=["_date"])
+                
                 if not d2.empty:
-                    d2["_mois"] = d2["_date"].dt.to_period("M").astype(str)
-                    d2["Statut"] = d2["_signe"].map({True: "Signé ✅", False: "En attente ⏳"})
-                    cm = d2.groupby(["_mois","Statut"])["_montant"].sum().reset_index()
-                    fig = px.bar(cm, x="_mois", y="_montant", color="Statut",
-                                 title="📈 Évolution du CA par mois",
-                                 color_discrete_map={"Signé ✅": "#00d68f", "En attente ⏳": "#1e3a5f"})
-                    fig.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="var(--text-main)", font_family="Inter",
-                        title_font_size=14, title_font_color="var(--text-main)",
-                        xaxis=dict(showgrid=False, title=""),
-                        yaxis=dict(gridcolor="rgba(128,128,128,0.1)", title="CA (€)"),
-                        legend=dict(bgcolor="rgba(0,0,0,0)"),
-                        margin=dict(t=40, b=20, l=20, r=20),
-                        bargap=0.3,
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                    # MODIFICATION : SÉLECTEUR DE DATE
+                    st.markdown("<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:12px;'>📅 Période du graphique</div>", unsafe_allow_html=True)
+                    col_dt1, col_dt2 = st.columns(2)
+                    min_dt = d2["_date"].min().date()
+                    max_dt = d2["_date"].max().date()
+                    with col_dt1:
+                        start_dt = st.date_input("Du", value=min_dt, key="start_dt")
+                    with col_dt2:
+                        end_dt = st.date_input("Au", value=max_dt, key="end_dt")
+                    
+                    # Filtre les données selon les dates sélectionnées
+                    d2 = d2[(d2["_date"].dt.date >= start_dt) & (d2["_date"].dt.date <= end_dt)]
+                    
+                    if d2.empty:
+                        st.info("Aucune donnée sur cette période.")
+                    else:
+                        d2["_mois"] = d2["_date"].dt.to_period("M").astype(str)
+                        d2["Statut"] = d2["_signe"].map({True: "Signé ✅", False: "En attente ⏳"})
+                        cm = d2.groupby(["_mois","Statut"])["_montant"].sum().reset_index()
+                        
+                        fig = px.bar(cm, x="_mois", y="_montant", color="Statut",
+                                     title="📈 Évolution du CA par mois",
+                                     color_discrete_map={"Signé ✅": "#00d68f", "En attente ⏳": "#1e3a5f"})
+                        
+                        # MODIFICATION : GRAPHIQUE EN FOND BLANC
+                        fig.update_layout(
+                            paper_bgcolor="#FFFFFF", 
+                            plot_bgcolor="#FFFFFF",
+                            font_color="#0F172A", 
+                            font_family="Inter",
+                            title_font_size=14, 
+                            title_font_color="#0F172A",
+                            xaxis=dict(showgrid=False, title="", tickfont=dict(color="#0F172A")),
+                            yaxis=dict(gridcolor="#E2E8F0", title="CA (€)", tickfont=dict(color="#0F172A")),
+                            legend=dict(bgcolor="rgba(255,255,255,0.8)", font=dict(color="#0F172A")),
+                            margin=dict(t=40, b=20, l=20, r=20),
+                            bargap=0.3,
+                        )
+                        
+                        # Conteneur blanc pour encadrer le graphique
+                        st.markdown("<div style='background-color:#FFFFFF; border-radius:8px; padding:10px; border: 1px solid var(--border);'>", unsafe_allow_html=True)
+                        st.plotly_chart(fig, use_container_width=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.info("Colonne 'Date creation devis' non détectée pour le graphique.")
 
