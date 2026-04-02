@@ -406,7 +406,7 @@ with st.sidebar:
             <div style='width:36px;height:36px;background:linear-gradient(135deg,#4f8ef7,#2563eb);
                 border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;'>⚡</div>
             <div>
-                <div style='font-family:Inter,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Florian AI</div>
+                <div style='font-family:Inter,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Floxia</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
