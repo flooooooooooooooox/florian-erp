@@ -206,6 +206,46 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {{ color: var(--primary) !important; font-weight: 700 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p {{ margin: 0; font-size: 0.92rem; color: var(--text-muted); }}
 
+/* Radios dans le contenu principal (onglets custom) */
+section.main .stRadio > div[role="radiogroup"] {{
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    background: var(--bg-surface);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    border: 1px solid var(--border);
+    width: fit-content;
+    margin-bottom: 4px;
+}}
+section.main .stRadio > div[role="radiogroup"] > label {{
+    padding: 7px 16px !important;
+    background: transparent;
+    border-radius: 6px !important;
+    cursor: pointer;
+    border: none !important;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}}
+section.main .stRadio > div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
+section.main .stRadio > div[role="radiogroup"] > label p {{
+    margin: 0 !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    color: var(--text-muted) !important;
+}}
+section.main .stRadio > div[role="radiogroup"] > label[data-checked="true"] {{
+    background: var(--primary) !important;
+    box-shadow: 0 2px 12px rgba(79,142,247,0.3) !important;
+}}
+section.main .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {{
+    color: #fff !important;
+    font-weight: 600 !important;
+}}
+section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="true"]) {{
+    background: var(--bg-card) !important;
+}}
+
 .pulse-dot {{
     display: inline-block; width: 7px; height: 7px;
     border-radius: 50%; background: var(--success);
@@ -1342,12 +1382,18 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
-    t1, t2 = st.tabs(["⏳ En attente de signature", "✅ Devis signés"])
-    with t1:
+    if "tab_devis" not in st.session_state:
+        st.session_state["tab_devis"] = "⏳ En attente de signature"
+    tab_devis_choice = st.radio("", ["⏳ En attente de signature", "✅ Devis signés"],
+        horizontal=True, key="radio_devis",
+        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["tab_devis"]))
+    st.session_state["tab_devis"] = tab_devis_choice
+    st.markdown("---")
+    if tab_devis_choice == "⏳ En attente de signature":
         d = df_d[~df_d["_signe"]]
         st.caption(f"{len(d)} devis — CA potentiel : {fmt(d['_montant'].sum())}")
         show_table(d[cols].reset_index(drop=True) if cols else d, "devis_attente")
-    with t2:
+    else:
         d = df_d[df_d["_signe"]]
         st.caption(f"{len(d)} devis signés — CA confirmé : {fmt(d['_montant'].sum())}")
         show_table(d[cols].reset_index(drop=True) if cols else d, "devis_signes")
@@ -1377,11 +1423,17 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
-    t1, t2 = st.tabs(["⚠️ À facturer", "✅ Factures émises"])
-    with t1:
+    if "tab_fact" not in st.session_state:
+        st.session_state["tab_fact"] = "⚠️ À facturer"
+    tab_fact_choice = st.radio("", ["⚠️ À facturer", "✅ Factures émises"],
+        horizontal=True, key="radio_fact",
+        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["tab_fact"]))
+    st.session_state["tab_fact"] = tab_fact_choice
+    st.markdown("---")
+    if tab_fact_choice == "⚠️ À facturer":
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_attente")
-    with t2:
+    else:
         d = df_f[df_f["_fact_fin"]]
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_ok")
 
@@ -1436,22 +1488,30 @@ elif page == "🏗️ Chantiers":
 
     nb_reserves = int(df_ch["_has_reserve"].sum())
 
-    t1, t2, t3 = st.tabs([
-        "🟡 En cours",
-        "✅ Livrés (PV signé)",
-        f"🔒 Avec réserves ({nb_reserves})",
-    ])
-    with t1:
+    ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
+    if "tab_chantier" not in st.session_state:
+        st.session_state["tab_chantier"] = "🟡 En cours"
+    # Si l'option stockée contient "réserves" on cherche par préfixe
+    stored = st.session_state["tab_chantier"]
+    if stored not in ch_tab_opts:
+        if "réserves" in stored: stored = ch_tab_opts[2]
+        else: stored = ch_tab_opts[0]
+    tab_ch_choice = st.radio("", ch_tab_opts,
+        horizontal=True, key="radio_chantier",
+        index=ch_tab_opts.index(stored))
+    st.session_state["tab_chantier"] = tab_ch_choice
+    st.markdown("---")
+    if tab_ch_choice == "🟡 En cours":
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
         d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
         show_table(d_renamed.reset_index(drop=True), "ch_cours")
-    with t2:
+    elif tab_ch_choice == "✅ Livrés (PV signé)":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
         d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
         show_table(d_renamed.reset_index(drop=True), "ch_termines")
-    with t3:
+    else:
         d = df_ch[df_ch["_has_reserve"]]
         if d.empty:
             st.success("✅ Aucun chantier avec réserves détecté.")
