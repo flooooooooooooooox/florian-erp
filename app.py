@@ -206,7 +206,7 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {{ color: var(--primary) !important; font-weight: 700 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p {{ margin: 0; font-size: 0.92rem; color: var(--text-muted); }}
 
-/* Radios dans le contenu principal (onglets custom) */
+/* Radios dans le contenu principal */
 section.main .stRadio > div[role="radiogroup"] {{
     display: flex;
     flex-direction: row;
@@ -257,18 +257,6 @@ section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="
 .page-header {{ padding: 8px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }}
 .page-header h1 {{ font-family: 'Inter', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }}
 .page-header .subtitle {{ color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }}
-
-.client-alert-card {{
-    display:flex; align-items:center; gap:12px; padding:10px 14px;
-    background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15);
-    border-radius:8px; margin-bottom:8px; cursor:pointer;
-    transition: border-color 0.2s, background 0.2s;
-    text-decoration: none;
-}}
-.client-alert-card:hover {{
-    background: rgba(79,142,247,0.1);
-    border-color: rgba(79,142,247,0.4);
-}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -337,7 +325,7 @@ def get_sheet_data(username: str):
     except Exception as e:
         return pd.DataFrame(), str(e)
 
-# ── HELPERS & FONCTIONS D'AFFICHAGE ────────────────────────────────────────────
+# ── HELPERS ────────────────────────────────────────────────────────────────────
 def clean_amount(val):
     if pd.isna(val) or str(val).strip() == "":
         return 0.0
@@ -366,7 +354,6 @@ def fmt(v):
 def style_relances(row):
     r3_col = next((c for c in row.index if "relance 3" in str(c).lower()), None)
     st_col = next((c for c in row.index if "statut" in str(c).lower()), None)
-    
     if r3_col and st_col:
         r3_val = str(row.get(r3_col, "")).strip()
         st_val = str(row.get(st_col, "")).lower()
@@ -381,16 +368,13 @@ def show_table(dataframe, key_suffix=""):
     if total == 0:
         st.info("Aucun dossier trouvé.")
         return
-        
     show_all = st.session_state.get(f"show_all_{key_suffix}", False)
     displayed = dataframe if show_all else dataframe.head(LIMIT)
-    
     if isinstance(displayed, pd.DataFrame):
         styled_df = displayed.style.apply(style_relances, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.dataframe(displayed, use_container_width=True, hide_index=True)
-
     if total > LIMIT:
         if not show_all:
             st.caption(f"Affichage des {LIMIT} premiers sur {total}.")
@@ -435,14 +419,14 @@ with st.sidebar:
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
-    
+
     pages = [
         "📊 Vue Générale",
         "📋 Devis",
         "💶 Factures & Paiements",
         "🏗️ Chantiers",
         "📅 Planning",
-        "🗂️ Espace Clients", 
+        "🗂️ Espace Clients",
         "📁 Tous les dossiers",
         "📝 Éditeur Google Sheet",
         "📞 Coordonnées & RGPD"
@@ -450,7 +434,6 @@ with st.sidebar:
     if role == "admin":
         pages.append("👥 Utilisateurs")
 
-    # Handle navigation override from session state (e.g. click on client card)
     if "nav_override" in st.session_state:
         default_idx = pages.index(st.session_state["nav_override"]) if st.session_state["nav_override"] in pages else 0
         del st.session_state["nav_override"]
@@ -458,10 +441,9 @@ with st.sidebar:
         default_idx = 0
 
     page = st.radio("Navigation", pages, label_visibility="collapsed", index=st.session_state.get("_page_index", default_idx))
-    # Store current page index
     if page in pages:
         st.session_state["_page_index"] = pages.index(page)
-    
+
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div style='position:absolute;bottom:0;left:0;right:0;padding:16px;border-top:1px solid rgba(128,128,128,0.15);'>", unsafe_allow_html=True)
@@ -493,24 +475,6 @@ with st.sidebar:
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ── NAVIGATE TO ESPACE CLIENTS (triggered by clicking a client card) ───────────
-if st.session_state.get("_goto_espace_clients"):
-    st.session_state["_goto_espace_clients"] = False
-    st.session_state["_page_index"] = pages.index("🗂️ Espace Clients")
-    st.rerun()
-
-# ── SCROLL TO TOP ──────────────────────────────────────────────────────────────
-if "current_page" not in st.session_state:
-    st.session_state["current_page"] = page
-
-if st.session_state["current_page"] != page:
-    st.session_state["current_page"] = page
-    st.markdown("""
-        <script>
-            window.parent.document.querySelector('section.main').scrollTo(0, 0);
-        </script>
-    """, unsafe_allow_html=True)
-
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "👥 Utilisateurs":
     admin_panel()
@@ -524,7 +488,6 @@ elif page == "📞 Coordonnées & RGPD":
         <p style="font-size:1.1rem; color:var(--text-main);"><strong>Email :</strong> <a href="mailto:flogagnebien611@gmail.com" style="color:var(--primary);">flogagnebien611@gmail.com</a></p>
         <p style="font-size:1.1rem; color:var(--text-main);"><strong>Téléphone :</strong> 06 33 79 05 42</p>
     </div>
-    
     <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:24px;">
         <h3 style="color:var(--primary); margin-top:0;">🛡️ Conformité RGPD</h3>
         <p style="color:var(--text-main);">Cette application respecte le <strong>Règlement Général sur la Protection des Données (RGPD)</strong>.</p>
@@ -540,12 +503,11 @@ elif page == "📞 Coordonnées & RGPD":
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NOUVELLE PAGE : ESPACE CLIENTS (GOOGLE DRIVE)
+# PAGE : ESPACE CLIENTS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🗂️ Espace Clients":
     page_header("🗂️ Espace Clients", "Documents et dossiers synchronisés avec Google Drive")
 
-    # Pre-fill search if navigated from a client card click
     prefill_client = st.session_state.pop("_prefill_client_search", "")
 
     def get_google_doc_content(file_id, mime_type, drive_service):
@@ -562,12 +524,12 @@ elif page == "🗂️ Espace Clients":
 
     try:
         from googleapiclient.discovery import build
-        
+
         sheet_name, gsa_json = get_user_credentials(user)
         if not gsa_json:
             st.error("Identifiants Google introuvables pour ce compte.")
             st.stop()
-            
+
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
         drive_service = build('drive', 'v3', credentials=creds)
 
@@ -579,7 +541,6 @@ elif page == "🗂️ Espace Clients":
             st.warning("⚠️ Dossier principal 'espace clients' introuvable sur le Google Drive.")
         else:
             main_folder_id = main_folders[0]['id']
-
             query_clients = f"'{main_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
             res_clients = drive_service.files().list(q=query_clients, fields="files(id, name)", pageSize=1000).execute()
             client_folders = res_clients.get('files', [])
@@ -589,11 +550,10 @@ elif page == "🗂️ Espace Clients":
             else:
                 client_folders = sorted(client_folders, key=lambda x: x['name'].lower())
                 client_names = [f["name"] for f in client_folders]
-                
+
                 search_client = st.text_input("🔍 Rechercher un client :", placeholder="Tapez le nom d'un client...", value=prefill_client)
-                
                 filtered_client_names = [name for name in client_names if search_client.lower() in name.lower()]
-                
+
                 if not filtered_client_names:
                     st.warning("Aucun client ne correspond à votre recherche.")
                 else:
@@ -615,10 +575,9 @@ elif page == "🗂️ Espace Clients":
                         elif "image" in mime: icon = "🖼️"
                         elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
                         elif "document" in mime or "word" in mime: icon = "📝"
-
                         st.markdown(f"""
                         <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
-                            <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; transition:0.2s;">
+                            <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
                                 <div style="font-size:1.2rem;">{icon}</div>
                                 <div style="color:var(--text-main); font-weight:600; font-size:0.9rem;">{f_dict.get('name')}</div>
                                 <div style="margin-left:auto; color:var(--primary); font-size:0.75rem; font-weight:600;">Ouvrir ↗</div>
@@ -631,21 +590,17 @@ elif page == "🗂️ Espace Clients":
                     else:
                         for file in files:
                             mime_type = file.get('mimeType', '')
-                            
                             if mime_type == 'application/vnd.google-apps.folder':
                                 with st.expander(f"📁 **{file.get('name')}**"):
                                     sub_query = f"'{file.get('id')}' in parents and trashed = false"
                                     sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
                                     sub_files = sub_res.get('files', [])
-                                    
                                     if not sub_files:
                                         st.caption("Ce dossier est vide.")
                                     else:
                                         is_infos_clients = (file.get('name').strip().lower() in ["infos clients", "info client", "infos client"])
-                                        
                                         for sub_file in sub_files:
                                             sub_mime = sub_file.get('mimeType', '').lower()
-                                            
                                             if is_infos_clients and ('document' in sub_mime or 'text' in sub_mime):
                                                 content = get_google_doc_content(sub_file['id'], sub_mime, drive_service)
                                                 if content:
@@ -656,7 +611,7 @@ elif page == "🗂️ Espace Clients":
                                                     </div>
                                                     """, unsafe_allow_html=True)
                                                 else:
-                                                    display_file(sub_file) 
+                                                    display_file(sub_file)
                                             else:
                                                 display_file(sub_file)
                             else:
@@ -1060,10 +1015,10 @@ if page == "📊 Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
-    c2.metric(f"⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
+    c1.metric("💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
+    c2.metric("⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
     c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric(f"💸 Reste à Encaisser", fmt(reste_encaissement))
+    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1074,9 +1029,9 @@ if page == "📊 Vue Générale":
                 d2 = df.copy()
                 d2["_date"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
                 d2 = d2.dropna(subset=["_date"])
-                
+
                 if not d2.empty:
-                    st.markdown("<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:12px;'>📅 Période du graphique</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-weight:700;font-size:0.9rem;color:var(--text-muted);margin-bottom:10px;'>📅 Période</div>", unsafe_allow_html=True)
                     col_dt1, col_dt2 = st.columns(2)
                     min_dt = d2["_date"].min().date()
                     max_dt = d2["_date"].max().date()
@@ -1084,13 +1039,13 @@ if page == "📊 Vue Générale":
                         start_dt = st.date_input("Du", value=min_dt, key="start_dt")
                     with col_dt2:
                         end_dt = st.date_input("Au", value=max_dt, key="end_dt")
-                    
+
                     d2 = d2[(d2["_date"].dt.date >= start_dt) & (d2["_date"].dt.date <= end_dt)]
-                    
+
                     if d2.empty:
                         st.info("Aucune donnée sur cette période.")
                     else:
-                        # ── TOGGLE MODE GRAPHIQUE ───────────────────────────────────────────
+                        # ── TOGGLE MODE GRAPHIQUE ──────────────────────────────────────
                         chart_mode = st.radio(
                             "Type de graphique",
                             ["📊 Barres empilées", "📈 Courbes"],
@@ -1099,47 +1054,43 @@ if page == "📊 Vue Générale":
                             label_visibility="collapsed",
                         )
 
-                        d2["_mois"] = d2["_date"].dt.to_period("M").dt.to_timestamp()
+                        # Grouper par mois (string "YYYY-MM" pour axe catégoriel propre)
+                        d2["_mois_key"] = d2["_date"].dt.to_period("M").astype(str)
+                        d2["_mois_label"] = d2["_date"].dt.strftime("%b %Y")
 
-                        # Agrégation par mois
-                        ca_signe_m = (
-                            d2[d2["_signe"]]
-                            .groupby("_mois")["_montant"].sum()
-                            .reset_index()
-                            .rename(columns={"_montant": "CA Signé ✅"})
+                        # Table de correspondance clé → label trié
+                        month_map = (
+                            d2[["_mois_key","_mois_label"]]
+                            .drop_duplicates()
+                            .sort_values("_mois_key")
                         )
-                        ca_attente_m = (
-                            d2[~d2["_signe"]]
-                            .groupby("_mois")["_montant"].sum()
-                            .reset_index()
-                            .rename(columns={"_montant": "CA En attente ⏳"})
-                        )
-                        ca_total_m = (
-                            d2.groupby("_mois")["_montant"].sum()
-                            .reset_index()
-                            .rename(columns={"_montant": "CA Total 📊"})
-                        )
-                        all_months = pd.DataFrame({"_mois": sorted(d2["_mois"].unique())})
-                        merged = all_months.copy()
-                        merged = merged.merge(ca_total_m, on="_mois", how="left")
-                        merged = merged.merge(ca_signe_m, on="_mois", how="left")
-                        merged = merged.merge(ca_attente_m, on="_mois", how="left")
+
+                        ca_total_m   = d2.groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA Total"})
+                        ca_signe_m   = d2[d2["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA Signé"})
+                        ca_attente_m = d2[~d2["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA En attente"})
+
+                        merged = month_map.copy()
+                        merged = merged.merge(ca_total_m, on="_mois_key", how="left")
+                        merged = merged.merge(ca_signe_m, on="_mois_key", how="left")
+                        merged = merged.merge(ca_attente_m, on="_mois_key", how="left")
                         merged = merged.fillna(0)
+
+                        x_labels = merged["_mois_label"].tolist()
 
                         fig = go.Figure()
 
-                        # ── MODE BARRES EMPILÉES ────────────────────────────────────────────
+                        # ── MODE BARRES EMPILÉES ───────────────────────────────────────
                         if chart_mode == "📊 Barres empilées":
                             fig.add_trace(go.Bar(
-                                x=merged["_mois"],
-                                y=merged.get("CA En attente ⏳", 0),
+                                x=x_labels,
+                                y=merged["CA En attente"],
                                 name="En attente ⏳",
                                 marker_color="#1e3a5f",
                                 marker_line_width=0,
                             ))
                             fig.add_trace(go.Bar(
-                                x=merged["_mois"],
-                                y=merged.get("CA Signé ✅", 0),
+                                x=x_labels,
+                                y=merged["CA Signé"],
                                 name="Signé ✅",
                                 marker_color="#00d68f",
                                 marker_line_width=0,
@@ -1147,111 +1098,79 @@ if page == "📊 Vue Générale":
                             fig.update_layout(
                                 barmode="stack",
                                 bargap=0.3,
-                                title=dict(
-                                    text="📈 Évolution du CA par mois",
-                                    font=dict(size=14, color=chart_font, family="Inter"),
-                                ),
-                                paper_bgcolor=chart_bg,
-                                plot_bgcolor=chart_bg,
-                                font=dict(color=chart_font, family="Inter"),
-                                xaxis=dict(
-                                    showgrid=False,
-                                    title="",
-                                    tickfont=dict(color=chart_font, size=11),
-                                    tickformat="%b %Y",
-                                    showline=False,
-                                    zeroline=False,
-                                ),
-                                yaxis=dict(
-                                    gridcolor=chart_grid,
-                                    title="CA (€)",
-                                    tickfont=dict(color=chart_font, size=11),
-                                    showline=False,
-                                    zeroline=False,
-                                ),
-                                legend=dict(
-                                    bgcolor="rgba(255,255,255,0.05)",
-                                    bordercolor=chart_grid,
-                                    borderwidth=1,
-                                    font=dict(color=chart_font, size=11),
-                                    orientation="v",
-                                    yanchor="top",
-                                    y=1,
-                                    xanchor="right",
-                                    x=1,
-                                ),
-                                hovermode="x unified",
-                                margin=dict(t=50, b=20, l=20, r=20),
                             )
 
-                        # ── MODE COURBES (style boursier) ───────────────────────────────────
+                        # ── MODE COURBES ───────────────────────────────────────────────
                         else:
                             fig.add_trace(go.Scatter(
-                                x=merged["_mois"],
-                                y=merged["CA Total 📊"],
+                                x=x_labels,
+                                y=merged["CA Total"],
                                 name="CA Total",
                                 mode="lines+markers",
                                 line=dict(color="#4f8ef7", width=2.5, shape="spline"),
-                                marker=dict(size=6, color="#4f8ef7"),
+                                marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)),
                                 fill="tozeroy",
                                 fillcolor="rgba(79,142,247,0.07)",
                             ))
                             fig.add_trace(go.Scatter(
-                                x=merged["_mois"],
-                                y=merged["CA Signé ✅"],
+                                x=x_labels,
+                                y=merged["CA Signé"],
                                 name="CA Signé",
                                 mode="lines+markers",
                                 line=dict(color="#00d68f", width=2.5, shape="spline"),
-                                marker=dict(size=6, color="#00d68f"),
+                                marker=dict(size=7, color="#00d68f", line=dict(color="#fff", width=1.5)),
                                 fill="tozeroy",
                                 fillcolor="rgba(0,214,143,0.07)",
                             ))
                             fig.add_trace(go.Scatter(
-                                x=merged["_mois"],
-                                y=merged["CA En attente ⏳"],
+                                x=x_labels,
+                                y=merged["CA En attente"],
                                 name="CA En attente",
                                 mode="lines+markers",
                                 line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"),
                                 marker=dict(size=5, color="#ffb84d"),
                             ))
-                            fig.update_layout(
-                                title=dict(
-                                    text="📈 Évolution du CA par mois",
-                                    font=dict(size=14, color=chart_font, family="Inter"),
-                                ),
-                                paper_bgcolor=chart_bg,
-                                plot_bgcolor=chart_bg,
-                                font=dict(color=chart_font, family="Inter"),
-                                xaxis=dict(
-                                    showgrid=True,
-                                    gridcolor=chart_grid,
-                                    title="",
-                                    tickfont=dict(color=chart_font, size=11),
-                                    tickformat="%b %Y",
-                                    showline=False,
-                                    zeroline=False,
-                                ),
-                                yaxis=dict(
-                                    gridcolor=chart_grid,
-                                    title="CA (€)",
-                                    tickfont=dict(color=chart_font, size=11),
-                                    showline=False,
-                                    zeroline=False,
-                                ),
-                                legend=dict(
-                                    bgcolor="rgba(255,255,255,0.05)",
-                                    bordercolor=chart_grid,
-                                    borderwidth=1,
-                                    font=dict(color=chart_font, size=11),
-                                    orientation="h",
-                                    yanchor="bottom",
-                                    y=1.02,
-                                    xanchor="left",
-                                    x=0,
-                                ),
-                                hovermode="x unified",
-                                margin=dict(t=60, b=20, l=20, r=20),
-                            )
+
+                        # ── LAYOUT COMMUN ──────────────────────────────────────────────
+                        fig.update_layout(
+                            title=dict(
+                                text="📈 Évolution du CA par mois",
+                                font=dict(size=14, color=chart_font, family="Inter"),
+                            ),
+                            paper_bgcolor=chart_bg,
+                            plot_bgcolor=chart_bg,
+                            font=dict(color=chart_font, family="Inter"),
+                            xaxis=dict(
+                                type="category",
+                                showgrid=False,
+                                title="",
+                                tickfont=dict(color=chart_font, size=11),
+                                showline=False,
+                                zeroline=False,
+                                tickangle=-30,
+                            ),
+                            yaxis=dict(
+                                gridcolor=chart_grid,
+                                title="CA (€)",
+                                tickfont=dict(color=chart_font, size=11),
+                                showline=False,
+                                zeroline=False,
+                                tickformat=",.0f",
+                            ),
+                            legend=dict(
+                                bgcolor="rgba(255,255,255,0.05)",
+                                bordercolor=chart_grid,
+                                borderwidth=1,
+                                font=dict(color=chart_font, size=11),
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="left",
+                                x=0,
+                            ),
+                            hovermode="x unified",
+                            margin=dict(t=60, b=40, l=20, r=20),
+                        )
 
                         st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1264,7 +1183,6 @@ if page == "📊 Vue Générale":
             df_alertes_all = df[~df["_signe"]]
             ALERT_PREVIEW = 6
 
-            # ── Session state pour "voir plus" dans Actions Requises ───────────
             if "alertes_show_all" not in st.session_state:
                 st.session_state["alertes_show_all"] = False
 
@@ -1274,24 +1192,11 @@ if page == "📊 Vue Générale":
                 for idx, (_, row) in enumerate(df_alertes_display.iterrows()):
                     client = str(row[COL_CLIENT]) if COL_CLIENT else "Inconnu"
                     montant = fmt(row["_montant"])
-                    chantier = row[COL_CHANTIER] if COL_CHANTIER else ""
-                    num_devis = row[COL_NUM] if COL_NUM else ""
-                    date_creation = row[COL_DATE] if COL_DATE else ""
 
-                    tooltip_parts = [client]
-                    if chantier and str(chantier).strip():
-                        tooltip_parts.append(str(chantier))
-                    if num_devis and str(num_devis).strip():
-                        tooltip_parts.append(f"Devis: {num_devis}")
-                    if date_creation and str(date_creation).strip():
-                        tooltip_parts.append(str(date_creation))
-                    tooltip = " • ".join(tooltip_parts)
-
-                    # Button-driven navigation to Espace Clients
                     btn_col, card_col = st.columns([0.08, 0.92])
                     with card_col:
                         st.markdown(f"""
-                        <div title="{tooltip}" style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:4px;">
+                        <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:4px;">
                             <div style="font-size:1.1rem; flex-shrink:0;">📄</div>
                             <div style="flex:1; min-width:0;">
                                 <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{client}</div>
@@ -1305,11 +1210,10 @@ if page == "📊 Vue Générale":
                             st.session_state["_page_index"] = pages.index("🗂️ Espace Clients")
                             st.rerun()
 
-                # ── Bouton Voir Plus / Réduire ─────────────────────────────────
                 if nb_attente > ALERT_PREVIEW:
                     if not st.session_state["alertes_show_all"]:
                         remaining = nb_attente - ALERT_PREVIEW
-                        if st.button(f"📂 Voir les {remaining} autres devis en attente", use_container_width=True, key="btn_alertes_more"):
+                        if st.button(f"📂 Voir les {remaining} autres", use_container_width=True, key="btn_alertes_more"):
                             st.session_state["alertes_show_all"] = True
                             st.rerun()
                     else:
@@ -1382,12 +1286,13 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
-    if "tab_devis" not in st.session_state:
-        st.session_state["tab_devis"] = "⏳ En attente de signature"
-    tab_devis_choice = st.radio("", ["⏳ En attente de signature", "✅ Devis signés"],
-        horizontal=True, key="radio_devis",
-        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["tab_devis"]))
-    st.session_state["tab_devis"] = tab_devis_choice
+    # FIX double clic : pas de index= forcé
+    tab_devis_choice = st.radio(
+        "",
+        ["⏳ En attente de signature", "✅ Devis signés"],
+        horizontal=True,
+        key="radio_devis",
+    )
     st.markdown("---")
     if tab_devis_choice == "⏳ En attente de signature":
         d = df_d[~df_d["_signe"]]
@@ -1423,12 +1328,13 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
-    if "tab_fact" not in st.session_state:
-        st.session_state["tab_fact"] = "⚠️ À facturer"
-    tab_fact_choice = st.radio("", ["⚠️ À facturer", "✅ Factures émises"],
-        horizontal=True, key="radio_fact",
-        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["tab_fact"]))
-    st.session_state["tab_fact"] = tab_fact_choice
+    # FIX double clic : pas de index= forcé
+    tab_fact_choice = st.radio(
+        "",
+        ["⚠️ À facturer", "✅ Factures émises"],
+        horizontal=True,
+        key="radio_fact",
+    )
     st.markdown("---")
     if tab_fact_choice == "⚠️ À facturer":
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
@@ -1461,7 +1367,7 @@ elif page == "🏗️ Chantiers":
 
     cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE,
                              COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_statut_ch"] if c]
-    
+
     valid_rename_map = {
         COL_CLIENT: "Client",
         COL_CHANTIER: "Projet / Chantier",
@@ -1473,7 +1379,6 @@ elif page == "🏗️ Chantiers":
         "_statut_ch": "État d'avancement"
     }
 
-    # Detection chantiers avec réserves
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
         s = str(val).strip().lower()
@@ -1489,17 +1394,14 @@ elif page == "🏗️ Chantiers":
     nb_reserves = int(df_ch["_has_reserve"].sum())
 
     ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
-    if "tab_chantier" not in st.session_state:
-        st.session_state["tab_chantier"] = "🟡 En cours"
-    # Si l'option stockée contient "réserves" on cherche par préfixe
-    stored = st.session_state["tab_chantier"]
-    if stored not in ch_tab_opts:
-        if "réserves" in stored: stored = ch_tab_opts[2]
-        else: stored = ch_tab_opts[0]
-    tab_ch_choice = st.radio("", ch_tab_opts,
-        horizontal=True, key="radio_chantier",
-        index=ch_tab_opts.index(stored))
-    st.session_state["tab_chantier"] = tab_ch_choice
+
+    # FIX double clic : pas de index= forcé
+    tab_ch_choice = st.radio(
+        "",
+        ch_tab_opts,
+        horizontal=True,
+        key="radio_chantier",
+    )
     st.markdown("---")
     if tab_ch_choice == "🟡 En cours":
         d = df_ch[~df_ch["_pv"]]
@@ -1517,9 +1419,9 @@ elif page == "🏗️ Chantiers":
             st.success("✅ Aucun chantier avec réserves détecté.")
         else:
             r1, r2, r3 = st.columns(3)
-            r1.metric("🔒 Chantiers avec réserves", len(d))
+            r1.metric("🔒 Avec réserves", len(d))
             r2.metric("💰 CA concerné", fmt(d['_montant'].sum()))
-            r3.metric("🟡 Encore non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
+            r3.metric("🟡 Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
             st.markdown("<br>", unsafe_allow_html=True)
             d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
             show_table(d_renamed.reset_index(drop=True), "ch_reserves")
@@ -1563,6 +1465,7 @@ elif page == "📅 Planning":
     view_mode = st.radio("Vue", ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"], horizontal=True, key="plan_view")
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── CALENDRIER MENSUEL ─────────────────────────────────────────────────────
     if view_mode == "📅 Calendrier mensuel":
         if "plan_year" not in st.session_state: st.session_state["plan_year"] = today.year
         if "plan_month" not in st.session_state: st.session_state["plan_month"] = today.month
@@ -1575,7 +1478,8 @@ elif page == "📅 Planning":
                 if st.session_state["plan_month"] == 1:
                     st.session_state["plan_month"] = 12
                     st.session_state["plan_year"] -= 1
-                else: st.session_state["plan_month"] -= 1
+                else:
+                    st.session_state["plan_month"] -= 1
                 st.rerun()
         with nav2:
             st.markdown(f"<h2 style='text-align:center;margin:0;color:var(--text-main);'>{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h2>", unsafe_allow_html=True)
@@ -1584,32 +1488,32 @@ elif page == "📅 Planning":
                 if st.session_state["plan_month"] == 12:
                     st.session_state["plan_month"] = 1
                     st.session_state["plan_year"] += 1
-                else: st.session_state["plan_month"] += 1
+                else:
+                    st.session_state["plan_month"] += 1
                 st.rerun()
 
         sel_y, sel_m = st.session_state["plan_year"], st.session_state["plan_month"]
-        
         days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
         cal_grid = calendar.monthcalendar(sel_y, sel_m)
-        
+
         with st.container(border=True):
             cols_h = st.columns(7)
             for i, d in enumerate(days_fr):
                 cols_h[i].markdown(f"<div style='text-align:center; font-weight:bold; color:var(--primary);'>{d}</div>", unsafe_allow_html=True)
-            
+
             for week in cal_grid:
                 cols_w = st.columns(7)
                 for i, day in enumerate(week):
                     if day != 0:
                         current_date = datetime(sel_y, sel_m, day).date()
                         evs = df_plan[(df_plan["_start"].dt.date <= current_date) & (df_plan["_end"].dt.date >= current_date)]
-                        
+
                         label = str(day)
                         if not evs.empty:
                             if "retard" in evs["_statut_code"].values: label += " 🔴"
                             elif "en-cours" in evs["_statut_code"].values: label += " 🔵"
                             else: label += " 🟢"
-                        
+
                         if cols_w[i].button(label, key=f"d_{sel_y}_{sel_m}_{day}", use_container_width=True):
                             st.session_state["selected_date"] = datetime(sel_y, sel_m, day)
 
@@ -1627,27 +1531,87 @@ elif page == "📅 Planning":
                         <div style="font-size:0.85rem; color:var(--text-muted);">📍 Lieu : {row.get(COL_ADRESSE, 'Non renseigné')}</div>
                     </div>
                     """, unsafe_allow_html=True)
-            else: st.info("Aucun chantier prévu ce jour.")
+            else:
+                st.info("Aucun chantier prévu ce jour.")
 
+    # ── GANTT ──────────────────────────────────────────────────────────────────
     elif view_mode == "📊 Gantt":
         df_gantt = df_plan.sort_values("_start")
-        fig_gantt = px.timeline(df_gantt, x_start="_start", x_end="_end", y=COL_CHANTIER or COL_CLIENT, color="_statut_code", 
-                               color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"})
+        fig_gantt = px.timeline(
+            df_gantt,
+            x_start="_start", x_end="_end",
+            y=COL_CHANTIER or COL_CLIENT,
+            color="_statut_code",
+            color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"},
+        )
         fig_gantt.update_layout(
-            paper_bgcolor=chart_bg, 
-            plot_bgcolor=chart_bg, 
-            font_color=chart_font, 
-            margin=dict(t=20, b=20, l=10, r=10), 
-            height=400,
+            paper_bgcolor=chart_bg,
+            plot_bgcolor=chart_bg,
+            font_color=chart_font,
+            margin=dict(t=20, b=20, l=10, r=10),
+            height=max(400, len(df_gantt) * 42 + 80),
             xaxis=dict(gridcolor=chart_grid),
-            yaxis=dict(gridcolor=chart_grid)
+            yaxis=dict(gridcolor=chart_grid, autorange="reversed"),
         )
         st.plotly_chart(fig_gantt, use_container_width=True)
 
+    # ── LISTE ──────────────────────────────────────────────────────────────────
     elif view_mode == "📋 Liste":
-        cols_l = [c for c in [COL_CLIENT, COL_CHANTIER, "_start", "_end", "_statut_code"] if c]
-        df_list = df_plan[cols_l].sort_values("_start")
-        show_table(df_list, "plan_list")
+        filtre_statut = st.multiselect(
+            "Filtrer par statut",
+            ["En cours", "En retard", "Terminé"],
+            default=["En cours", "En retard"],
+            key="list_filter"
+        )
+        code_map = {"En cours": "en-cours", "En retard": "retard", "Terminé": "termine"}
+        codes_actifs = [code_map[f] for f in filtre_statut]
+        df_list = df_plan[df_plan["_statut_code"].isin(codes_actifs)].sort_values("_start").copy()
+
+        if df_list.empty:
+            st.info("Aucun chantier correspondant.")
+        else:
+            df_list["_mois_str"] = df_list["_start"].dt.strftime("%B %Y").str.capitalize()
+            df_list["_mois_ord"] = df_list["_start"].dt.to_period("M")
+            color_map  = {"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"}
+            bg_map     = {"en-cours": "rgba(79,142,247,0.08)", "retard": "rgba(255,92,122,0.08)", "termine": "rgba(0,214,143,0.08)"}
+            label_map  = {"en-cours": "En cours", "retard": "En retard", "termine": "Terminé"}
+            border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)", "termine": "rgba(0,214,143,0.3)"}
+
+            for period, group in df_list.groupby("_mois_ord", sort=True):
+                mois_label = group["_mois_str"].iloc[0]
+                st.markdown(f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📅 {mois_label} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
+                for _, row in group.iterrows():
+                    client   = str(row[COL_CLIENT]) if COL_CLIENT else ""
+                    chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
+                    adresse  = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
+                    montant  = fmt(row["_montant"])
+                    debut    = row["_start"].strftime("%d/%m/%Y")
+                    fin      = row["_end"].strftime("%d/%m/%Y")
+                    duree    = (row["_end"] - row["_start"]).days + 1
+                    statut   = row["_statut_code"]
+                    color    = color_map[statut]
+                    bg       = bg_map[statut]
+                    border   = border_map[statut]
+                    label    = label_map[statut]
+                    st.markdown(f"""
+                    <div style="background:{bg};border:1px solid {border};border-left:3px solid {color};border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                            <div style="flex:1;">
+                                <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{"  •  📍 " + adresse if adresse and adresse != "nan" else ""}</div>
+                                <div style="margin-top:8px;">
+                                    <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;background:rgba(255,255,255,0.05);color:{color};border:1px solid {border};">{label}</span>
+                                    <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span>
+                                </div>
+                            </div>
+                            <div style="text-align:right;flex-shrink:0;">
+                                <div style="font-weight:700;color:{color};font-size:1rem;">{montant}</div>
+                                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
+                                <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
@@ -1665,5 +1629,5 @@ elif page == "📁 Tous les dossiers":
 
     st.caption(f"{len(d)} dossier(s) trouvé(s)")
     drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
-                  "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
+                 "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
