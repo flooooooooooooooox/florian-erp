@@ -1050,31 +1050,35 @@ if page == "📊 Vue Générale":
                     if d2.empty:
                         st.info("Aucune donnée sur cette période.")
                     else:
-                        # ── COURBE MULTI-LIGNES (style graphique boursier) ──────────────────
+                        # ── TOGGLE MODE GRAPHIQUE ───────────────────────────────────────────
+                        chart_mode = st.radio(
+                            "Type de graphique",
+                            ["📊 Barres empilées", "📈 Courbes"],
+                            horizontal=True,
+                            key="chart_mode_toggle",
+                            label_visibility="collapsed",
+                        )
+
                         d2["_mois"] = d2["_date"].dt.to_period("M").dt.to_timestamp()
 
-                        # CA Signé cumulé par mois
+                        # Agrégation par mois
                         ca_signe_m = (
                             d2[d2["_signe"]]
                             .groupby("_mois")["_montant"].sum()
                             .reset_index()
                             .rename(columns={"_montant": "CA Signé ✅"})
                         )
-                        # CA En attente cumulé par mois
                         ca_attente_m = (
                             d2[~d2["_signe"]]
                             .groupby("_mois")["_montant"].sum()
                             .reset_index()
                             .rename(columns={"_montant": "CA En attente ⏳"})
                         )
-                        # CA Total par mois
                         ca_total_m = (
                             d2.groupby("_mois")["_montant"].sum()
                             .reset_index()
                             .rename(columns={"_montant": "CA Total 📊"})
                         )
-
-                        # Merge on mois
                         all_months = pd.DataFrame({"_mois": sorted(d2["_mois"].unique())})
                         merged = all_months.copy()
                         merged = merged.merge(ca_total_m, on="_mois", how="left")
@@ -1084,78 +1088,130 @@ if page == "📊 Vue Générale":
 
                         fig = go.Figure()
 
-                        # CA Total — courbe principale (bleu clair)
-                        fig.add_trace(go.Scatter(
-                            x=merged["_mois"],
-                            y=merged["CA Total 📊"],
-                            name="CA Total",
-                            mode="lines+markers",
-                            line=dict(color="#4f8ef7", width=2.5, shape="spline"),
-                            marker=dict(size=6, color="#4f8ef7"),
-                            fill="tozeroy",
-                            fillcolor="rgba(79,142,247,0.07)",
-                        ))
+                        # ── MODE BARRES EMPILÉES ────────────────────────────────────────────
+                        if chart_mode == "📊 Barres empilées":
+                            fig.add_trace(go.Bar(
+                                x=merged["_mois"],
+                                y=merged.get("CA En attente ⏳", 0),
+                                name="En attente ⏳",
+                                marker_color="#1e3a5f",
+                                marker_line_width=0,
+                            ))
+                            fig.add_trace(go.Bar(
+                                x=merged["_mois"],
+                                y=merged.get("CA Signé ✅", 0),
+                                name="Signé ✅",
+                                marker_color="#00d68f",
+                                marker_line_width=0,
+                            ))
+                            fig.update_layout(
+                                barmode="stack",
+                                bargap=0.3,
+                                title=dict(
+                                    text="📈 Évolution du CA par mois",
+                                    font=dict(size=14, color=chart_font, family="Inter"),
+                                ),
+                                paper_bgcolor=chart_bg,
+                                plot_bgcolor=chart_bg,
+                                font=dict(color=chart_font, family="Inter"),
+                                xaxis=dict(
+                                    showgrid=False,
+                                    title="",
+                                    tickfont=dict(color=chart_font, size=11),
+                                    tickformat="%b %Y",
+                                    showline=False,
+                                    zeroline=False,
+                                ),
+                                yaxis=dict(
+                                    gridcolor=chart_grid,
+                                    title="CA (€)",
+                                    tickfont=dict(color=chart_font, size=11),
+                                    showline=False,
+                                    zeroline=False,
+                                ),
+                                legend=dict(
+                                    bgcolor="rgba(255,255,255,0.05)",
+                                    bordercolor=chart_grid,
+                                    borderwidth=1,
+                                    font=dict(color=chart_font, size=11),
+                                    orientation="v",
+                                    yanchor="top",
+                                    y=1,
+                                    xanchor="right",
+                                    x=1,
+                                ),
+                                hovermode="x unified",
+                                margin=dict(t=50, b=20, l=20, r=20),
+                            )
 
-                        # CA Signé — courbe verte
-                        fig.add_trace(go.Scatter(
-                            x=merged["_mois"],
-                            y=merged["CA Signé ✅"],
-                            name="CA Signé",
-                            mode="lines+markers",
-                            line=dict(color="#00d68f", width=2.5, shape="spline"),
-                            marker=dict(size=6, color="#00d68f"),
-                            fill="tozeroy",
-                            fillcolor="rgba(0,214,143,0.07)",
-                        ))
-
-                        # CA En attente — courbe orange
-                        fig.add_trace(go.Scatter(
-                            x=merged["_mois"],
-                            y=merged["CA En attente ⏳"],
-                            name="CA En attente",
-                            mode="lines+markers",
-                            line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"),
-                            marker=dict(size=5, color="#ffb84d"),
-                        ))
-
-                        fig.update_layout(
-                            title=dict(
-                                text="📈 Évolution du CA par mois",
-                                font=dict(size=14, color=chart_font, family="Inter"),
-                            ),
-                            paper_bgcolor=chart_bg,
-                            plot_bgcolor=chart_bg,
-                            font=dict(color=chart_font, family="Inter"),
-                            xaxis=dict(
-                                showgrid=True,
-                                gridcolor=chart_grid,
-                                title="",
-                                tickfont=dict(color=chart_font, size=11),
-                                tickformat="%b %Y",
-                                showline=False,
-                                zeroline=False,
-                            ),
-                            yaxis=dict(
-                                gridcolor=chart_grid,
-                                title="CA (€)",
-                                tickfont=dict(color=chart_font, size=11),
-                                showline=False,
-                                zeroline=False,
-                            ),
-                            legend=dict(
-                                bgcolor="rgba(255,255,255,0.05)",
-                                bordercolor=chart_grid,
-                                borderwidth=1,
-                                font=dict(color=chart_font, size=11),
-                                orientation="h",
-                                yanchor="bottom",
-                                y=1.02,
-                                xanchor="left",
-                                x=0,
-                            ),
-                            hovermode="x unified",
-                            margin=dict(t=60, b=20, l=20, r=20),
-                        )
+                        # ── MODE COURBES (style boursier) ───────────────────────────────────
+                        else:
+                            fig.add_trace(go.Scatter(
+                                x=merged["_mois"],
+                                y=merged["CA Total 📊"],
+                                name="CA Total",
+                                mode="lines+markers",
+                                line=dict(color="#4f8ef7", width=2.5, shape="spline"),
+                                marker=dict(size=6, color="#4f8ef7"),
+                                fill="tozeroy",
+                                fillcolor="rgba(79,142,247,0.07)",
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=merged["_mois"],
+                                y=merged["CA Signé ✅"],
+                                name="CA Signé",
+                                mode="lines+markers",
+                                line=dict(color="#00d68f", width=2.5, shape="spline"),
+                                marker=dict(size=6, color="#00d68f"),
+                                fill="tozeroy",
+                                fillcolor="rgba(0,214,143,0.07)",
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=merged["_mois"],
+                                y=merged["CA En attente ⏳"],
+                                name="CA En attente",
+                                mode="lines+markers",
+                                line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"),
+                                marker=dict(size=5, color="#ffb84d"),
+                            ))
+                            fig.update_layout(
+                                title=dict(
+                                    text="📈 Évolution du CA par mois",
+                                    font=dict(size=14, color=chart_font, family="Inter"),
+                                ),
+                                paper_bgcolor=chart_bg,
+                                plot_bgcolor=chart_bg,
+                                font=dict(color=chart_font, family="Inter"),
+                                xaxis=dict(
+                                    showgrid=True,
+                                    gridcolor=chart_grid,
+                                    title="",
+                                    tickfont=dict(color=chart_font, size=11),
+                                    tickformat="%b %Y",
+                                    showline=False,
+                                    zeroline=False,
+                                ),
+                                yaxis=dict(
+                                    gridcolor=chart_grid,
+                                    title="CA (€)",
+                                    tickfont=dict(color=chart_font, size=11),
+                                    showline=False,
+                                    zeroline=False,
+                                ),
+                                legend=dict(
+                                    bgcolor="rgba(255,255,255,0.05)",
+                                    bordercolor=chart_grid,
+                                    borderwidth=1,
+                                    font=dict(color=chart_font, size=11),
+                                    orientation="h",
+                                    yanchor="bottom",
+                                    y=1.02,
+                                    xanchor="left",
+                                    x=0,
+                                ),
+                                hovermode="x unified",
+                                margin=dict(t=60, b=20, l=20, r=20),
+                            )
 
                         st.plotly_chart(fig, use_container_width=True)
             else:
