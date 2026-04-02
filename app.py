@@ -1421,7 +1421,26 @@ elif page == "🏗️ Chantiers":
         "_statut_ch": "État d'avancement"
     }
 
-    t1, t2 = st.tabs(["🟡 En cours", "✅ Livrés (PV signé)"])
+    # Detection chantiers avec réserves
+    def has_reserve(val):
+        if pd.isna(val) or str(val).strip() == "": return False
+        s = str(val).strip().lower()
+        no_kw = ["sans", "non", "aucune", "aucun", "no", "none", "0", "faux", "false"]
+        if any(k in s for k in no_kw): return False
+        return True
+
+    if COL_RESERVE:
+        df_ch["_has_reserve"] = df_ch[COL_RESERVE].apply(has_reserve)
+    else:
+        df_ch["_has_reserve"] = False
+
+    nb_reserves = int(df_ch["_has_reserve"].sum())
+
+    t1, t2, t3 = st.tabs([
+        "🟡 En cours",
+        "✅ Livrés (PV signé)",
+        f"🔒 Avec réserves ({nb_reserves})",
+    ])
     with t1:
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
@@ -1432,6 +1451,18 @@ elif page == "🏗️ Chantiers":
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
         d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
         show_table(d_renamed.reset_index(drop=True), "ch_termines")
+    with t3:
+        d = df_ch[df_ch["_has_reserve"]]
+        if d.empty:
+            st.success("✅ Aucun chantier avec réserves détecté.")
+        else:
+            r1, r2, r3 = st.columns(3)
+            r1.metric("🔒 Chantiers avec réserves", len(d))
+            r2.metric("💰 CA concerné", fmt(d['_montant'].sum()))
+            r3.metric("🟡 Encore non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
+            st.markdown("<br>", unsafe_allow_html=True)
+            d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
+            show_table(d_renamed.reset_index(drop=True), "ch_reserves")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
