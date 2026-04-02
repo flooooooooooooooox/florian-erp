@@ -434,13 +434,30 @@ with st.sidebar:
     if role == "admin":
         pages.append("👥 Utilisateurs")
 
+    # ── FIX NAVIGATION : on_change callback évite le double rerun ──────────────
     if "nav_override" in st.session_state:
-        default_idx = pages.index(st.session_state["nav_override"]) if st.session_state["nav_override"] in pages else 0
-        del st.session_state["nav_override"]
-    else:
-        default_idx = 0
+        _override = st.session_state.pop("nav_override")
+        if _override in pages:
+            st.session_state["_page_index"] = pages.index(_override)
 
-    page = st.radio("Navigation", pages, label_visibility="collapsed", index=st.session_state.get("_page_index", default_idx))
+    if "_page_index" not in st.session_state:
+        st.session_state["_page_index"] = 0
+
+    def _on_nav_change():
+        # La valeur est déjà dans session_state["nav_radio"] — on synchronise l'index
+        val = st.session_state.get("nav_radio")
+        if val and val in pages:
+            st.session_state["_page_index"] = pages.index(val)
+
+    page = st.radio(
+        "Navigation",
+        pages,
+        label_visibility="collapsed",
+        index=st.session_state["_page_index"],
+        key="nav_radio",
+        on_change=_on_nav_change,
+    )
+    # Garantit la cohérence de l'index après chaque rendu
     if page in pages:
         st.session_state["_page_index"] = pages.index(page)
 
@@ -1045,7 +1062,6 @@ if page == "📊 Vue Générale":
                     if d2.empty:
                         st.info("Aucune donnée sur cette période.")
                     else:
-                        # ── TOGGLE MODE GRAPHIQUE ──────────────────────────────────────
                         chart_mode = st.radio(
                             "Type de graphique",
                             ["📊 Barres empilées", "📈 Courbes"],
@@ -1054,11 +1070,9 @@ if page == "📊 Vue Générale":
                             label_visibility="collapsed",
                         )
 
-                        # Grouper par mois (string "YYYY-MM" pour axe catégoriel propre)
                         d2["_mois_key"] = d2["_date"].dt.to_period("M").astype(str)
                         d2["_mois_label"] = d2["_date"].dt.strftime("%b %Y")
 
-                        # Table de correspondance clé → label trié
                         month_map = (
                             d2[["_mois_key","_mois_label"]]
                             .drop_duplicates()
@@ -1079,7 +1093,6 @@ if page == "📊 Vue Générale":
 
                         fig = go.Figure()
 
-                        # ── MODE BARRES EMPILÉES ───────────────────────────────────────
                         if chart_mode == "📊 Barres empilées":
                             fig.add_trace(go.Bar(
                                 x=x_labels,
@@ -1095,12 +1108,7 @@ if page == "📊 Vue Générale":
                                 marker_color="#00d68f",
                                 marker_line_width=0,
                             ))
-                            fig.update_layout(
-                                barmode="stack",
-                                bargap=0.3,
-                            )
-
-                        # ── MODE COURBES ───────────────────────────────────────────────
+                            fig.update_layout(barmode="stack", bargap=0.3)
                         else:
                             fig.add_trace(go.Scatter(
                                 x=x_labels,
@@ -1131,7 +1139,6 @@ if page == "📊 Vue Générale":
                                 marker=dict(size=5, color="#ffb84d"),
                             ))
 
-                        # ── LAYOUT COMMUN ──────────────────────────────────────────────
                         fig.update_layout(
                             title=dict(
                                 text="📈 Évolution du CA par mois",
@@ -1208,6 +1215,7 @@ if page == "📊 Vue Générale":
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
                             st.session_state["_page_index"] = pages.index("🗂️ Espace Clients")
+                            st.session_state["nav_radio"] = "🗂️ Espace Clients"
                             st.rerun()
 
                 if nb_attente > ALERT_PREVIEW:
@@ -1286,12 +1294,20 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
-    # FIX double clic : pas de index= forcé
+    # ── FIX DOUBLE CLIC : clé stable + session_state pour sous-onglets ────────
+    if "devis_tab" not in st.session_state:
+        st.session_state["devis_tab"] = "⏳ En attente de signature"
+
+    def _on_devis_tab():
+        st.session_state["devis_tab"] = st.session_state["_devis_tab_radio"]
+
     tab_devis_choice = st.radio(
         "",
         ["⏳ En attente de signature", "✅ Devis signés"],
         horizontal=True,
-        key="radio_devis",
+        key="_devis_tab_radio",
+        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["devis_tab"]),
+        on_change=_on_devis_tab,
     )
     st.markdown("---")
     if tab_devis_choice == "⏳ En attente de signature":
@@ -1328,12 +1344,20 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
-    # FIX double clic : pas de index= forcé
+    # ── FIX DOUBLE CLIC ────────────────────────────────────────────────────────
+    if "fact_tab" not in st.session_state:
+        st.session_state["fact_tab"] = "⚠️ À facturer"
+
+    def _on_fact_tab():
+        st.session_state["fact_tab"] = st.session_state["_fact_tab_radio"]
+
     tab_fact_choice = st.radio(
         "",
         ["⚠️ À facturer", "✅ Factures émises"],
         horizontal=True,
-        key="radio_fact",
+        key="_fact_tab_radio",
+        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["fact_tab"]),
+        on_change=_on_fact_tab,
     )
     st.markdown("---")
     if tab_fact_choice == "⚠️ À facturer":
@@ -1395,12 +1419,23 @@ elif page == "🏗️ Chantiers":
 
     ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
 
-    # FIX double clic : pas de index= forcé
+    # ── FIX DOUBLE CLIC ────────────────────────────────────────────────────────
+    if "chantier_tab" not in st.session_state:
+        st.session_state["chantier_tab"] = "🟡 En cours"
+    # Réinitialise si la valeur stockée n'est plus dans la liste (ex: nb_reserves a changé)
+    if st.session_state["chantier_tab"] not in ch_tab_opts:
+        st.session_state["chantier_tab"] = ch_tab_opts[0]
+
+    def _on_chantier_tab():
+        st.session_state["chantier_tab"] = st.session_state["_chantier_tab_radio"]
+
     tab_ch_choice = st.radio(
         "",
         ch_tab_opts,
         horizontal=True,
-        key="radio_chantier",
+        key="_chantier_tab_radio",
+        index=ch_tab_opts.index(st.session_state["chantier_tab"]),
+        on_change=_on_chantier_tab,
     )
     st.markdown("---")
     if tab_ch_choice == "🟡 En cours":
@@ -1462,7 +1497,24 @@ elif page == "📅 Planning":
     k4.metric("📅 Démarrent (7j)", int(((df_plan["_start"].dt.date >= today.date()) & (df_plan["_start"].dt.date <= (today + timedelta(days=7)).date())).sum()))
 
     st.markdown("<br>", unsafe_allow_html=True)
-    view_mode = st.radio("Vue", ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"], horizontal=True, key="plan_view")
+
+    # ── FIX DOUBLE CLIC : vue planning ────────────────────────────────────────
+    if "plan_view_tab" not in st.session_state:
+        st.session_state["plan_view_tab"] = "📅 Calendrier mensuel"
+
+    _plan_opts = ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"]
+
+    def _on_plan_view():
+        st.session_state["plan_view_tab"] = st.session_state["_plan_view_radio"]
+
+    view_mode = st.radio(
+        "Vue",
+        _plan_opts,
+        horizontal=True,
+        key="_plan_view_radio",
+        index=_plan_opts.index(st.session_state["plan_view_tab"]),
+        on_change=_on_plan_view,
+    )
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── CALENDRIER MENSUEL ─────────────────────────────────────────────────────
