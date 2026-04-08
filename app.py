@@ -9,6 +9,7 @@ import time
 import json
 import os
 import calendar
+import requests
 from auth import check_login, logout, admin_panel, get_user_credentials
 
 st.set_page_config(
@@ -19,11 +20,8 @@ st.set_page_config(
 )
 
 # ── THEME (WHITE / DARK MODE) ──────────────────────────────────────────────────
-if "_page_index" not in st.session_state:
-    st.session_state["_page_index"] = 0
-# Sécurité : si l'index dépasse le nombre de pages, on remet à 0
-if st.session_state["_page_index"] >= len(pages):
-    st.session_state["_page_index"] = 0
+if "themes" not in st.session_state:
+    st.session_state.themes = "dark"
 
 def toggle_theme():
     st.session_state.themes = "light" if st.session_state.themes == "dark" else "dark"
@@ -425,6 +423,7 @@ with st.sidebar:
 
     pages = [
         "📊 Vue Générale",
+        "📄 Créer un devis",
         "📋 Devis",
         "💶 Factures & Paiements",
         "🏗️ Chantiers",
@@ -967,6 +966,267 @@ elif page == "📝 Éditeur Google Sheet":
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
+    st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : CRÉER UN DEVIS  →  envoie au webhook n8n
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "📄 Créer un devis":
+    page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
+
+    # ── URL webhook depuis session_name ───────────────────────────────────────
+    session_name = st.secrets.get("n8n_session", "")
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{session_name}" if session_name else ""
+    if not WEBHOOK_URL:
+        st.error("⚠️ Clé `n8n_session` manquante dans secrets.toml")
+        st.code('[general]\nn8n_session = "ton-nom-de-session"', language="toml")
+        st.stop()
+
+    # ── Chargement catalogue pour les prestations ─────────────────────────────
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_catalogue_devis(u):
+        ws, err = get_worksheet(u, "catalogue")
+        if err:
+            return []
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return []
+            headers = [h.strip().lower() for h in vals[0]]
+            rows = vals[1:]
+            items = []
+            for r in rows:
+                if not any(r):
+                    continue
+                row_d = dict(zip(headers, r + [""] * (len(headers) - len(r))))
+                article = row_d.get("article", row_d.get("sous-prestation", ""))
+                prix    = row_d.get("prix vente ht", row_d.get("total ht", ""))
+                label   = article.strip()
+                if prix.strip():
+                    label += f"  –  {prix} € HT"
+                items.append({
+                    "label":       label,
+                    "article":     article,
+                    "description": row_d.get("description", ""),
+                    "prix_ht":     prix,
+                    "categorie":   row_d.get("catégorie", row_d.get("categorie", "")),
+                })
+            return items
+        except Exception:
+            return []
+
+    catalogue = _load_catalogue_devis(user)
+    catalogue_labels = ["— Choisir dans le catalogue —"] + [c["label"] for c in catalogue]
+
+    # ── SESSION STATE pour les lignes de prestations ──────────────────────────
+    if "devis_lignes" not in st.session_state:
+        st.session_state.devis_lignes = [
+            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+        ]
+
+    # ── FORMULAIRE INFOS CLIENT + CHANTIER ────────────────────────────────────
+    st.markdown("#### 👤 Informations client")
+    c1, c2 = st.columns(2)
+    with c1:
+        client_nom     = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
+        client_email   = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
+    with c2:
+        client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
+        client_adresse = st.text_input("Adresse chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr")
+
+    st.markdown("---")
+    st.markdown("#### 🏗️ Chantier")
+    c3, c4 = st.columns(2)
+    with c3:
+        objet_travaux = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
+        modalite_paie = st.selectbox("Modalité de paiement", [
+            "Acompte / Solde",
+            "Paiement intégral à la commande",
+            "Paiement comptant / immédiat",
+            "Paiement échelonné / progressif",
+            "Paiement différé / à terme",
+        ], key="dv_modal")
+    with c4:
+        date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
+        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
+
+    tva_option = st.radio(
+        "Taux TVA applicable",
+        ["10 % (travaux rénovation)", "20 % (travaux neufs / autres)"],
+        horizontal=True, key="dv_tva"
+    )
+    tva_taux = 0.10 if "10" in tva_option else 0.20
+
+    # ── Lignes de prestations (dynamique) ─────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🛠️ Prestations")
+
+    lignes = st.session_state.devis_lignes
+    to_delete = []
+
+    for i, ligne in enumerate(lignes):
+        with st.container(border=True):
+            col_src, col_del = st.columns([6, 1])
+            with col_src:
+                source_choice = st.radio(
+                    f"src_{i}",
+                    ["📚 Catalogue", "✏️ Saisie libre"],
+                    horizontal=True,
+                    key=f"src_{i}",
+                    index=0 if ligne["source"] == "catalogue" else 1,
+                    label_visibility="collapsed",
+                )
+            with col_del:
+                if len(lignes) > 1:
+                    if st.button("🗑️", key=f"del_{i}", help="Supprimer cette ligne"):
+                        to_delete.append(i)
+
+            if source_choice == "📚 Catalogue":
+                ligne["source"] = "catalogue"
+                sel_cat = st.selectbox("Prestation catalogue", catalogue_labels, key=f"cat_{i}")
+                if sel_cat != catalogue_labels[0]:
+                    cat_item = next((c for c in catalogue if c["label"] == sel_cat), None)
+                    if cat_item:
+                        ligne["article"]     = cat_item["article"]
+                        ligne["description"] = cat_item["description"]
+                        try:
+                            ligne["prix_ht"] = float(str(cat_item["prix_ht"]).replace(",", ".").replace(" ", "") or 0)
+                        except Exception:
+                            ligne["prix_ht"] = 0.0
+                cq1, cp1 = st.columns(2)
+                with cq1:
+                    ligne["qte"]     = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                with cp1:
+                    ligne["prix_ht"] = st.number_input("Prix HT unitaire (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
+            else:
+                ligne["source"]      = "libre"
+                ligne["article"]     = st.text_input("Désignation *", value=ligne["article"], key=f"art_{i}", placeholder="Ex : Pose carrelage")
+                ligne["description"] = st.text_input("Description", value=ligne["description"], key=f"desc_{i}", placeholder="Détails optionnels")
+                cq2, cp2 = st.columns(2)
+                with cq2:
+                    ligne["qte"]     = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
+                with cp2:
+                    ligne["prix_ht"] = st.number_input("Prix HT unitaire (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
+
+            st.caption(f"💶 Total ligne : **{ligne['qte'] * ligne['prix_ht']:,.2f} €** HT")
+
+    for idx in sorted(to_delete, reverse=True):
+        st.session_state.devis_lignes.pop(idx)
+    if to_delete:
+        st.rerun()
+
+    if st.button("➕ Ajouter une ligne", key="add_ligne"):
+        st.session_state.devis_lignes.append(
+            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+        )
+        st.rerun()
+
+    # ── Récap totaux ──────────────────────────────────────────────────────────
+    total_ht  = sum(l["qte"] * l["prix_ht"] for l in lignes)
+    total_tva = total_ht * tva_taux
+    total_ttc = total_ht + total_tva
+
+    st.markdown(f"""
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <div style="min-width:260px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;padding:6px 14px;background:var(--bg-surface);font-size:0.88rem;">
+          <span style="color:var(--text-muted);">Total HT</span><strong>{total_ht:,.2f} €</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 14px;background:var(--bg-surface);font-size:0.88rem;">
+          <span style="color:var(--text-muted);">TVA ({int(tva_taux*100)} %)</span><strong>{total_tva:,.2f} €</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px 14px;background:#1d4ed8;color:#fff;font-weight:700;font-size:1rem;">
+          <span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Bouton envoi ──────────────────────────────────────────────────────────
+    if st.button("🚀 Envoyer à n8n — Générer le devis", use_container_width=True, type="primary", key="btn_send_n8n"):
+        errors = []
+        if not client_nom.strip():      errors.append("Nom client manquant")
+        if not client_email.strip():    errors.append("Email client manquant")
+        if not client_adresse.strip():  errors.append("Adresse chantier manquante")
+        if not objet_travaux.strip():   errors.append("Objet des travaux manquant")
+        if not any(l["article"].strip() for l in lignes):
+            errors.append("Au moins une prestation est requise")
+
+        if errors:
+            for e in errors:
+                st.error(f"❌ {e}")
+        else:
+            from datetime import timedelta
+            date_fin_estimee = date_debut + timedelta(days=int(duree_jours))
+
+            payload = {
+                "client": {
+                    "nom":     client_nom.strip(),
+                    "email":   client_email.strip(),
+                    "tel":     client_tel.strip(),
+                    "adresse": client_adresse.strip(),
+                },
+                "chantier": {
+                    "objet":             objet_travaux.strip(),
+                    "date_debut":        date_debut.strftime("%Y-%m-%d"),
+                    "duree_jours":       int(duree_jours),
+                    "date_fin_estimee":  date_fin_estimee.strftime("%Y-%m-%d"),
+                    "modalite_paiement": modalite_paie,
+                },
+                "tva": {
+                    "taux":     tva_taux,
+                    "taux_pct": int(tva_taux * 100),
+                },
+                "prestations": [
+                    {
+                        "numero":      i + 1,
+                        "article":     l["article"].strip(),
+                        "description": l["description"].strip(),
+                        "qte":         l["qte"],
+                        "prix_ht":     round(l["prix_ht"], 2),
+                        "total_ht":    round(l["qte"] * l["prix_ht"], 2),
+                    }
+                    for i, l in enumerate(lignes) if l["article"].strip()
+                ],
+                "totaux": {
+                    "total_ht":  round(total_ht, 2),
+                    "tva":       round(total_tva, 2),
+                    "total_ttc": round(total_ttc, 2),
+                },
+                "meta": {
+                    "cree_par": user,
+                    "cree_le":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "source":   "streamlit_erp",
+                },
+            }
+
+            with st.spinner("📡 Envoi à n8n en cours..."):
+                try:
+                    resp = requests.post(
+                        WEBHOOK_URL,
+                        json=payload,
+                        timeout=30,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if resp.status_code in (200, 201):
+                        st.success("✅ Devis envoyé ! n8n s'occupe du PDF, du mail et de Sheets.")
+                        st.balloons()
+                        st.session_state.devis_lignes = [
+                            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+                        ]
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
+                        st.code(resp.text[:500])
+                except requests.exceptions.Timeout:
+                    st.error("⏱️ Timeout — n8n ne répond pas dans les 30 secondes.")
+                except requests.exceptions.ConnectionError:
+                    st.error(f"🔌 Impossible de joindre {WEBHOOK_URL} — vérifie que n8n est démarré.")
+                except Exception as ex:
+                    st.error(f"Erreur inattendue : {ex}")
+
     st.stop()
 
 # ── CHARGEMENT DONNÉES ─────────────────────────────────────────────────────────
@@ -1686,4 +1946,3 @@ elif page == "📁 Tous les dossiers":
     drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
                  "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
-
