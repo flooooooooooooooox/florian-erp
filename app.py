@@ -1683,4 +1683,3 @@ elif page == "📁 Tous les dossiers":
     drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
                  "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
-
