@@ -1,16 +1,14 @@
 import streamlit as st
-import hashlib
 import json
 import os
 import secrets
 import string
 import requests
+import bcrypt
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPABASE — config
-# Les clés sont dans Streamlit Secrets :
-#   SUPABASE_URL = "https://bkcedmuryujnddgabobn.supabase.co"
-#   SUPABASE_KEY = "eyJhbGci..."
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _sb_url() -> str:
@@ -76,8 +74,17 @@ def _sb_update_password(username: str, new_hash: str) -> bool:
     return r.ok
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 def _hash(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    """Hash un mot de passe avec bcrypt."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def _verify(password: str, hashed: str) -> bool:
+    """Vérifie un mot de passe contre son hash bcrypt."""
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 def _generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%"
@@ -156,8 +163,8 @@ def check_login() -> bool:
         if submitted:
             # Florian → vérification via ADMIN_PASSWORD dans secrets
             if username == "florian":
-                admin_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
-                if _hash(password) == admin_hash:
+                admin_hash = st.secrets.get("ADMIN_PASSWORD", "")
+                if admin_hash and _verify(password, admin_hash):
                     st.session_state["authenticated"] = True
                     st.session_state["username"]      = "florian"
                     st.session_state["role"]          = "admin"
@@ -168,7 +175,7 @@ def check_login() -> bool:
                 # Autres users → vérification via Supabase
                 try:
                     u = _sb_get(username)
-                    if u and u.get("password_hash") == _hash(password):
+                    if u and _verify(password, u.get("password_hash", "")):
                         st.session_state["authenticated"] = True
                         st.session_state["username"]      = username
                         st.session_state["role"]          = u.get("role", "viewer")
@@ -294,8 +301,8 @@ def admin_panel():
         chg = st.form_submit_button("Mettre à jour", use_container_width=True)
 
     if chg:
-        current_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
-        if _hash(old_pwd) != current_hash:
+        current_hash = st.secrets.get("ADMIN_PASSWORD", "")
+        if not current_hash or not _verify(old_pwd, current_hash):
             st.error("Ancien mot de passe incorrect.")
         elif new_pwd1 != new_pwd2:
             st.error("Les deux mots de passe ne correspondent pas.")
