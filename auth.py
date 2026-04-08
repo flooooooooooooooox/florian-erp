@@ -5,6 +5,7 @@ import secrets
 import string
 import requests
 import bcrypt
+import time
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -77,14 +78,43 @@ def _sb_update_password(username: str, new_hash: str) -> bool:
 
 def _hash(password: str) -> str:
     """Hash un mot de passe avec bcrypt."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(password.strip().encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 def _verify(password: str, hashed: str) -> bool:
-    """Vérifie un mot de passe contre son hash bcrypt."""
+    """Vérifie un mot de passe contre son hash bcrypt. Strip les espaces."""
     try:
-        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+        return bcrypt.checkpw(password.strip().encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
         return False
+
+# ── Lockout (30 tentatives → blocage 30 minutes) ──────────────────────────────
+_MAX_ATTEMPTS  = 30
+_LOCKOUT_SECS  = 30 * 60  # 30 minutes
+
+def _init_lockout():
+    if "login_attempts" not in st.session_state:
+        st.session_state["login_attempts"] = 0
+    if "lockout_until" not in st.session_state:
+        st.session_state["lockout_until"] = 0
+
+def _is_locked_out() -> bool:
+    _init_lockout()
+    return time.time() < st.session_state["lockout_until"]
+
+def _lockout_remaining() -> int:
+    """Retourne le nombre de secondes restantes avant déblocage."""
+    return max(0, int(st.session_state["lockout_until"] - time.time()))
+
+def _record_failed_attempt():
+    _init_lockout()
+    st.session_state["login_attempts"] += 1
+    if st.session_state["login_attempts"] >= _MAX_ATTEMPTS:
+        st.session_state["lockout_until"] = time.time() + _LOCKOUT_SECS
+        st.session_state["login_attempts"] = 0
+
+def _reset_attempts():
+    st.session_state["login_attempts"] = 0
+    st.session_state["lockout_until"]  = 0
 
 def _generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%"
@@ -155,6 +185,17 @@ def check_login() -> bool:
             unsafe_allow_html=True,
         )
 
+        # ── Vérification blocage ───────────────────────────────────────────────
+        if _is_locked_out():
+            mins = _lockout_remaining() // 60
+            secs = _lockout_remaining() % 60
+            st.error(f"🔒 Trop de tentatives. Réessayez dans **{mins}m {secs}s**.")
+            st.stop()
+
+        attempts_left = _MAX_ATTEMPTS - st.session_state.get("login_attempts", 0)
+        if attempts_left <= 5:
+            st.warning(f"⚠️ {attempts_left} tentative(s) restante(s) avant blocage de 30 minutes.")
+
         with st.form("login_form"):
             username  = st.text_input("👤 Identifiant", placeholder="florian")
             password  = st.text_input("🔒 Mot de passe", type="password")
@@ -165,24 +206,29 @@ def check_login() -> bool:
             if username == "florian":
                 admin_hash = st.secrets.get("ADMIN_PASSWORD", "")
                 if admin_hash and _verify(password, admin_hash):
+                    _reset_attempts()
                     st.session_state["authenticated"] = True
                     st.session_state["username"]      = "florian"
                     st.session_state["role"]          = "admin"
                     st.rerun()
                 else:
+                    _record_failed_attempt()
                     st.error("❌ Identifiant ou mot de passe incorrect.")
             else:
                 # Autres users → vérification via Supabase
                 try:
                     u = _sb_get(username)
                     if u and _verify(password, u.get("password_hash", "")):
+                        _reset_attempts()
                         st.session_state["authenticated"] = True
                         st.session_state["username"]      = username
                         st.session_state["role"]          = u.get("role", "viewer")
                         st.rerun()
                     else:
+                        _record_failed_attempt()
                         st.error("❌ Identifiant ou mot de passe incorrect.")
                 except Exception as e:
+                    _record_failed_attempt()
                     st.error(f"❌ Erreur de connexion : {e}")
 
     return False
