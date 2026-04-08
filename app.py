@@ -19,8 +19,11 @@ st.set_page_config(
 )
 
 # ── THEME (WHITE / DARK MODE) ──────────────────────────────────────────────────
-if "themes" not in st.session_state:
-    st.session_state.themes = "dark"
+if "_page_index" not in st.session_state:
+    st.session_state["_page_index"] = 0
+# Sécurité : si l'index dépasse le nombre de pages, on remet à 0
+if st.session_state["_page_index"] >= len(pages):
+    st.session_state["_page_index"] = 0
 
 def toggle_theme():
     st.session_state.themes = "light" if st.session_state.themes == "dark" else "dark"
