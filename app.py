@@ -444,6 +444,9 @@ with st.sidebar:
 
     if "_page_index" not in st.session_state:
         st.session_state["_page_index"] = 0
+    # ── Fix : index hors limites si la liste pages a changé ──
+    if st.session_state["_page_index"] >= len(pages):
+        st.session_state["_page_index"] = 0
 
     def _on_nav_change():
         # La valeur est déjà dans session_state["nav_radio"] — on synchronise l'index
