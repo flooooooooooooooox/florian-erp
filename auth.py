@@ -8,9 +8,6 @@ import requests
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPABASE — config
-# Les clés sont dans Streamlit Secrets :
-#   SUPABASE_URL = "https://bkcedmuryujnddgabobn.supabase.co"
-#   SUPABASE_KEY = "eyJhbGci..."
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _sb_url() -> str:
@@ -86,18 +83,26 @@ def _generate_password(length: int = 12) -> str:
 def get_user_credentials(username: str):
     """
     Retourne (sheet_name, google_sa_json_str) pour le user connecté.
-    - florian → st.secrets (SHEET_NAME + GOOGLE_SERVICE_ACCOUNT)
-    - autres  → valeurs dans Supabase
+    Tous les users passent par Supabase, y compris florian.
+    Fallback sur Streamlit Secrets pour florian si absent de Supabase.
     """
+    u = _sb_get(username)
+    if u:
+        sheet = u.get("sheet_name", "")
+        gsa   = u.get("google_sa", "")
+        # Si les credentials Google ne sont pas dans Supabase pour florian,
+        # on les prend dans les Secrets Streamlit
+        if username == "florian" and (not sheet or not gsa):
+            sheet = sheet or st.secrets.get("SHEET_NAME", "")
+            gsa   = gsa   or st.secrets.get("GOOGLE_SERVICE_ACCOUNT", "")
+        return sheet, gsa
+    # Dernier recours pour florian
     if username == "florian":
         return (
             st.secrets.get("SHEET_NAME", ""),
             st.secrets.get("GOOGLE_SERVICE_ACCOUNT", ""),
         )
-    u = _sb_get(username)
-    if not u:
-        return "", ""
-    return u.get("sheet_name", ""), u.get("google_sa", "")
+    return "", ""
 
 # ── CSS login ──────────────────────────────────────────────────────────────────
 _LOGIN_CSS = """
@@ -154,29 +159,18 @@ def check_login() -> bool:
             submitted = st.form_submit_button("Se connecter", use_container_width=True)
 
         if submitted:
-            # Florian → vérification via ADMIN_PASSWORD dans secrets
-            if username == "florian":
-                admin_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
-                if _hash(password) == admin_hash:
+            # Tous les users passent par Supabase, y compris florian
+            try:
+                u = _sb_get(username)
+                if u and u.get("password_hash") == _hash(password):
                     st.session_state["authenticated"] = True
-                    st.session_state["username"]      = "florian"
-                    st.session_state["role"]          = "admin"
+                    st.session_state["username"]      = username
+                    st.session_state["role"]          = u.get("role", "viewer")
                     st.rerun()
                 else:
                     st.error("❌ Identifiant ou mot de passe incorrect.")
-            else:
-                # Autres users → vérification via Supabase
-                try:
-                    u = _sb_get(username)
-                    if u and u.get("password_hash") == _hash(password):
-                        st.session_state["authenticated"] = True
-                        st.session_state["username"]      = username
-                        st.session_state["role"]          = u.get("role", "viewer")
-                        st.rerun()
-                    else:
-                        st.error("❌ Identifiant ou mot de passe incorrect.")
-                except Exception as e:
-                    st.error(f"❌ Erreur de connexion : {e}")
+            except Exception as e:
+                st.error(f"❌ Erreur de connexion : {e}")
 
     return False
 
@@ -188,29 +182,22 @@ def logout():
 def admin_panel():
     st.markdown('<h1 style="font-size:2rem;">👥 Gestion des utilisateurs</h1>', unsafe_allow_html=True)
 
-    # ── Liste ──────────────────────────────────────────────────────────────────
     st.markdown("### Utilisateurs existants")
-
-    # Florian (admin, toujours dans secrets)
-    c1, c2, _ = st.columns([3, 4, 1])
-    c1.markdown("**florian** *(admin)*")
-    c2.caption(f"Sheet : `{st.secrets.get('SHEET_NAME','—')}` — credentials dans Streamlit Secrets")
 
     try:
         users = _sb_all_users()
         for u in users:
             uname = u.get("username", "")
-            if uname == "florian":
-                continue
             c1, c2, c3 = st.columns([3, 4, 1])
-            c1.markdown(f"**{uname}**")
+            c1.markdown(f"**{uname}**" + (" *(admin)*" if uname == "florian" else ""))
             c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}`")
-            if c3.button("🗑️", key=f"del_{uname}"):
-                if _sb_delete(uname):
-                    st.success(f"✅ User **{uname}** supprimé.")
-                    st.rerun()
-                else:
-                    st.error("Erreur lors de la suppression.")
+            if uname != "florian":
+                if c3.button("🗑️", key=f"del_{uname}"):
+                    if _sb_delete(uname):
+                        st.success(f"✅ User **{uname}** supprimé.")
+                        st.rerun()
+                    else:
+                        st.error("Erreur lors de la suppression.")
     except Exception as e:
         st.error(f"Erreur chargement users : {e}")
 
@@ -249,7 +236,6 @@ def admin_panel():
         elif not gsa_clean:
             err = "Le JSON Google Service Account est obligatoire."
         else:
-            # Nettoyage JSON
             if gsa_clean.startswith("```"):
                 gsa_clean = gsa_clean.split("```")[1]
                 if gsa_clean.startswith("json"):
@@ -285,7 +271,7 @@ def admin_panel():
 
     st.divider()
 
-    # ── Changer mot de passe admin ─────────────────────────────────────────────
+    # ── Changer mot de passe (via Supabase) ────────────────────────────────────
     st.markdown("### 🔑 Changer le mot de passe admin (florian)")
     with st.form("change_pwd_form"):
         old_pwd  = st.text_input("Ancien mot de passe", type="password")
@@ -294,14 +280,15 @@ def admin_panel():
         chg = st.form_submit_button("Mettre à jour", use_container_width=True)
 
     if chg:
-        current_hash = st.secrets.get("ADMIN_PASSWORD", _hash("florian2024"))
-        if _hash(old_pwd) != current_hash:
+        u = _sb_get("florian")
+        if not u or u.get("password_hash") != _hash(old_pwd):
             st.error("Ancien mot de passe incorrect.")
         elif new_pwd1 != new_pwd2:
             st.error("Les deux mots de passe ne correspondent pas.")
         elif len(new_pwd1) < 8:
             st.error("Minimum 8 caractères.")
         else:
-            new_hash = _hash(new_pwd1)
-            st.success("✅ Copie ce hash dans **Streamlit Secrets → ADMIN_PASSWORD** :")
-            st.code(f'ADMIN_PASSWORD = "{new_hash}"', language="toml")
+            if _sb_update_password("florian", _hash(new_pwd1)):
+                st.success("✅ Mot de passe mis à jour avec succès !")
+            else:
+                st.error("❌ Erreur lors de la mise à jour.")
