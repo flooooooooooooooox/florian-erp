@@ -1096,19 +1096,52 @@ elif page == "📄 Créer un devis":
     c3, c4 = st.columns(2)
     with c3:
         objet_travaux = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
-        modalite_paie = st.selectbox("Modalité de paiement", [
-            "Acompte / Solde", "Paiement intégral à la commande",
-            "Paiement comptant / immédiat", "Paiement échelonné / progressif",
-            "Paiement différé / à terme",
-        ], key="dv_modal")
+        mmodalite_paie = st.selectbox("Modalité de paiement", [
+    "Acompte / Solde",
+    "Paiement intégral à la commande",
+    "Paiement à réception des travaux",
+    "Paiement différé / à terme",
+    "Paiement échelonné / progressif",
+], key="dv_modal")
+
+# Bloc conditionnel selon la modalité choisie
+if modalite_paie == "Acompte / Solde":
+    col_ac1, col_ac2 = st.columns(2)
+    with col_ac1:
+        acompte_pct = st.number_input("Acompte à la commande (%)", min_value=0, max_value=100, value=30, step=5, key="dv_acompte_pct")
+    with col_ac2:
+        # affiché dynamiquement — on recalcule après que total_ttc soit connu
+        st.info(f"Le solde de **{100 - acompte_pct} %** sera dû à la fin des travaux.")
+    detail_modalite = f"Acompte de {acompte_pct} % à la commande, solde de {100 - acompte_pct} % à la réception."
+elif modalite_paie == "Paiement intégral à la commande":
+    detail_modalite = "Paiement intégral exigible à la signature du devis / commande."
+elif modalite_paie == "Paiement à réception des travaux":
+    detail_modalite = "Paiement intégral exigible à la réception des travaux."
+elif modalite_paie == "Paiement différé / à terme":
+    delai_jours = st.number_input("Délai de paiement (jours après réception)", min_value=1, max_value=90, value=30, step=5, key="dv_delai")
+    detail_modalite = f"Paiement différé : règlement sous {delai_jours} jours après réception des travaux."
+elif modalite_paie == "Paiement échelonné / progressif":
+    st.markdown("**Définissez vos échéances :**")
+    ec1, ec2, ec3 = st.columns(3)
+    with ec1: ech1 = st.number_input("Acompte commande (%)", 0, 100, 30, 5, key="dv_ech1")
+    with ec2: ech2 = st.number_input("En cours de travaux (%)", 0, 100, 40, 5, key="dv_ech2")
+    with ec3: ech3 = st.number_input("À la réception (%)", 0, 100, 30, 5, key="dv_ech3")
+    total_ech = ech1 + ech2 + ech3
+    if total_ech != 100:
+        st.warning(f"⚠️ Total des échéances : {total_ech} % (doit être 100 %)")
+    detail_modalite = f"Paiement échelonné : {ech1} % à la commande, {ech2} % en cours de chantier, {ech3} % à la réception."
+else:
+    detail_modalite = modalite_paie
     with c4:
         date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
 
-    tva_option = st.radio("Taux TVA applicable",
-        ["10 % (travaux rénovation)", "20 % (travaux neufs / autres)"],
-        horizontal=True, key="dv_tva")
-    tva_taux = 0.10 if "10" in tva_option else 0.20
+   col_tva1, col_tva2 = st.columns([1, 2])
+with col_tva1:
+    tva_saisie = st.number_input("Taux TVA (%)", min_value=0.0, max_value=100.0, value=10.0, step=0.5, key="dv_tva_val")
+    tva_taux = tva_saisie / 100
+with col_tva2:
+    st.info(f"TVA applicable : **{tva_saisie:.1f} %** → {'Taux réduit (rénovation logement +2 ans)' if tva_saisie == 10.0 else 'Taux normal (travaux neufs)' if tva_saisie == 20.0 else 'Taux personnalisé'}")
 
     st.markdown("---")
     st.markdown("#### 🛠️ Prestations")
