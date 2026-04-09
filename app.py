@@ -990,12 +990,7 @@ elif page == "📄 Créer un devis":
                 row_d = dict(zip(headers, r + [""] * (len(headers) - len(r))))
                 article = row_d.get("article", row_d.get("sous-prestation", ""))
                 prix = row_d.get("prix vente ht", row_d.get("total ht", ""))
-                label = article.strip()
-                if prix.strip(): label += f"  –  {prix} € HT"
-                items.append({
-                    "label": label, "article": article,
-                    "description": row_d.get("description", ""), "prix_ht": prix
-                })
+                items.append({"label": f"{article.strip()} – {prix} € HT", "article": article, "description": row_d.get("description", ""), "prix_ht": prix})
             return items
         except Exception: return []
 
@@ -1005,25 +1000,38 @@ elif page == "📄 Créer un devis":
     if "devis_lignes" not in st.session_state:
         st.session_state.devis_lignes = [{"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}]
 
+    # --- INFOS CLIENT ---
     st.markdown("#### 👤 Informations client")
     c1, c2 = st.columns(2)
-    with c1:
-        client_nom = st.text_input("Nom complet *", key="dv_nom")
-        client_email = st.text_input("Email *", key="dv_email")
-    with c2:
-        client_tel = st.text_input("Téléphone", key="dv_tel")
-        client_adresse = st.text_input("Adresse chantier *", key="dv_adr")
+    client_nom = c1.text_input("Nom complet *", key="dv_nom")
+    client_email = c1.text_input("Email *", key="dv_email")
+    client_tel = c2.text_input("Téléphone", key="dv_tel")
+    client_adresse = c2.text_input("Adresse chantier *", key="dv_adr")
 
     st.markdown("---")
-    st.markdown("#### 🏗️ Chantier & TVA")
-    c3, c4 = st.columns(2)
-    with c3:
+    
+    # --- CHANTIER & PAIEMENT ---
+    col_left, col_right = st.columns([2, 1])
+    
+    with col_left:
+        st.markdown("#### 🏗️ Chantier & TVA")
         objet_travaux = st.text_input("Objet des travaux *", key="dv_objet")
-        modalite_paie = st.selectbox("Modalité", ["Acompte / Solde", "Intégral", "Comptant"], key="dv_modal")
-    with c4:
-        # SELECTION DU TAUX DE TVA
         tva_option = st.selectbox("Taux de TVA applicable *", ["10 % (Rénovation)", "20 % (Neuf / Autre)"], key="dv_tva_sel")
         tva_taux = 0.10 if "10" in tva_option else 0.20
+        modalite_paie = st.selectbox("Modalité de paiement", 
+            ["Acompte / Solde", "Paiement intégral", "Paiement échelonné", "Paiement différé"], key="dv_modal")
+
+    with col_right:
+        st.markdown("#### 💳 Détails Paiement")
+        if modalite_paie == "Acompte / Solde":
+            val_acompte = st.number_input("Montant Acompte (€)", min_value=0.0, step=100.0)
+            st.caption(f"Le solde sera réglé à la fin.")
+        elif modalite_paie == "Paiement échelonné":
+            segments = st.text_area("Détails des échéances", placeholder="Ex: 30% commande, 40% milieu, 30% fin")
+        elif modalite_paie == "Paiement différé":
+            date_diff = st.date_input("Date de règlement prévue")
+        else:
+            st.write("Règlement total à la commande.")
 
     st.markdown("---")
     st.markdown("#### 🛠️ Prestations (Libre ou Catalogue)")
@@ -1033,14 +1041,13 @@ elif page == "📄 Créer un devis":
 
     for i, ligne in enumerate(lignes):
         with st.container(border=True):
-            cols_header = st.columns([5, 1])
-            source_choice = cols_header[0].radio(f"Ligne {i+1} : Type d'élément", ["📚 Catalogue", "✏️ Prestation libre"], horizontal=True, key=f"src_{i}")
+            cols_h = st.columns([5, 1])
+            source_choice = cols_h[0].radio(f"Ligne {i+1}", ["📚 Catalogue", "✏️ Prestation libre"], horizontal=True, key=f"src_{i}")
             if len(lignes) > 1:
-                if cols_header[1].button("🗑️", key=f"del_{i}"): to_delete.append(i)
+                if cols_h[1].button("🗑️", key=f"del_{i}"): to_delete.append(i)
 
             if source_choice == "📚 Catalogue":
-                ligne["source"] = "catalogue"
-                sel_cat = st.selectbox("Choisir l'article", catalogue_labels, key=f"cat_{i}")
+                sel_cat = st.selectbox("Article catalogue", catalogue_labels, key=f"cat_{i}")
                 if sel_cat != catalogue_labels[0]:
                     item = next((c for c in catalogue if c["label"] == sel_cat), None)
                     if item:
@@ -1048,20 +1055,21 @@ elif page == "📄 Créer un devis":
                         try: ligne["prix_ht"] = float(str(item["prix_ht"]).replace(",",".").replace(" ","") or 0)
                         except: ligne["prix_ht"] = 0.0
             else:
-                ligne["source"] = "libre"
-                ligne["article"] = st.text_input("Nom de la prestation", value=ligne["article"], key=f"art_{i}")
-                ligne["description"] = st.text_area("Description détaillée", value=ligne["description"], key=f"desc_{i}", height=70)
+                ligne["article"] = st.text_input("Désignation", value=ligne["article"], key=f"art_{i}")
+                ligne["description"] = st.text_area("Description", value=ligne["description"], key=f"desc_{i}", height=60)
 
             c_q, c_p = st.columns(2)
             ligne["qte"] = c_q.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), key=f"qte_{i}")
             ligne["prix_ht"] = c_p.number_input("Prix HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), key=f"pht_{i}")
 
-    for idx in sorted(to_delete, reverse=True): lignes.pop(idx)
-    if to_delete: st.rerun()
     if st.button("➕ Ajouter une ligne"):
-        lignes.append({"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0})
+        st.session_state.devis_lignes.append({"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0})
         st.rerun()
 
+    for idx in sorted(to_delete, reverse=True): st.session_state.devis_lignes.pop(idx)
+    if to_delete: st.rerun()
+
+    # --- TOTAUX ---
     total_ht = sum(l["qte"] * l["prix_ht"] for l in lignes)
     total_tva = total_ht * tva_taux
     total_ttc = total_ht + total_tva
@@ -1069,28 +1077,37 @@ elif page == "📄 Créer un devis":
     st.markdown(f"""
     <div style="display:flex;justify-content:flex-end;margin-top:20px;">
         <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:15px; min-width:280px;">
-            <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
-            <div style="display:flex;justify-content:space-between;font-size:0.9rem;color:var(--primary);"><span>TVA ({int(tva_taux*100)}%)</span><strong>{total_tva:,.2f} €</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
+            <div style="display:flex;justify-content:space-between;color:var(--primary);"><span>TVA ({int(tva_taux*100)}%)</span><strong>{total_tva:,.2f} €</strong></div>
             <hr style="margin:10px 0; border-color:var(--border);">
             <div style="display:flex;justify-content:space-between;font-size:1.1rem;font-weight:bold;color:var(--success);"><span>TOTAL TTC</span><strong>{total_ttc:,.2f} €</strong></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("🚀 Envoyer le devis", type="primary", use_container_width=True):
+    # --- ACTIONS ---
+    ca1, ca2 = st.columns(2)
+    if ca1.button("👁️ Prévisualiser", use_container_width=True):
+        st.session_state.devis_preview = True
+    
+    if ca2.button("🚀 Envoyer le devis", type="primary", use_container_width=True):
         if not client_nom or not client_email: st.error("Champs obligatoires manquants.")
         else:
             payload = {
                 "client": {"nom": client_nom, "email": client_email, "adresse": client_adresse},
-                "chantier": {"objet": objet_travaux, "tva_taux": f"{int(tva_taux*100)}%"},
-                "lignes": lignes,
-                "totaux": {"ht": total_ht, "tva": total_tva, "ttc": total_ttc}
+                "chantier": {"objet": objet_travaux, "tva": f"{int(tva_taux*100)}%", "modalite": modalite_paie},
+                "lignes": lignes, "totaux": {"ht": total_ht, "ttc": total_ttc}
             }
-            try:
-                resp = requests.post(WEBHOOK_URL, json=payload, timeout=20)
-                if resp.status_code < 300: st.success("✅ Envoyé à n8n !"); st.balloons()
-                else: st.error(f"Erreur n8n : {resp.status_code}")
-            except Exception as e: st.error(f"Erreur connexion : {e}")
+            resp = requests.post(WEBHOOK_URL, json=payload)
+            if resp.status_code < 300: st.success("✅ Envoyé !"); st.balloons()
+            else: st.error("Erreur d'envoi.")
+
+    if st.session_state.get("devis_preview"):
+        st.markdown("---")
+        st.markdown(f"### 📋 Récapitulatif : {objet_travaux}")
+        st.write(f"**Client :** {client_nom} | **TVA :** {int(tva_taux*100)}% | **Paiement :** {modalite_paie}")
+        for l in lignes:
+            if l['article']: st.write(f"- {l['article']} : {l['qte']} x {l['prix_ht']}€ = {l['qte']*l['prix_ht']:,.2f}€ HT")
 
     st.stop()
 
