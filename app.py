@@ -207,7 +207,6 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {{ color: var(--primary) !important; font-weight: 700 !important; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label p {{ margin: 0; font-size: 0.92rem; color: var(--text-muted); }}
 
-/* Radios dans le contenu principal */
 section.main .stRadio > div[role="radiogroup"] {{
     display: flex;
     flex-direction: row;
@@ -968,148 +967,450 @@ elif page == "📝 Éditeur Google Sheet":
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CRÉER UN DEVIS  →  envoie au webhook n8n
+# PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📄 Créer un devis":
     page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
     WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user}"
 
+    # ── Chargement catalogue (onglet catalogue) ────────────────────────────────
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_catalogue_devis(u):
         ws, err = get_worksheet(u, "catalogue")
-        if err: return []
+        if err:
+            return []
         try:
             vals = ws.get_all_values()
-            if not vals or len(vals) < 2: return []
+            if not vals or len(vals) < 2:
+                return []
             headers = [h.strip().lower() for h in vals[0]]
             rows = vals[1:]
             items = []
             for r in rows:
-                if not any(r): continue
+                if not any(r):
+                    continue
                 row_d = dict(zip(headers, r + [""] * (len(headers) - len(r))))
                 article = row_d.get("article", row_d.get("sous-prestation", ""))
-                prix = row_d.get("prix vente ht", row_d.get("total ht", ""))
-                items.append({"label": f"{article.strip()} – {prix} € HT", "article": article, "description": row_d.get("description", ""), "prix_ht": prix})
+                prix    = row_d.get("prix vente ht", row_d.get("total ht", ""))
+                label   = article.strip()
+                if prix.strip():
+                    label += f"  –  {prix} € HT"
+                items.append({
+                    "label": label,
+                    "article": article,
+                    "description": row_d.get("description", ""),
+                    "prix_ht": prix,
+                    "categorie": row_d.get("catégorie", row_d.get("categorie", "")),
+                    "source_sheet": "catalogue",
+                })
             return items
-        except Exception: return []
+        except Exception:
+            return []
 
-    catalogue = _load_catalogue_devis(user)
-    catalogue_labels = ["— Choisir dans le catalogue —"] + [c["label"] for c in catalogue]
+    # ── Chargement prestations (Feuille 1) ─────────────────────────────────────
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_prestations_devis(u):
+        ws, err = get_worksheet(u, "Feuille 1")
+        if err:
+            return []
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return []
+            headers = [h.strip().lower() for h in vals[0]]
+            rows = vals[1:]
+            items = []
+            for r in rows:
+                if not any(r):
+                    continue
+                row_d = dict(zip(headers, r + [""] * (len(headers) - len(r))))
+                # Cherche le nom de la prestation
+                article = (
+                    row_d.get("sous-prestation", "") or
+                    row_d.get("sous prestation", "") or
+                    row_d.get("designation", "") or
+                    row_d.get("désignation", "") or
+                    row_d.get("prestation", "") or
+                    ""
+                ).strip()
+                if not article:
+                    continue
+                # Cherche le prix total HT
+                prix = (
+                    row_d.get("total ht", "") or
+                    row_d.get("prix vente ht", "") or
+                    row_d.get("prix mo ht", "") or
+                    ""
+                ).strip()
+                label = article
+                if prix:
+                    label += f"  –  {prix} € HT"
+                # Catégorie / type de poste pour affichage
+                categorie = (
+                    row_d.get("categorie", "") or
+                    row_d.get("catégorie", "") or
+                    row_d.get("type de poste", "") or
+                    ""
+                ).strip()
+                items.append({
+                    "label": label,
+                    "article": article,
+                    "description": row_d.get("description", ""),
+                    "prix_ht": prix,
+                    "categorie": categorie,
+                    "source_sheet": "prestations",
+                })
+            return items
+        except Exception:
+            return []
+
+    catalogue_items    = _load_catalogue_devis(user)
+    prestations_items  = _load_prestations_devis(user)
+
+    # Fusionner les deux sources avec un préfixe pour les distinguer
+    all_items = (
+        [{"label": f"[Catalogue] {c['label']}", **{k: v for k, v in c.items() if k != 'label'}} for c in catalogue_items] +
+        [{"label": f"[Prestation] {p['label']}", **{k: v for k, v in p.items() if k != 'label'}} for p in prestations_items]
+    )
+    all_labels = ["— Choisir dans catalogue ou prestations —"] + [it["label"] for it in all_items]
 
     if "devis_lignes" not in st.session_state:
-        st.session_state.devis_lignes = [{"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}]
+        st.session_state.devis_lignes = [
+            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+        ]
+    if "devis_preview" not in st.session_state:
+        st.session_state.devis_preview = False
 
-    # --- INFOS CLIENT ---
     st.markdown("#### 👤 Informations client")
     c1, c2 = st.columns(2)
-    client_nom = c1.text_input("Nom complet *", key="dv_nom")
-    client_email = c1.text_input("Email *", key="dv_email")
-    client_tel = c2.text_input("Téléphone", key="dv_tel")
-    client_adresse = c2.text_input("Adresse chantier *", key="dv_adr")
+    with c1:
+        client_nom     = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
+        client_email   = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
+    with c2:
+        client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
+        client_adresse = st.text_input("Adresse chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr")
 
     st.markdown("---")
-    
-    # --- CHANTIER & PAIEMENT ---
-    col_left, col_right = st.columns([2, 1])
-    
-    with col_left:
-        st.markdown("#### 🏗️ Chantier & TVA")
-        objet_travaux = st.text_input("Objet des travaux *", key="dv_objet")
-        tva_option = st.selectbox("Taux de TVA applicable *", ["10 % (Rénovation)", "20 % (Neuf / Autre)"], key="dv_tva_sel")
-        tva_taux = 0.10 if "10" in tva_option else 0.20
-        modalite_paie = st.selectbox("Modalité de paiement", 
-            ["Acompte / Solde", "Paiement intégral", "Paiement échelonné", "Paiement différé"], key="dv_modal")
+    st.markdown("#### 🏗️ Chantier")
+    c3, c4 = st.columns(2)
+    with c3:
+        objet_travaux = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
+        modalite_paie = st.selectbox("Modalité de paiement", [
+            "Acompte / Solde", "Paiement intégral à la commande",
+            "Paiement comptant / immédiat", "Paiement échelonné / progressif",
+            "Paiement différé / à terme",
+        ], key="dv_modal")
+    with c4:
+        date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
+        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
 
-    with col_right:
-        st.markdown("#### 💳 Détails Paiement")
-        if modalite_paie == "Acompte / Solde":
-            val_acompte = st.number_input("Montant Acompte (€)", min_value=0.0, step=100.0)
-            st.caption(f"Le solde sera réglé à la fin.")
-        elif modalite_paie == "Paiement échelonné":
-            segments = st.text_area("Détails des échéances", placeholder="Ex: 30% commande, 40% milieu, 30% fin")
-        elif modalite_paie == "Paiement différé":
-            date_diff = st.date_input("Date de règlement prévue")
-        else:
-            st.write("Règlement total à la commande.")
+    tva_option = st.radio("Taux TVA applicable",
+        ["10 % (travaux rénovation)", "20 % (travaux neufs / autres)"],
+        horizontal=True, key="dv_tva")
+    tva_taux = 0.10 if "10" in tva_option else 0.20
 
     st.markdown("---")
-    st.markdown("#### 🛠️ Prestations (Libre ou Catalogue)")
+    st.markdown("#### 🛠️ Prestations")
 
     lignes = st.session_state.devis_lignes
     to_delete = []
 
     for i, ligne in enumerate(lignes):
         with st.container(border=True):
-            cols_h = st.columns([5, 1])
-            source_choice = cols_h[0].radio(f"Ligne {i+1}", ["📚 Catalogue", "✏️ Prestation libre"], horizontal=True, key=f"src_{i}")
-            if len(lignes) > 1:
-                if cols_h[1].button("🗑️", key=f"del_{i}"): to_delete.append(i)
+            col_src, col_del = st.columns([6, 1])
+            with col_src:
+                source_choice = st.radio(
+                    f"src_{i}",
+                    ["📚 Catalogue / Prestations", "✏️ Saisie libre"],
+                    horizontal=True,
+                    key=f"src_{i}",
+                    index=0 if ligne["source"] in ("catalogue", "prestations") else 1,
+                    label_visibility="collapsed",
+                )
+            with col_del:
+                if len(lignes) > 1:
+                    if st.button("🗑️", key=f"del_{i}", help="Supprimer cette ligne"):
+                        to_delete.append(i)
 
-            if source_choice == "📚 Catalogue":
-                sel_cat = st.selectbox("Article catalogue", catalogue_labels, key=f"cat_{i}")
-                if sel_cat != catalogue_labels[0]:
-                    item = next((c for c in catalogue if c["label"] == sel_cat), None)
-                    if item:
-                        ligne["article"], ligne["description"] = item["article"], item["description"]
-                        try: ligne["prix_ht"] = float(str(item["prix_ht"]).replace(",",".").replace(" ","") or 0)
-                        except: ligne["prix_ht"] = 0.0
+            if source_choice == "📚 Catalogue / Prestations":
+                ligne["source"] = "catalogue"
+                prev_sel = ligne.get("_prev_sel", "")
+                sel_item = st.selectbox(
+                    "Choisir une prestation ou un article",
+                    all_labels,
+                    key=f"cat_{i}",
+                )
+                if sel_item != all_labels[0]:
+                    found = next((it for it in all_items if it["label"] == sel_item), None)
+                    if found:
+                        ligne["article"]     = found["article"]
+                        ligne["description"] = found["description"]
+                        ligne["source"]      = found["source_sheet"]
+                        if sel_item != prev_sel:
+                            try:
+                                ligne["prix_ht"] = float(
+                                    str(found["prix_ht"])
+                                    .replace(",", ".").replace(" ", "").replace("\u202f", "") or 0
+                                )
+                            except Exception:
+                                ligne["prix_ht"] = 0.0
+                            ligne["_prev_sel"] = sel_item
+                            for k in [f"pht_{i}"]:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+                            st.rerun()
+                cq1, cp1 = st.columns(2)
+                with cq1:
+                    ligne["qte"]     = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                with cp1:
+                    ligne["prix_ht"] = st.number_input("Prix HT unitaire (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
             else:
-                ligne["article"] = st.text_input("Désignation", value=ligne["article"], key=f"art_{i}")
-                ligne["description"] = st.text_area("Description", value=ligne["description"], key=f"desc_{i}", height=60)
+                ligne["source"]      = "libre"
+                ligne["article"]     = st.text_input("Désignation *", value=ligne["article"], key=f"art_{i}", placeholder="Ex : Pose carrelage")
+                ligne["description"] = st.text_input("Description", value=ligne["description"], key=f"desc_{i}", placeholder="Détails optionnels")
+                cq2, cp2 = st.columns(2)
+                with cq2:
+                    ligne["qte"]     = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
+                with cp2:
+                    ligne["prix_ht"] = st.number_input("Prix HT unitaire (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
 
-            c_q, c_p = st.columns(2)
-            ligne["qte"] = c_q.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), key=f"qte_{i}")
-            ligne["prix_ht"] = c_p.number_input("Prix HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), key=f"pht_{i}")
+            st.caption(f"💶 Total ligne : **{ligne['qte'] * ligne['prix_ht']:,.2f} €** HT")
 
-    if st.button("➕ Ajouter une ligne"):
-        st.session_state.devis_lignes.append({"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0})
+    for idx in sorted(to_delete, reverse=True):
+        st.session_state.devis_lignes.pop(idx)
+    if to_delete:
         st.rerun()
 
-    for idx in sorted(to_delete, reverse=True): st.session_state.devis_lignes.pop(idx)
-    if to_delete: st.rerun()
+    if st.button("➕ Ajouter une ligne", key="add_ligne"):
+        st.session_state.devis_lignes.append(
+            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+        )
+        st.rerun()
 
-    # --- TOTAUX ---
-    total_ht = sum(l["qte"] * l["prix_ht"] for l in lignes)
+    total_ht  = sum(l["qte"] * l["prix_ht"] for l in lignes)
     total_tva = total_ht * tva_taux
     total_ttc = total_ht + total_tva
 
     st.markdown(f"""
-    <div style="display:flex;justify-content:flex-end;margin-top:20px;">
-        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:15px; min-width:280px;">
-            <div style="display:flex;justify-content:space-between;"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
-            <div style="display:flex;justify-content:space-between;color:var(--primary);"><span>TVA ({int(tva_taux*100)}%)</span><strong>{total_tva:,.2f} €</strong></div>
-            <hr style="margin:10px 0; border-color:var(--border);">
-            <div style="display:flex;justify-content:space-between;font-size:1.1rem;font-weight:bold;color:var(--success);"><span>TOTAL TTC</span><strong>{total_ttc:,.2f} €</strong></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <div style="min-width:260px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;padding:6px 14px;background:var(--bg-surface);font-size:0.88rem;">
+          <span style="color:var(--text-muted);">Total HT</span><strong>{total_ht:,.2f} €</strong>
         </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 14px;background:var(--bg-surface);font-size:0.88rem;">
+          <span style="color:var(--text-muted);">TVA ({int(tva_taux*100)} %)</span><strong>{total_tva:,.2f} €</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px 14px;background:#1d4ed8;color:#fff;font-weight:700;font-size:1rem;">
+          <span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span>
+        </div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # --- ACTIONS ---
-    ca1, ca2 = st.columns(2)
-    if ca1.button("👁️ Prévisualiser", use_container_width=True):
-        st.session_state.devis_preview = True
-    
-    if ca2.button("🚀 Envoyer le devis", type="primary", use_container_width=True):
-        if not client_nom or not client_email: st.error("Champs obligatoires manquants.")
-        else:
-            payload = {
-                "client": {"nom": client_nom, "email": client_email, "adresse": client_adresse},
-                "chantier": {"objet": objet_travaux, "tva": f"{int(tva_taux*100)}%", "modalite": modalite_paie},
-                "lignes": lignes, "totaux": {"ht": total_ht, "ttc": total_ttc}
-            }
-            resp = requests.post(WEBHOOK_URL, json=payload)
-            if resp.status_code < 300: st.success("✅ Envoyé !"); st.balloons()
-            else: st.error("Erreur d'envoi.")
+    st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── Validation ─────────────────────────────────────────────────────────────
+    def _validate():
+        errs = []
+        if not client_nom.strip():     errs.append("Nom client manquant")
+        if not client_email.strip():   errs.append("Email client manquant")
+        if not client_adresse.strip(): errs.append("Adresse chantier manquante")
+        if not objet_travaux.strip():  errs.append("Objet des travaux manquant")
+        if not any(l["article"].strip() for l in lignes):
+            errs.append("Au moins une prestation est requise")
+        return errs
+
+    def _build_payload():
+        return {
+            "client": {"nom": client_nom.strip(), "email": client_email.strip(),
+                        "tel": client_tel.strip(), "adresse": client_adresse.strip()},
+            "chantier": {"objet": objet_travaux.strip(),
+                          "date_debut": date_debut.strftime("%Y-%m-%d"),
+                          "duree_jours": int(duree_jours),
+                          "date_fin_estimee": (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
+                          "modalite_paiement": modalite_paie},
+            "tva": {"taux": tva_taux, "taux_pct": int(tva_taux * 100)},
+            "prestations": [
+                {"numero": i + 1, "article": l["article"].strip(),
+                 "description": l["description"].strip(),
+                 "qte": l["qte"], "prix_ht": round(l["prix_ht"], 2),
+                 "total_ht": round(l["qte"] * l["prix_ht"], 2)}
+                for i, l in enumerate(lignes) if l["article"].strip()
+            ],
+            "totaux": {"total_ht": round(total_ht, 2), "tva": round(total_tva, 2), "total_ttc": round(total_ttc, 2)},
+            "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
+        }
+
+    col_prev, col_send = st.columns(2)
+    with col_prev:
+        if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
+            errs = _validate()
+            if errs:
+                for e in errs: st.error(f"❌ {e}")
+            else:
+                st.session_state.devis_preview = True
+
+    with col_send:
+        if st.button("🚀 Envoyer à n8n", use_container_width=True, type="primary", key="btn_send_n8n"):
+            errs = _validate()
+            if errs:
+                for e in errs: st.error(f"❌ {e}")
+            else:
+                payload = _build_payload()
+                with st.spinner("📡 Envoi à n8n en cours..."):
+                    try:
+                        resp = requests.post(WEBHOOK_URL, json=payload, timeout=30,
+                                             headers={"Content-Type": "application/json"})
+                        if resp.status_code in (200, 201):
+                            st.success("✅ Devis envoyé ! n8n s'occupe du PDF, du mail et de Sheets.")
+                            st.balloons()
+                            st.session_state.devis_lignes = [
+                                {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+                            ]
+                            st.session_state.devis_preview = False
+                            st.cache_data.clear()
+                        else:
+                            st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
+                            st.code(resp.text[:500])
+                    except requests.exceptions.Timeout:
+                        st.error("⏱️ Timeout — n8n ne répond pas dans les 30 secondes.")
+                    except requests.exceptions.ConnectionError:
+                        st.error(f"🔌 Impossible de joindre {WEBHOOK_URL}")
+                    except Exception as ex:
+                        st.error(f"Erreur inattendue : {ex}")
+
+    # ── Prévisualisation HTML ───────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
-        st.markdown(f"### 📋 Récapitulatif : {objet_travaux}")
-        st.write(f"**Client :** {client_nom} | **TVA :** {int(tva_taux*100)}% | **Paiement :** {modalite_paie}")
-        for l in lignes:
-            if l['article']: st.write(f"- {l['article']} : {l['qte']} x {l['prix_ht']}€ = {l['qte']*l['prix_ht']:,.2f}€ HT")
+        st.markdown("### 👁️ Prévisualisation du devis")
+
+        lignes_html = ""
+        for i, l in enumerate(lignes):
+            if not l["article"].strip():
+                continue
+            total_ht_ligne = round(l["qte"] * l["prix_ht"], 2)
+            tva_l          = round(total_ht_ligne * tva_taux, 2)
+            ttc_l          = round(total_ht_ligne + tva_l, 2)
+            bg_row         = "#f8fafc" if i % 2 == 0 else "#ffffff"
+            desc_html      = (
+                f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>"
+                if l["description"].strip() else ""
+            )
+            lignes_html += f"""
+            <tr style="background:{bg_row};">
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
+              <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
+                <strong style="font-size:9px;">{l['article']}</strong>{desc_html}
+              </td>
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['qte']:g}</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['prix_ht']:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{int(tva_taux*100)} %</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_l:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1d4ed8;">{ttc_l:,.2f} €</td>
+            </tr>"""
+
+        preview_html = f"""
+        <div style="background:#fff;color:#1e293b;padding:24px;border-radius:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:9px;border:1px solid #e2e8f0;">
+
+          <!-- EN-TÊTE -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1d4ed8;padding-bottom:14px;margin-bottom:16px;">
+            <div>
+              <div style="background:#1d4ed8;color:#fff;font-size:18px;font-weight:800;letter-spacing:3px;padding:4px 14px;border-radius:5px;display:inline-block;">DEVIS</div>
+              <div style="font-size:8px;color:#64748b;margin-top:6px;">
+                <span style="background:#f1f5f9;padding:2px 8px;border-radius:3px;font-weight:600;">Date : {datetime.now().strftime("%d/%m/%Y")}</span>
+                <span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:3px;font-weight:600;margin-left:6px;">TVA applicable : {int(tva_taux*100)} %</span>
+              </div>
+            </div>
+            <div style="text-align:right;font-size:8px;color:#475569;">
+              <strong style="font-size:11px;color:#1d4ed8;display:block;margin-bottom:2px;">Florian AI Batiment</strong>
+              108 rue de Falaise – 14000 Caen<br>contact@florian-ai-batiment.fr
+            </div>
+          </div>
+
+          <!-- CLIENT / CHANTIER -->
+          <div style="display:flex;gap:12px;margin-bottom:16px;">
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">👤 Client</div>
+              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{client_nom}</div>
+              <div style="color:#475569;">{client_adresse}</div>
+              <div style="color:#475569;">{client_email}</div>
+              {f'<div style="color:#475569;">{client_tel}</div>' if client_tel.strip() else ''}
+            </div>
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">🏗️ Chantier</div>
+              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{objet_travaux}</div>
+              <div style="color:#475569;">Début : <strong style="color:#1e293b;">{date_debut.strftime("%d/%m/%Y")}</strong></div>
+              <div style="color:#475569;">Durée estimée : <strong style="color:#1e293b;">{duree_jours} jour(s) ouvré(s)</strong></div>
+              <div style="color:#475569;">Fin estimée : <strong style="color:#1e293b;">{(date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")}</strong></div>
+            </div>
+          </div>
+
+          <!-- TABLEAU PRESTATIONS — avec colonne TVA % -->
+          <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:14px;">
+            <thead>
+              <tr style="background:#1d4ed8;color:#fff;">
+                <th style="padding:6px 8px;width:28px;text-align:center;font-weight:700;">N°</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;">Désignation / Prestation</th>
+                <th style="padding:6px 8px;width:40px;text-align:center;font-weight:700;">Qté</th>
+                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">PU HT (€)</th>
+                <th style="padding:6px 8px;width:40px;text-align:right;font-weight:700;">TVA</th>
+                <th style="padding:6px 8px;width:65px;text-align:right;font-weight:700;">Mnt TVA (€)</th>
+                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">Total TTC (€)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes_html if lignes_html else '<tr><td colspan="7" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignée</td></tr>'}
+            </tbody>
+          </table>
+
+          <!-- TOTAUX -->
+          <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+            <div style="min-width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#475569;">Total HT</span>
+                <strong style="color:#1e293b;">{total_ht:,.2f} €</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#475569;">TVA ({int(tva_taux*100)} %)</span>
+                <strong style="color:#1e293b;">{total_tva:,.2f} €</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;background:#1d4ed8;font-size:10px;">
+                <span style="color:#fff;font-weight:700;">TOTAL TTC</span>
+                <span style="color:#fff;font-weight:800;">{total_ttc:,.2f} €</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- MODALITÉ + MENTION TVA -->
+          <div style="padding:6px 12px;background:#eff6ff;border-left:3px solid #1d4ed8;border-radius:0 4px 4px 0;font-size:8px;color:#1e40af;margin-bottom:8px;">
+            <strong>Modalité de paiement :</strong> {modalite_paie}
+          </div>
+          <div style="padding:5px 12px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:0 4px 4px 0;font-size:8px;color:#166534;">
+            <strong>Taux de TVA applicable :</strong> {int(tva_taux*100)} % — {'TVA à taux réduit (travaux de rénovation dans logement de plus de 2 ans)' if tva_taux == 0.10 else 'TVA à taux normal (travaux neufs ou hors logement)'}
+          </div>
+
+          <!-- SIGNATURE -->
+          <div style="display:flex;gap:20px;margin-top:16px;">
+            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
+              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Signature client — Bon pour accord</div>
+            </div>
+            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
+              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Signature entreprise</div>
+            </div>
+          </div>
+
+        </div>
+        """
+
+        st.markdown(preview_html, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("✏️ Modifier le devis", key="btn_close_preview"):
+            st.session_state.devis_preview = False
+            st.rerun()
 
     st.stop()
+
 
 # ── CHARGEMENT DONNÉES ─────────────────────────────────────────────────────────
 df_raw, error = get_sheet_data(user)
@@ -1215,7 +1516,7 @@ if page == "📊 Vue Générale":
                             label_visibility="collapsed",
                         )
 
-                        d2["_mois_key"] = d2["_date"].dt.to_period("M").astype(str)
+                        d2["_mois_key"]   = d2["_date"].dt.to_period("M").astype(str)
                         d2["_mois_label"] = d2["_date"].dt.strftime("%b %Y")
 
                         month_map = (
@@ -1235,54 +1536,24 @@ if page == "📊 Vue Générale":
                         merged = merged.fillna(0)
 
                         x_labels = merged["_mois_label"].tolist()
-
                         fig = go.Figure()
 
                         if chart_mode == "📊 Barres empilées":
-                            fig.add_trace(go.Bar(
-                                x=x_labels, y=merged["CA En attente"],
-                                name="En attente ⏳", marker_color="#1e3a5f", marker_line_width=0,
-                            ))
-                            fig.add_trace(go.Bar(
-                                x=x_labels, y=merged["CA Signé"],
-                                name="Signé ✅", marker_color="#00d68f", marker_line_width=0,
-                            ))
+                            fig.add_trace(go.Bar(x=x_labels, y=merged["CA En attente"], name="En attente ⏳", marker_color="#1e3a5f", marker_line_width=0))
+                            fig.add_trace(go.Bar(x=x_labels, y=merged["CA Signé"], name="Signé ✅", marker_color="#00d68f", marker_line_width=0))
                             fig.update_layout(barmode="stack", bargap=0.3)
                         else:
-                            fig.add_trace(go.Scatter(
-                                x=x_labels, y=merged["CA Total"], name="CA Total",
-                                mode="lines+markers",
-                                line=dict(color="#4f8ef7", width=2.5, shape="spline"),
-                                marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)),
-                                fill="tozeroy", fillcolor="rgba(79,142,247,0.07)",
-                            ))
-                            fig.add_trace(go.Scatter(
-                                x=x_labels, y=merged["CA Signé"], name="CA Signé",
-                                mode="lines+markers",
-                                line=dict(color="#00d68f", width=2.5, shape="spline"),
-                                marker=dict(size=7, color="#00d68f", line=dict(color="#fff", width=1.5)),
-                                fill="tozeroy", fillcolor="rgba(0,214,143,0.07)",
-                            ))
-                            fig.add_trace(go.Scatter(
-                                x=x_labels, y=merged["CA En attente"], name="CA En attente",
-                                mode="lines+markers",
-                                line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"),
-                                marker=dict(size=5, color="#ffb84d"),
-                            ))
+                            fig.add_trace(go.Scatter(x=x_labels, y=merged["CA Total"], name="CA Total", mode="lines+markers", line=dict(color="#4f8ef7", width=2.5, shape="spline"), marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)), fill="tozeroy", fillcolor="rgba(79,142,247,0.07)"))
+                            fig.add_trace(go.Scatter(x=x_labels, y=merged["CA Signé"], name="CA Signé", mode="lines+markers", line=dict(color="#00d68f", width=2.5, shape="spline"), marker=dict(size=7, color="#00d68f", line=dict(color="#fff", width=1.5)), fill="tozeroy", fillcolor="rgba(0,214,143,0.07)"))
+                            fig.add_trace(go.Scatter(x=x_labels, y=merged["CA En attente"], name="CA En attente", mode="lines+markers", line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"), marker=dict(size=5, color="#ffb84d")))
 
                         fig.update_layout(
                             title=dict(text="📈 Évolution du CA par mois", font=dict(size=14, color=chart_font, family="Inter")),
                             paper_bgcolor=chart_bg, plot_bgcolor=chart_bg,
                             font=dict(color=chart_font, family="Inter"),
-                            xaxis=dict(type="category", showgrid=False, title="",
-                                       tickfont=dict(color=chart_font, size=11),
-                                       showline=False, zeroline=False, tickangle=-30),
-                            yaxis=dict(gridcolor=chart_grid, title="CA (€)",
-                                       tickfont=dict(color=chart_font, size=11),
-                                       showline=False, zeroline=False, tickformat=",.0f"),
-                            legend=dict(bgcolor="rgba(255,255,255,0.05)", bordercolor=chart_grid,
-                                        borderwidth=1, font=dict(color=chart_font, size=11),
-                                        orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                            xaxis=dict(type="category", showgrid=False, title="", tickfont=dict(color=chart_font, size=11), showline=False, zeroline=False, tickangle=-30),
+                            yaxis=dict(gridcolor=chart_grid, title="CA (€)", tickfont=dict(color=chart_font, size=11), showline=False, zeroline=False, tickformat=",.0f"),
+                            legend=dict(bgcolor="rgba(255,255,255,0.05)", bordercolor=chart_grid, borderwidth=1, font=dict(color=chart_font, size=11), orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                             hovermode="x unified",
                             margin=dict(t=60, b=40, l=20, r=20),
                         )
@@ -1342,41 +1613,15 @@ if page == "📊 Vue Générale":
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         with st.container(border=True):
-            fig_donut = go.Figure(data=[go.Pie(
-                labels=["Signés","En attente"],
-                values=[nb_signes, nb_attente],
-                hole=0.72,
-                marker_colors=["#00d68f","#1e3a5f"],
-                textinfo="none",
-            )])
-            fig_donut.add_annotation(text=f"{taux_conv}%", x=0.5, y=0.5,
-                                     font_size=28, font_color=chart_font,
-                                     font_family="Inter", showarrow=False)
-            fig_donut.update_layout(
-                title="Taux de transformation", title_font_color=chart_font,
-                paper_bgcolor="rgba(0,0,0,0)", showlegend=True,
-                legend=dict(bgcolor="rgba(0,0,0,0)", font_color=chart_font),
-                margin=dict(t=40, b=20, l=20, r=20), height=250,
-            )
+            fig_donut = go.Figure(data=[go.Pie(labels=["Signés","En attente"], values=[nb_signes, nb_attente], hole=0.72, marker_colors=["#00d68f","#1e3a5f"], textinfo="none")])
+            fig_donut.add_annotation(text=f"{taux_conv}%", x=0.5, y=0.5, font_size=28, font_color=chart_font, font_family="Inter", showarrow=False)
+            fig_donut.update_layout(title="Taux de transformation", title_font_color=chart_font, paper_bgcolor="rgba(0,0,0,0)", showlegend=True, legend=dict(bgcolor="rgba(0,0,0,0)", font_color=chart_font), margin=dict(t=40, b=20, l=20, r=20), height=250)
             st.plotly_chart(fig_donut, use_container_width=True)
     with col_d2:
         with st.container(border=True):
             st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:16px;'>📊 Résumé financier</div>", unsafe_allow_html=True)
-            items = [
-                ("CA Total émis", fmt(total_ca), "#4f8ef7"),
-                ("CA Sécurisé", fmt(ca_signe), "#00d68f"),
-                ("CA En attente", fmt(ca_non_s), "#ffb84d"),
-                ("Reste à encaisser", fmt(reste_encaissement), "#ff5c7a"),
-                ("Chantiers terminés (PV)", f"{int(df['_pv'].sum())}", "#00d68f"),
-            ]
-            for label, val, color in items:
-                st.markdown(f"""
-                <div style='display:flex;justify-content:space-between;align-items:center;
-                    padding:8px 0;border-bottom:1px solid var(--border);'>
-                    <span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span>
-                    <span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span>
-                </div>
-                """, unsafe_allow_html=True)
+            for label, val, color in [("CA Total émis", fmt(total_ca), "#4f8ef7"), ("CA Sécurisé", fmt(ca_signe), "#00d68f"), ("CA En attente", fmt(ca_non_s), "#ffb84d"), ("Reste à encaisser", fmt(reste_encaissement), "#ff5c7a"), ("Chantiers terminés (PV)", f"{int(df['_pv'].sum())}", "#00d68f")]:
+                st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
@@ -1390,8 +1635,7 @@ elif page == "📋 Devis":
     c3.metric("Volume CA Global", fmt(total_ca))
 
     st.markdown("<br>", unsafe_allow_html=True)
-    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE,
-                         COL_RELANCE1, COL_RELANCE2, COL_RELANCE3, COL_STATUT] if c]
+    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE, COL_RELANCE1, COL_RELANCE2, COL_RELANCE3, COL_STATUT] if c]
 
     search = st.text_input("🔍 Rechercher un devis", placeholder="Nom du client, chantier, numéro...", key="search_devis")
     df_d = df.copy()
@@ -1407,14 +1651,8 @@ elif page == "📋 Devis":
     def _on_devis_tab():
         st.session_state["devis_tab"] = st.session_state["_devis_tab_radio"]
 
-    tab_devis_choice = st.radio(
-        "",
-        ["⏳ En attente de signature", "✅ Devis signés"],
-        horizontal=True,
-        key="_devis_tab_radio",
-        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["devis_tab"]),
-        on_change=_on_devis_tab,
-    )
+    tab_devis_choice = st.radio("", ["⏳ En attente de signature", "✅ Devis signés"], horizontal=True, key="_devis_tab_radio",
+        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["devis_tab"]), on_change=_on_devis_tab)
     st.markdown("---")
     if tab_devis_choice == "⏳ En attente de signature":
         d = df_d[~df_d["_signe"]]
@@ -1438,9 +1676,7 @@ elif page == "💶 Factures & Paiements":
     c3.metric("💸 CA restant à facturer", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
-    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1,
-                         COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV,
-                         COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
+    cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
 
     search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...", key="search_f")
     df_f = df.copy()
@@ -1456,14 +1692,8 @@ elif page == "💶 Factures & Paiements":
     def _on_fact_tab():
         st.session_state["fact_tab"] = st.session_state["_fact_tab_radio"]
 
-    tab_fact_choice = st.radio(
-        "",
-        ["⚠️ À facturer", "✅ Factures émises"],
-        horizontal=True,
-        key="_fact_tab_radio",
-        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["fact_tab"]),
-        on_change=_on_fact_tab,
-    )
+    tab_fact_choice = st.radio("", ["⚠️ À facturer", "✅ Factures émises"], horizontal=True, key="_fact_tab_radio",
+        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["fact_tab"]), on_change=_on_fact_tab)
     st.markdown("---")
     if tab_fact_choice == "⚠️ À facturer":
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
@@ -1494,32 +1724,16 @@ elif page == "🏗️ Chantiers":
             if col: mask |= df_ch[col].astype(str).str.contains(search_ch, case=False, na=False)
         df_ch = df_ch[mask]
 
-    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE,
-                             COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_statut_ch"] if c]
-
-    valid_rename_map = {
-        COL_CLIENT: "Client",
-        COL_CHANTIER: "Projet / Chantier",
-        COL_MONTANT: "Budget (€)",
-        COL_ADRESSE: "Lieu des travaux",
-        COL_DATE_DEBUT: "Début",
-        COL_DATE_FIN: "Fin prévue",
-        COL_RESERVE: "Réserves",
-        "_statut_ch": "État d'avancement"
-    }
+    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_statut_ch"] if c]
+    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves", "_statut_ch": "État d'avancement"}
 
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
         s = str(val).strip().lower()
-        no_kw = ["sans", "non", "aucune", "aucun", "no", "none", "0", "faux", "false"]
-        if any(k in s for k in no_kw): return False
+        if any(k in s for k in ["sans", "non", "aucune", "aucun", "no", "none", "0", "faux", "false"]): return False
         return True
 
-    if COL_RESERVE:
-        df_ch["_has_reserve"] = df_ch[COL_RESERVE].apply(has_reserve)
-    else:
-        df_ch["_has_reserve"] = False
-
+    df_ch["_has_reserve"] = df_ch[COL_RESERVE].apply(has_reserve) if COL_RESERVE else False
     nb_reserves = int(df_ch["_has_reserve"].sum())
     ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
 
@@ -1531,25 +1745,17 @@ elif page == "🏗️ Chantiers":
     def _on_chantier_tab():
         st.session_state["chantier_tab"] = st.session_state["_chantier_tab_radio"]
 
-    tab_ch_choice = st.radio(
-        "",
-        ch_tab_opts,
-        horizontal=True,
-        key="_chantier_tab_radio",
-        index=ch_tab_opts.index(st.session_state["chantier_tab"]),
-        on_change=_on_chantier_tab,
-    )
+    tab_ch_choice = st.radio("", ch_tab_opts, horizontal=True, key="_chantier_tab_radio",
+        index=ch_tab_opts.index(st.session_state["chantier_tab"]), on_change=_on_chantier_tab)
     st.markdown("---")
     if tab_ch_choice == "🟡 En cours":
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
-        d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
-        show_table(d_renamed.reset_index(drop=True), "ch_cours")
+        show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_cours")
     elif tab_ch_choice == "✅ Livrés (PV signé)":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
-        d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
-        show_table(d_renamed.reset_index(drop=True), "ch_termines")
+        show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_termines")
     else:
         d = df_ch[df_ch["_has_reserve"]]
         if d.empty:
@@ -1559,9 +1765,7 @@ elif page == "🏗️ Chantiers":
             r1.metric("🔒 Avec réserves", len(d))
             r2.metric("💰 CA concerné", fmt(d['_montant'].sum()))
             r3.metric("🟡 Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
-            st.markdown("<br>", unsafe_allow_html=True)
-            d_renamed = d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d
-            show_table(d_renamed.reset_index(drop=True), "ch_reserves")
+            show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_reserves")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
@@ -1574,7 +1778,6 @@ elif page == "📅 Planning":
         st.stop()
 
     today = datetime.now()
-
     df_plan = df.copy()
     df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
     df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
@@ -1602,20 +1805,13 @@ elif page == "📅 Planning":
 
     if "plan_view_tab" not in st.session_state:
         st.session_state["plan_view_tab"] = "📅 Calendrier mensuel"
-
     _plan_opts = ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"]
 
     def _on_plan_view():
         st.session_state["plan_view_tab"] = st.session_state["_plan_view_radio"]
 
-    view_mode = st.radio(
-        "Vue",
-        _plan_opts,
-        horizontal=True,
-        key="_plan_view_radio",
-        index=_plan_opts.index(st.session_state["plan_view_tab"]),
-        on_change=_on_plan_view,
-    )
+    view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio",
+        index=_plan_opts.index(st.session_state["plan_view_tab"]), on_change=_on_plan_view)
     st.markdown("<br>", unsafe_allow_html=True)
 
     if view_mode == "📅 Calendrier mensuel":
@@ -1623,25 +1819,20 @@ elif page == "📅 Planning":
         if "plan_month" not in st.session_state: st.session_state["plan_month"] = today.month
 
         mois_fr = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
-
         nav1, nav2, nav3 = st.columns([1, 2, 1])
         with nav1:
             if st.button("◀ Mois Précédent", use_container_width=True):
                 if st.session_state["plan_month"] == 1:
-                    st.session_state["plan_month"] = 12
-                    st.session_state["plan_year"] -= 1
-                else:
-                    st.session_state["plan_month"] -= 1
+                    st.session_state["plan_month"] = 12; st.session_state["plan_year"] -= 1
+                else: st.session_state["plan_month"] -= 1
                 st.rerun()
         with nav2:
             st.markdown(f"<h2 style='text-align:center;margin:0;color:var(--text-main);'>{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h2>", unsafe_allow_html=True)
         with nav3:
             if st.button("Mois Suivant ▶", use_container_width=True):
                 if st.session_state["plan_month"] == 12:
-                    st.session_state["plan_month"] = 1
-                    st.session_state["plan_year"] += 1
-                else:
-                    st.session_state["plan_month"] += 1
+                    st.session_state["plan_month"] = 1; st.session_state["plan_year"] += 1
+                else: st.session_state["plan_month"] += 1
                 st.rerun()
 
         sel_y, sel_m = st.session_state["plan_year"], st.session_state["plan_month"]
@@ -1652,20 +1843,17 @@ elif page == "📅 Planning":
             cols_h = st.columns(7)
             for i, d in enumerate(days_fr):
                 cols_h[i].markdown(f"<div style='text-align:center; font-weight:bold; color:var(--primary);'>{d}</div>", unsafe_allow_html=True)
-
             for week in cal_grid:
                 cols_w = st.columns(7)
                 for i, day in enumerate(week):
                     if day != 0:
                         current_date = datetime(sel_y, sel_m, day).date()
                         evs = df_plan[(df_plan["_start"].dt.date <= current_date) & (df_plan["_end"].dt.date >= current_date)]
-
                         label = str(day)
                         if not evs.empty:
                             if "retard" in evs["_statut_code"].values: label += " 🔴"
                             elif "en-cours" in evs["_statut_code"].values: label += " 🔵"
                             else: label += " 🟢"
-
                         if cols_w[i].button(label, key=f"d_{sel_y}_{sel_m}_{day}", use_container_width=True):
                             st.session_state["selected_date"] = datetime(sel_y, sel_m, day)
 
@@ -1676,45 +1864,23 @@ elif page == "📅 Planning":
             if not day_events.empty:
                 for _, row in day_events.iterrows():
                     color = "#ff5c7a" if row['_statut_code']=="retard" else "#00d68f" if row['_statut_code']=="termine" else "#4f8ef7"
-                    st.markdown(f"""
-                    <div style="border-left: 4px solid {color}; padding: 12px; background: var(--bg-surface); border-radius: 6px; margin-bottom: 10px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);">
-                        <div style="font-weight:bold; color:var(--text-main); font-size:1rem;">{row[COL_CHANTIER]}</div>
-                        <div style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">👤 Client : {row[COL_CLIENT]}</div>
-                        <div style="font-size:0.85rem; color:var(--text-muted);">📍 Lieu : {row.get(COL_ADRESSE, 'Non renseigné')}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"""<div style="border-left:4px solid {color};padding:12px;background:var(--bg-surface);border-radius:6px;margin-bottom:10px;border:1px solid var(--border);border-left:4px solid {color};">
+                        <div style="font-weight:bold;color:var(--text-main);font-size:1rem;">{row[COL_CHANTIER]}</div>
+                        <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">👤 {row[COL_CLIENT]}</div>
+                    </div>""", unsafe_allow_html=True)
             else:
                 st.info("Aucun chantier prévu ce jour.")
 
     elif view_mode == "📊 Gantt":
         df_gantt = df_plan.sort_values("_start")
-        fig_gantt = px.timeline(
-            df_gantt,
-            x_start="_start", x_end="_end",
-            y=COL_CHANTIER or COL_CLIENT,
-            color="_statut_code",
-            color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"},
-        )
-        fig_gantt.update_layout(
-            paper_bgcolor=chart_bg, plot_bgcolor=chart_bg,
-            font_color=chart_font,
-            margin=dict(t=20, b=20, l=10, r=10),
-            height=max(400, len(df_gantt) * 42 + 80),
-            xaxis=dict(gridcolor=chart_grid),
-            yaxis=dict(gridcolor=chart_grid, autorange="reversed"),
-        )
+        fig_gantt = px.timeline(df_gantt, x_start="_start", x_end="_end", y=COL_CHANTIER or COL_CLIENT, color="_statut_code", color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"})
+        fig_gantt.update_layout(paper_bgcolor=chart_bg, plot_bgcolor=chart_bg, font_color=chart_font, margin=dict(t=20, b=20, l=10, r=10), height=max(400, len(df_gantt)*42+80), xaxis=dict(gridcolor=chart_grid), yaxis=dict(gridcolor=chart_grid, autorange="reversed"))
         st.plotly_chart(fig_gantt, use_container_width=True)
 
     elif view_mode == "📋 Liste":
-        filtre_statut = st.multiselect(
-            "Filtrer par statut",
-            ["En cours", "En retard", "Terminé"],
-            default=["En cours", "En retard"],
-            key="list_filter"
-        )
+        filtre_statut = st.multiselect("Filtrer par statut", ["En cours", "En retard", "Terminé"], default=["En cours", "En retard"], key="list_filter")
         code_map = {"En cours": "en-cours", "En retard": "retard", "Terminé": "termine"}
-        codes_actifs = [code_map[f] for f in filtre_statut]
-        df_list = df_plan[df_plan["_statut_code"].isin(codes_actifs)].sort_values("_start").copy()
+        df_list = df_plan[df_plan["_statut_code"].isin([code_map[f] for f in filtre_statut])].sort_values("_start").copy()
 
         if df_list.empty:
             st.info("Aucun chantier correspondant.")
@@ -1727,40 +1893,26 @@ elif page == "📅 Planning":
             border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)", "termine": "rgba(0,214,143,0.3)"}
 
             for period, group in df_list.groupby("_mois_ord", sort=True):
-                mois_label = group["_mois_str"].iloc[0]
-                st.markdown(f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📅 {mois_label} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📅 {group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
                 for _, row in group.iterrows():
-                    client   = str(row[COL_CLIENT]) if COL_CLIENT else ""
+                    client = str(row[COL_CLIENT]) if COL_CLIENT else ""
                     chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
-                    adresse  = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
-                    montant  = fmt(row["_montant"])
-                    debut    = row["_start"].strftime("%d/%m/%Y")
-                    fin      = row["_end"].strftime("%d/%m/%Y")
-                    duree    = (row["_end"] - row["_start"]).days + 1
-                    statut   = row["_statut_code"]
-                    color    = color_map[statut]
-                    bg       = bg_map[statut]
-                    border   = border_map[statut]
-                    label    = label_map[statut]
-                    st.markdown(f"""
-                    <div style="background:{bg};border:1px solid {border};border-left:3px solid {color};border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+                    adresse = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
+                    montant = fmt(row["_montant"])
+                    debut = row["_start"].strftime("%d/%m/%Y")
+                    fin = row["_end"].strftime("%d/%m/%Y")
+                    duree = (row["_end"] - row["_start"]).days + 1
+                    statut = row["_statut_code"]
+                    st.markdown(f"""<div style="background:{bg_map[statut]};border:1px solid {border_map[statut]};border-left:3px solid {color_map[statut]};border-radius:10px;padding:14px 18px;margin-bottom:8px;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-                            <div style="flex:1;">
-                                <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
-                                <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{"  •  📍 " + adresse if adresse and adresse != "nan" else ""}</div>
-                                <div style="margin-top:8px;">
-                                    <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;background:rgba(255,255,255,0.05);color:{color};border:1px solid {border};">{label}</span>
-                                    <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span>
-                                </div>
-                            </div>
-                            <div style="text-align:right;flex-shrink:0;">
-                                <div style="font-weight:700;color:{color};font-size:1rem;">{montant}</div>
-                                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
-                                <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                            <div style="flex:1;"><div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{"  •  📍 " + adresse if adresse and adresse != "nan" else ""}</div>
+                            <div style="margin-top:8px;"><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;background:rgba(255,255,255,0.05);color:{color_map[statut]};border:1px solid {border_map[statut]};">{label_map[statut]}</span>
+                            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span></div></div>
+                            <div style="text-align:right;flex-shrink:0;"><div style="font-weight:700;color:{color_map[statut]};font-size:1rem;">{montant}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div></div>
+                        </div></div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
@@ -1777,6 +1929,5 @@ elif page == "📁 Tous les dossiers":
         d = d[mask]
 
     st.caption(f"{len(d)} dossier(s) trouvé(s)")
-    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste",
-                 "_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
+    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste","_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
     show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
