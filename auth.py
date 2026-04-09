@@ -5,6 +5,7 @@ import os
 import secrets
 import string
 import requests
+import time
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPABASE — config
@@ -131,9 +132,46 @@ html, body, [data-testid="stAppViewContainer"] {
 """
 
 # ── Login ──────────────────────────────────────────────────────────────────────
-def check_login() -> bool:
-    if st.session_state.get("authenticated"):
+def check_login():
+    """Gère l'affichage du formulaire de login et la validation."""
+    if st.session_state.get("authenticated", False):
         return True
+
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    st.title("⚡ Florian AI Bâtiment")
+    st.subheader("Connexion à l'ERP")
+
+    with st.form("login_form"):
+        username = st.text_input("Identifiant").strip().lower()
+        password = st.text_input("Mot de passe", type="password")
+        submit = st.form_submit_button("Se connecter", use_container_width=True)
+
+    if submit:
+        # --- MODE DÉPANNAGE TEMPORAIRE ---
+        if username == "florian" and password == "test":
+            st.session_state.authenticated = True
+            st.session_state.username = "florian"
+            st.session_state.user_role = "admin"
+            st.session_state.sheet_name = st.secrets.get("SHEET_NAME", "")
+            st.success("Mode dépannage activé !")
+            time.sleep(1)
+            st.rerun()
+        # --------------------------------
+        
+        # Vérification classique pour les autres utilisateurs (Supabase)
+        user_data = _sb_get(username)
+        if user_data and _verify_hash(password, user_data.get("password_hash", "")):
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.user_role = user_data.get("role", "user")
+            st.session_state.sheet_name = user_data.get("sheet_name", "")
+            st.session_state.user_google_sa = user_data.get("google_sa", "")
+            st.rerun()
+        else:
+            st.error("Identifiant ou mot de passe incorrect.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    return False
 
     st.markdown(_LOGIN_CSS, unsafe_allow_html=True)
 
