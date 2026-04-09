@@ -5,18 +5,16 @@ import os
 import secrets
 import string
 import requests
-import time  # <--- Ajouté pour le délai de redirection
+import time
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UTILITAIRES DE SÉCURITÉ
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _hash(password: str) -> str:
-    """Génère un hash SHA-256."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def _verify_hash(password: str, password_hash: str) -> bool:
-    """Vérifie si le mot de passe correspond au hash."""
     return _hash(password) == password_hash
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -38,7 +36,6 @@ def _sb_headers() -> dict:
     }
 
 def _sb_get(username: str):
-    """Récupère un user depuis Supabase."""
     try:
         r = requests.get(
             f"{_sb_url()}/rest/v1/users?username=eq.{username}&select=*",
@@ -47,15 +44,14 @@ def _sb_get(username: str):
         )
         data = r.json()
         return data[0] if data else None
-    except Exception:
+    except:
         return None
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LOGIQUE DE CONNEXION
+# LOGIQUE DE CONNEXION (MODE DÉPANNAGE INCLUS)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def check_login():
-    """Gère l'affichage du formulaire de login et la validation."""
     if st.session_state.get("authenticated", False):
         return True
 
@@ -74,27 +70,39 @@ def check_login():
             st.session_state.username = "florian"
             st.session_state.user_role = "admin"
             st.session_state.sheet_name = st.secrets.get("SHEET_NAME", "")
-            st.success("Mode dépannage activé ! Bienvenue Florian.")
+            st.success("Mode dépannage activé !")
             time.sleep(1)
             st.rerun()
         # --------------------------------
 
-        # Vérification classique via Supabase pour les autres
         user_data = _sb_get(username)
         if user_data and _verify_hash(password, user_data.get("password_hash", "")):
             st.session_state.authenticated = True
             st.session_state.username = username
             st.session_state.user_role = user_data.get("role", "user")
             st.session_state.sheet_name = user_data.get("sheet_name", "")
+            st.session_state.user_google_sa = user_data.get("google_sa", "")
             st.rerun()
         else:
             st.error("Identifiant ou mot de passe incorrect.")
-    
     return False
 
 def logout():
-    st.session_state.authenticated = False
-    st.session_state.username = None
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
 
-# Note: Garde tes autres fonctions (admin_panel, etc.) en dessous de ce code.
+# ══════════════════════════════════════════════════════════════════════════════
+# FONCTIONS REQUISES PAR APP.PY (STUBS POUR DÉPANNAGE)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_user_credentials():
+    """Récupère les credentials Google du user actuel."""
+    return st.session_state.get("user_google_sa", st.secrets.get("GOOGLE_SERVICE_ACCOUNT", ""))
+
+def admin_panel():
+    """Affiche le panel d'administration (Placeholder pendant le dépannage)."""
+    st.header("⚙️ Panel Administration")
+    st.info("Vous êtes connecté en mode dépannage.")
+    if st.button("Déconnexion"):
+        logout()
