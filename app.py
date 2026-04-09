@@ -977,12 +977,7 @@ elif page == "📝 Éditeur Google Sheet":
 elif page == "📄 Créer un devis":
     page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    session_name = st.secrets.get("n8n_session", "")
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{session_name}" if session_name else ""
-    if not WEBHOOK_URL:
-        st.error("⚠️ Clé `n8n_session` manquante dans secrets.toml")
-        st.code('[general]\nn8n_session = "ton-nom-de-session"', language="toml")
-        st.stop()
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user}"
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_catalogue_devis(u):
