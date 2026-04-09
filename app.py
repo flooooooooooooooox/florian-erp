@@ -1015,6 +1015,8 @@ elif page == "📄 Créer un devis":
         st.session_state.devis_lignes = [
             {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
         ]
+    if "devis_preview" not in st.session_state:
+        st.session_state.devis_preview = False
 
     st.markdown("#### 👤 Informations client")
     c1, c2 = st.columns(2)
@@ -1067,16 +1069,25 @@ elif page == "📄 Créer un devis":
 
             if source_choice == "📚 Catalogue":
                 ligne["source"] = "catalogue"
+                prev_cat = ligne.get("_prev_cat", "")
                 sel_cat = st.selectbox("Prestation catalogue", catalogue_labels, key=f"cat_{i}")
                 if sel_cat != catalogue_labels[0]:
                     cat_item = next((c for c in catalogue if c["label"] == sel_cat), None)
                     if cat_item:
                         ligne["article"]     = cat_item["article"]
                         ligne["description"] = cat_item["description"]
-                        try:
-                            ligne["prix_ht"] = float(str(cat_item["prix_ht"]).replace(",", ".").replace(" ", "") or 0)
-                        except Exception:
-                            ligne["prix_ht"] = 0.0
+                        # Forcer le prix si changement de sélection
+                        if sel_cat != prev_cat:
+                            try:
+                                ligne["prix_ht"] = float(str(cat_item["prix_ht"]).replace(",", ".").replace(" ", "").replace(" ","") or 0)
+                            except Exception:
+                                ligne["prix_ht"] = 0.0
+                            ligne["_prev_cat"] = sel_cat
+                            # Reset la clé du number_input pour forcer le rechargement
+                            for k in [f"pht_{i}"]:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+                            st.rerun()
                 cq1, cp1 = st.columns(2)
                 with cq1:
                     ligne["qte"]     = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
@@ -1127,59 +1138,155 @@ elif page == "📄 Créer un devis":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("🚀 Envoyer à n8n — Générer le devis", use_container_width=True, type="primary", key="btn_send_n8n"):
-        errors = []
-        if not client_nom.strip():     errors.append("Nom client manquant")
-        if not client_email.strip():   errors.append("Email client manquant")
-        if not client_adresse.strip(): errors.append("Adresse chantier manquante")
-        if not objet_travaux.strip():  errors.append("Objet des travaux manquant")
+    # ── Validation ───────────────────────────────────────────────────────────
+    def _validate():
+        errs = []
+        if not client_nom.strip():     errs.append("Nom client manquant")
+        if not client_email.strip():   errs.append("Email client manquant")
+        if not client_adresse.strip(): errs.append("Adresse chantier manquante")
+        if not objet_travaux.strip():  errs.append("Objet des travaux manquant")
         if not any(l["article"].strip() for l in lignes):
-            errors.append("Au moins une prestation est requise")
+            errs.append("Au moins une prestation est requise")
+        return errs
 
-        if errors:
-            for e in errors:
-                st.error(f"❌ {e}")
-        else:
-            date_fin_estimee = date_debut + timedelta(days=int(duree_jours))
-            payload = {
-                "client": {"nom": client_nom.strip(), "email": client_email.strip(),
-                            "tel": client_tel.strip(), "adresse": client_adresse.strip()},
-                "chantier": {"objet": objet_travaux.strip(),
-                              "date_debut": date_debut.strftime("%Y-%m-%d"),
-                              "duree_jours": int(duree_jours),
-                              "date_fin_estimee": date_fin_estimee.strftime("%Y-%m-%d"),
-                              "modalite_paiement": modalite_paie},
-                "tva": {"taux": tva_taux, "taux_pct": int(tva_taux * 100)},
-                "prestations": [
-                    {"numero": i + 1, "article": l["article"].strip(),
-                     "description": l["description"].strip(),
-                     "qte": l["qte"], "prix_ht": round(l["prix_ht"], 2),
-                     "total_ht": round(l["qte"] * l["prix_ht"], 2)}
-                    for i, l in enumerate(lignes) if l["article"].strip()
-                ],
-                "totaux": {"total_ht": round(total_ht, 2), "tva": round(total_tva, 2), "total_ttc": round(total_ttc, 2)},
-                "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
-            }
-            with st.spinner("📡 Envoi à n8n en cours..."):
-                try:
-                    resp = requests.post(WEBHOOK_URL, json=payload, timeout=30,
-                                         headers={"Content-Type": "application/json"})
-                    if resp.status_code in (200, 201):
-                        st.success("✅ Devis envoyé ! n8n s'occupe du PDF, du mail et de Sheets.")
-                        st.balloons()
-                        st.session_state.devis_lignes = [
-                            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
-                        ]
-                        st.cache_data.clear()
-                    else:
-                        st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
-                        st.code(resp.text[:500])
-                except requests.exceptions.Timeout:
-                    st.error("⏱️ Timeout — n8n ne répond pas dans les 30 secondes.")
-                except requests.exceptions.ConnectionError:
-                    st.error(f"🔌 Impossible de joindre {WEBHOOK_URL}")
-                except Exception as ex:
-                    st.error(f"Erreur inattendue : {ex}")
+    def _build_payload():
+        date_fin_estimee = date_debut + timedelta(days=int(duree_jours))
+        return {
+            "client": {"nom": client_nom.strip(), "email": client_email.strip(),
+                        "tel": client_tel.strip(), "adresse": client_adresse.strip()},
+            "chantier": {"objet": objet_travaux.strip(),
+                          "date_debut": date_debut.strftime("%Y-%m-%d"),
+                          "duree_jours": int(duree_jours),
+                          "date_fin_estimee": (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
+                          "modalite_paiement": modalite_paie},
+            "tva": {"taux": tva_taux, "taux_pct": int(tva_taux * 100)},
+            "prestations": [
+                {"numero": i + 1, "article": l["article"].strip(),
+                 "description": l["description"].strip(),
+                 "qte": l["qte"], "prix_ht": round(l["prix_ht"], 2),
+                 "total_ht": round(l["qte"] * l["prix_ht"], 2)}
+                for i, l in enumerate(lignes) if l["article"].strip()
+            ],
+            "totaux": {"total_ht": round(total_ht, 2), "tva": round(total_tva, 2), "total_ttc": round(total_ttc, 2)},
+            "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
+        }
+
+    col_prev, col_send = st.columns(2)
+    with col_prev:
+        if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
+            errs = _validate()
+            if errs:
+                for e in errs: st.error(f"❌ {e}")
+            else:
+                st.session_state.devis_preview = True
+
+    with col_send:
+        if st.button("🚀 Envoyer à n8n", use_container_width=True, type="primary", key="btn_send_n8n"):
+            errs = _validate()
+            if errs:
+                for e in errs: st.error(f"❌ {e}")
+            else:
+                payload = _build_payload()
+                with st.spinner("📡 Envoi à n8n en cours..."):
+                    try:
+                        resp = requests.post(WEBHOOK_URL, json=payload, timeout=30,
+                                             headers={"Content-Type": "application/json"})
+                        if resp.status_code in (200, 201):
+                            st.success("✅ Devis envoyé ! n8n s'occupe du PDF, du mail et de Sheets.")
+                            st.balloons()
+                            st.session_state.devis_lignes = [
+                                {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0}
+                            ]
+                            st.session_state.devis_preview = False
+                            st.cache_data.clear()
+                        else:
+                            st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
+                            st.code(resp.text[:500])
+                    except requests.exceptions.Timeout:
+                        st.error("⏱️ Timeout — n8n ne répond pas dans les 30 secondes.")
+                    except requests.exceptions.ConnectionError:
+                        st.error(f"🔌 Impossible de joindre {WEBHOOK_URL}")
+                    except Exception as ex:
+                        st.error(f"Erreur inattendue : {ex}")
+
+    # ── Prévisualisation HTML ─────────────────────────────────────────────────
+    if st.session_state.get("devis_preview"):
+        st.markdown("---")
+        st.markdown("### 👁️ Prévisualisation du devis")
+
+        lignes_html = ""
+        for i, l in enumerate(lignes):
+            if not l["article"].strip():
+                continue
+            tva_l   = round(l["qte"] * l["prix_ht"] * tva_taux, 2)
+            ttc_l   = round(l["qte"] * l["prix_ht"] * (1 + tva_taux), 2)
+            lignes_html += f"""
+            <tr>
+              <td class="center">{i+1}</td>
+              <td class="libelle-cell">
+                <strong>{l["article"]}</strong>
+                <span>{l["description"]}</span>
+              </td>
+              <td class="qte">{l["qte"]:g}</td>
+              <td class="right">{l["prix_ht"]:,.2f} €</td>
+              <td class="right">{tva_l:,.2f} €</td>
+              <td class="right">{ttc_l:,.2f} €</td>
+            </tr>"""
+
+        preview_html = f"""
+        <div style="background:#fff;color:#1e293b;padding:20px;border-radius:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">
+            <div>
+              <div style="background:#1d4ed8;color:#fff;font-size:16px;font-weight:800;letter-spacing:3px;padding:3px 12px;border-radius:4px;display:inline-block;">DEVIS</div>
+              <div style="font-size:8px;color:#64748b;margin-top:4px;">
+                <span style="background:#f1f5f9;padding:2px 6px;border-radius:3px;margin-right:4px;font-weight:600;">Date : {datetime.now().strftime("%d/%m/%Y")}</span>
+              </div>
+            </div>
+            <div style="text-align:right;font-size:8px;color:#475569;">
+              <strong style="font-size:10px;color:#1d4ed8;display:block;">Florian AI Batiment</strong>
+              108 rue de Falaise – 14000 Caen<br>contact@florian-ai-batiment.fr
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:12px;">
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;margin-bottom:4px;">Client</div>
+              <strong>{client_nom}</strong><br>{client_adresse}<br>{client_email}
+            </div>
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;margin-bottom:4px;">Chantier</div>
+              {objet_travaux}<br>
+              <span style="color:#64748b;">Début : {date_debut.strftime("%d/%m/%Y")} — Durée : {duree_jours}j</span>
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:8.5px;">
+            <thead>
+              <tr style="background:#1d4ed8;color:#fff;">
+                <th style="padding:5px 6px;width:28px;text-align:center;">N°</th>
+                <th style="padding:5px 6px;text-align:left;">Prestation</th>
+                <th style="padding:5px 6px;width:35px;text-align:center;">Qté</th>
+                <th style="padding:5px 6px;width:70px;text-align:right;">HT (€)</th>
+                <th style="padding:5px 6px;width:60px;text-align:right;">TVA (€)</th>
+                <th style="padding:5px 6px;width:70px;text-align:right;">TTC (€)</th>
+              </tr>
+            </thead>
+            <tbody>{lignes_html}</tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+            <div style="min-width:200px;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;padding:4px 10px;background:#f8fafc;font-size:8.5px;"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 10px;background:#f8fafc;font-size:8.5px;"><span>TVA ({int(tva_taux*100)}%)</span><strong>{total_tva:,.2f} €</strong></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;background:#1d4ed8;color:#fff;font-weight:700;font-size:10px;"><span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span></div>
+            </div>
+          </div>
+          <div style="margin-top:8px;padding:5px 10px;background:#eff6ff;border-left:3px solid #1d4ed8;font-size:8px;color:#1e40af;">
+            Modalité : <strong>{modalite_paie}</strong>
+          </div>
+        </div>
+        """
+        st.markdown(preview_html, unsafe_allow_html=True)
+        if st.button("✏️ Modifier", key="btn_close_preview"):
+            st.session_state.devis_preview = False
+            st.rerun()
 
     st.stop()
 
