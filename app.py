@@ -1027,9 +1027,43 @@ elif page == "📄 Créer un devis":
 
     # ── Modalités de paiement Dynamiques ──
     st.markdown("#### 💶 Modalités de paiement")
-    modalite_base = st.selectbox("Modalité de paiement", [
-        "Acompte / Solde", "Paiement intégral à la commande", 
-        "Paiement à réception", "Paiement échelonné", "Paiement différé"
+    modalite_base = st.selectbox("Type de règlement", [
+        "Acompte / Solde", 
+        "Paiement échelonné",
+        "Paiement différé",
+        "Paiement intégral à la commande", 
+        "Paiement à réception"
+    ], key="dv_modal_select")
+
+    detail_modalite = ""
+
+    if modalite_base == "Acompte / Solde":
+        c_ac1, c_ac2 = st.columns(2)
+        with c_ac1:
+            ac_pct = st.number_input("Pourcentage Acompte (%)", min_value=0, max_value=100, value=30, key="dv_ac_val")
+        with c_ac2:
+            st.info(f"Le solde sera de {100-ac_pct}%")
+        detail_modalite = f"Acompte de {ac_pct}% à la commande, solde de {100-ac_pct}% à la fin des travaux."
+
+    elif modalite_base == "Paiement échelonné":
+        st.write("Définissez vos 3 échéances :")
+        ce1, ce2, ce3 = st.columns(3)
+        with ce1: p1 = st.number_input("% Échéance 1 (Commande)", value=30, key="dv_p1")
+        with ce2: p2 = st.number_input("% Échéance 2 (Milieu)", value=40, key="dv_p2")
+        with ce3: p3 = st.number_input("% Échéance 3 (Solde)", value=30, key="dv_p3")
+        
+        if (p1 + p2 + p3) != 100:
+            st.warning(f"⚠️ Attention: Le total fait {p1+p2+p3}% au lieu de 100%")
+        detail_modalite = f"Paiement échelonné : {p1}% à la commande, {p2}% en milieu de chantier, {p3}% à la réception."
+
+    elif modalite_base == "Paiement différé":
+        jours_diff = st.number_input("Nombre de jours de décalage (après facture)", min_value=1, value=30, key="dv_diff_days")
+        detail_modalite = f"Règlement total à {jours_diff} jours net après émission de la facture."
+
+    else:
+        detail_modalite = modalite_base
+
+    st.info(f"👉 **Mention sur le devis :** {detail_modalite}")
     ])
 
     detail_modalite = ""
