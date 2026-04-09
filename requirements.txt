@@ -6,3 +6,4 @@ plotly>=5.20.0
 google-api-python-client>=2.0.0
 bcrypt
 weasyprint>=60.0
+requests
