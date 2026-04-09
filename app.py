@@ -436,7 +436,6 @@ with st.sidebar:
     if role == "admin":
         pages.append("👥 Utilisateurs")
 
-    # ── FIX NAVIGATION : on_change callback évite le double rerun ──────────────
     if "nav_override" in st.session_state:
         _override = st.session_state.pop("nav_override")
         if _override in pages:
@@ -444,12 +443,10 @@ with st.sidebar:
 
     if "_page_index" not in st.session_state:
         st.session_state["_page_index"] = 0
-    # ── Fix : index hors limites si la liste pages a changé ──
     if st.session_state["_page_index"] >= len(pages):
         st.session_state["_page_index"] = 0
 
     def _on_nav_change():
-        # La valeur est déjà dans session_state["nav_radio"] — on synchronise l'index
         val = st.session_state.get("nav_radio")
         if val and val in pages:
             st.session_state["_page_index"] = pages.index(val)
@@ -462,7 +459,6 @@ with st.sidebar:
         key="nav_radio",
         on_change=_on_nav_change,
     )
-    # Garantit la cohérence de l'index après chaque rendu
     if page in pages:
         st.session_state["_page_index"] = pages.index(page)
 
@@ -1000,10 +996,13 @@ elif page == "📄 Créer un devis":
                 label   = article.strip()
                 if prix.strip():
                     label += f"  –  {prix} € HT"
-                items.append({"label": label, "article": article,
-                               "description": row_d.get("description", ""),
-                               "prix_ht": prix,
-                               "categorie": row_d.get("catégorie", row_d.get("categorie", ""))})
+                items.append({
+                    "label": label,
+                    "article": article,
+                    "description": row_d.get("description", ""),
+                    "prix_ht": prix,
+                    "categorie": row_d.get("catégorie", row_d.get("categorie", ""))
+                })
             return items
         except Exception:
             return []
@@ -1076,14 +1075,12 @@ elif page == "📄 Créer un devis":
                     if cat_item:
                         ligne["article"]     = cat_item["article"]
                         ligne["description"] = cat_item["description"]
-                        # Forcer le prix si changement de sélection
                         if sel_cat != prev_cat:
                             try:
-                                ligne["prix_ht"] = float(str(cat_item["prix_ht"]).replace(",", ".").replace(" ", "").replace(" ","") or 0)
+                                ligne["prix_ht"] = float(str(cat_item["prix_ht"]).replace(",", ".").replace(" ", "").replace("\u202f","") or 0)
                             except Exception:
                                 ligne["prix_ht"] = 0.0
                             ligne["_prev_cat"] = sel_cat
-                            # Reset la clé du number_input pour forcer le rechargement
                             for k in [f"pht_{i}"]:
                                 if k in st.session_state:
                                     del st.session_state[k]
@@ -1150,7 +1147,6 @@ elif page == "📄 Créer un devis":
         return errs
 
     def _build_payload():
-        date_fin_estimee = date_debut + timedelta(days=int(duree_jours))
         return {
             "client": {"nom": client_nom.strip(), "email": client_email.strip(),
                         "tel": client_tel.strip(), "adresse": client_adresse.strip()},
@@ -1214,77 +1210,122 @@ elif page == "📄 Créer un devis":
         st.markdown("---")
         st.markdown("### 👁️ Prévisualisation du devis")
 
+        # Construire les lignes du tableau avec style inline complet
         lignes_html = ""
         for i, l in enumerate(lignes):
             if not l["article"].strip():
                 continue
-            tva_l   = round(l["qte"] * l["prix_ht"] * tva_taux, 2)
-            ttc_l   = round(l["qte"] * l["prix_ht"] * (1 + tva_taux), 2)
+            total_ht_ligne = round(l["qte"] * l["prix_ht"], 2)
+            tva_l          = round(total_ht_ligne * tva_taux, 2)
+            ttc_l          = round(total_ht_ligne + tva_l, 2)
+            bg_row         = "#f8fafc" if i % 2 == 0 else "#ffffff"
+            desc_html      = (
+                f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>"
+                if l["description"].strip() else ""
+            )
             lignes_html += f"""
-            <tr>
-              <td class="center">{i+1}</td>
-              <td class="libelle-cell">
-                <strong>{l["article"]}</strong>
-                <span>{l["description"]}</span>
+            <tr style="background:{bg_row};">
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
+              <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
+                <strong style="font-size:9px;">{l['article']}</strong>{desc_html}
               </td>
-              <td class="qte">{l["qte"]:g}</td>
-              <td class="right">{l["prix_ht"]:,.2f} €</td>
-              <td class="right">{tva_l:,.2f} €</td>
-              <td class="right">{ttc_l:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['qte']:g}</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['prix_ht']:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_l:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1d4ed8;">{ttc_l:,.2f} €</td>
             </tr>"""
 
         preview_html = f"""
-        <div style="background:#fff;color:#1e293b;padding:20px;border-radius:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:9px;">
-          <div style="display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:10px;margin-bottom:12px;">
+        <div style="background:#fff;color:#1e293b;padding:24px;border-radius:10px;font-family:'Segoe UI',Arial,sans-serif;font-size:9px;border:1px solid #e2e8f0;">
+
+          <!-- EN-TÊTE -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1d4ed8;padding-bottom:14px;margin-bottom:16px;">
             <div>
-              <div style="background:#1d4ed8;color:#fff;font-size:16px;font-weight:800;letter-spacing:3px;padding:3px 12px;border-radius:4px;display:inline-block;">DEVIS</div>
-              <div style="font-size:8px;color:#64748b;margin-top:4px;">
-                <span style="background:#f1f5f9;padding:2px 6px;border-radius:3px;margin-right:4px;font-weight:600;">Date : {datetime.now().strftime("%d/%m/%Y")}</span>
+              <div style="background:#1d4ed8;color:#fff;font-size:18px;font-weight:800;letter-spacing:3px;padding:4px 14px;border-radius:5px;display:inline-block;">DEVIS</div>
+              <div style="font-size:8px;color:#64748b;margin-top:6px;">
+                <span style="background:#f1f5f9;padding:2px 8px;border-radius:3px;font-weight:600;">Date : {datetime.now().strftime("%d/%m/%Y")}</span>
               </div>
             </div>
             <div style="text-align:right;font-size:8px;color:#475569;">
-              <strong style="font-size:10px;color:#1d4ed8;display:block;">Florian AI Batiment</strong>
+              <strong style="font-size:11px;color:#1d4ed8;display:block;margin-bottom:2px;">Florian AI Batiment</strong>
               108 rue de Falaise – 14000 Caen<br>contact@florian-ai-batiment.fr
             </div>
           </div>
-          <div style="display:flex;gap:10px;margin-bottom:12px;">
-            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;">
-              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;margin-bottom:4px;">Client</div>
-              <strong>{client_nom}</strong><br>{client_adresse}<br>{client_email}
+
+          <!-- CLIENT / CHANTIER -->
+          <div style="display:flex;gap:12px;margin-bottom:16px;">
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">👤 Client</div>
+              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{client_nom}</div>
+              <div style="color:#475569;">{client_adresse}</div>
+              <div style="color:#475569;">{client_email}</div>
+              {f'<div style="color:#475569;">{client_tel}</div>' if client_tel.strip() else ''}
             </div>
-            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;">
-              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;margin-bottom:4px;">Chantier</div>
-              {objet_travaux}<br>
-              <span style="color:#64748b;">Début : {date_debut.strftime("%d/%m/%Y")} — Durée : {duree_jours}j</span>
+            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
+              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">🏗️ Chantier</div>
+              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{objet_travaux}</div>
+              <div style="color:#475569;">Début : <strong style="color:#1e293b;">{date_debut.strftime("%d/%m/%Y")}</strong></div>
+              <div style="color:#475569;">Durée estimée : <strong style="color:#1e293b;">{duree_jours} jour(s) ouvré(s)</strong></div>
+              <div style="color:#475569;">Fin estimée : <strong style="color:#1e293b;">{(date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")}</strong></div>
             </div>
           </div>
-          <table style="width:100%;border-collapse:collapse;font-size:8.5px;">
+
+          <!-- TABLEAU PRESTATIONS -->
+          <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:14px;">
             <thead>
               <tr style="background:#1d4ed8;color:#fff;">
-                <th style="padding:5px 6px;width:28px;text-align:center;">N°</th>
-                <th style="padding:5px 6px;text-align:left;">Prestation</th>
-                <th style="padding:5px 6px;width:35px;text-align:center;">Qté</th>
-                <th style="padding:5px 6px;width:70px;text-align:right;">HT (€)</th>
-                <th style="padding:5px 6px;width:60px;text-align:right;">TVA (€)</th>
-                <th style="padding:5px 6px;width:70px;text-align:right;">TTC (€)</th>
+                <th style="padding:6px 8px;width:28px;text-align:center;font-weight:700;">N°</th>
+                <th style="padding:6px 8px;text-align:left;font-weight:700;">Désignation / Prestation</th>
+                <th style="padding:6px 8px;width:40px;text-align:center;font-weight:700;">Qté</th>
+                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">PU HT (€)</th>
+                <th style="padding:6px 8px;width:65px;text-align:right;font-weight:700;">TVA (€)</th>
+                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">Total TTC (€)</th>
               </tr>
             </thead>
-            <tbody>{lignes_html}</tbody>
+            <tbody>
+              {lignes_html if lignes_html else '<tr><td colspan="6" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignée</td></tr>'}
+            </tbody>
           </table>
-          <div style="display:flex;justify-content:flex-end;margin-top:8px;">
-            <div style="min-width:200px;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;">
-              <div style="display:flex;justify-content:space-between;padding:4px 10px;background:#f8fafc;font-size:8.5px;"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
-              <div style="display:flex;justify-content:space-between;padding:4px 10px;background:#f8fafc;font-size:8.5px;"><span>TVA ({int(tva_taux*100)}%)</span><strong>{total_tva:,.2f} €</strong></div>
-              <div style="display:flex;justify-content:space-between;padding:6px 10px;background:#1d4ed8;color:#fff;font-weight:700;font-size:10px;"><span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span></div>
+
+          <!-- TOTAUX -->
+          <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+            <div style="min-width:220px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#475569;">Total HT</span>
+                <strong style="color:#1e293b;">{total_ht:,.2f} €</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:5px 12px;background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#475569;">TVA ({int(tva_taux*100)} %)</span>
+                <strong style="color:#1e293b;">{total_tva:,.2f} €</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;background:#1d4ed8;font-size:10px;">
+                <span style="color:#fff;font-weight:700;">TOTAL TTC</span>
+                <span style="color:#fff;font-weight:800;">{total_ttc:,.2f} €</span>
+              </div>
             </div>
           </div>
-          <div style="margin-top:8px;padding:5px 10px;background:#eff6ff;border-left:3px solid #1d4ed8;font-size:8px;color:#1e40af;">
-            Modalité : <strong>{modalite_paie}</strong>
+
+          <!-- MODALITÉ -->
+          <div style="padding:6px 12px;background:#eff6ff;border-left:3px solid #1d4ed8;border-radius:0 4px 4px 0;font-size:8px;color:#1e40af;">
+            <strong>Modalité de paiement :</strong> {modalite_paie}
           </div>
+
+          <!-- SIGNATURE -->
+          <div style="display:flex;gap:20px;margin-top:16px;">
+            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
+              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Signature client — Bon pour accord</div>
+            </div>
+            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
+              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Signature entreprise</div>
+            </div>
+          </div>
+
         </div>
         """
+
         st.markdown(preview_html, unsafe_allow_html=True)
-        if st.button("✏️ Modifier", key="btn_close_preview"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("✏️ Modifier le devis", key="btn_close_preview"):
             st.session_state.devis_preview = False
             st.rerun()
 
@@ -1420,90 +1461,52 @@ if page == "📊 Vue Générale":
 
                         if chart_mode == "📊 Barres empilées":
                             fig.add_trace(go.Bar(
-                                x=x_labels,
-                                y=merged["CA En attente"],
-                                name="En attente ⏳",
-                                marker_color="#1e3a5f",
-                                marker_line_width=0,
+                                x=x_labels, y=merged["CA En attente"],
+                                name="En attente ⏳", marker_color="#1e3a5f", marker_line_width=0,
                             ))
                             fig.add_trace(go.Bar(
-                                x=x_labels,
-                                y=merged["CA Signé"],
-                                name="Signé ✅",
-                                marker_color="#00d68f",
-                                marker_line_width=0,
+                                x=x_labels, y=merged["CA Signé"],
+                                name="Signé ✅", marker_color="#00d68f", marker_line_width=0,
                             ))
                             fig.update_layout(barmode="stack", bargap=0.3)
                         else:
                             fig.add_trace(go.Scatter(
-                                x=x_labels,
-                                y=merged["CA Total"],
-                                name="CA Total",
+                                x=x_labels, y=merged["CA Total"], name="CA Total",
                                 mode="lines+markers",
                                 line=dict(color="#4f8ef7", width=2.5, shape="spline"),
                                 marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)),
-                                fill="tozeroy",
-                                fillcolor="rgba(79,142,247,0.07)",
+                                fill="tozeroy", fillcolor="rgba(79,142,247,0.07)",
                             ))
                             fig.add_trace(go.Scatter(
-                                x=x_labels,
-                                y=merged["CA Signé"],
-                                name="CA Signé",
+                                x=x_labels, y=merged["CA Signé"], name="CA Signé",
                                 mode="lines+markers",
                                 line=dict(color="#00d68f", width=2.5, shape="spline"),
                                 marker=dict(size=7, color="#00d68f", line=dict(color="#fff", width=1.5)),
-                                fill="tozeroy",
-                                fillcolor="rgba(0,214,143,0.07)",
+                                fill="tozeroy", fillcolor="rgba(0,214,143,0.07)",
                             ))
                             fig.add_trace(go.Scatter(
-                                x=x_labels,
-                                y=merged["CA En attente"],
-                                name="CA En attente",
+                                x=x_labels, y=merged["CA En attente"], name="CA En attente",
                                 mode="lines+markers",
                                 line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"),
                                 marker=dict(size=5, color="#ffb84d"),
                             ))
 
                         fig.update_layout(
-                            title=dict(
-                                text="📈 Évolution du CA par mois",
-                                font=dict(size=14, color=chart_font, family="Inter"),
-                            ),
-                            paper_bgcolor=chart_bg,
-                            plot_bgcolor=chart_bg,
+                            title=dict(text="📈 Évolution du CA par mois", font=dict(size=14, color=chart_font, family="Inter")),
+                            paper_bgcolor=chart_bg, plot_bgcolor=chart_bg,
                             font=dict(color=chart_font, family="Inter"),
-                            xaxis=dict(
-                                type="category",
-                                showgrid=False,
-                                title="",
-                                tickfont=dict(color=chart_font, size=11),
-                                showline=False,
-                                zeroline=False,
-                                tickangle=-30,
-                            ),
-                            yaxis=dict(
-                                gridcolor=chart_grid,
-                                title="CA (€)",
-                                tickfont=dict(color=chart_font, size=11),
-                                showline=False,
-                                zeroline=False,
-                                tickformat=",.0f",
-                            ),
-                            legend=dict(
-                                bgcolor="rgba(255,255,255,0.05)",
-                                bordercolor=chart_grid,
-                                borderwidth=1,
-                                font=dict(color=chart_font, size=11),
-                                orientation="h",
-                                yanchor="bottom",
-                                y=1.02,
-                                xanchor="left",
-                                x=0,
-                            ),
+                            xaxis=dict(type="category", showgrid=False, title="",
+                                       tickfont=dict(color=chart_font, size=11),
+                                       showline=False, zeroline=False, tickangle=-30),
+                            yaxis=dict(gridcolor=chart_grid, title="CA (€)",
+                                       tickfont=dict(color=chart_font, size=11),
+                                       showline=False, zeroline=False, tickformat=",.0f"),
+                            legend=dict(bgcolor="rgba(255,255,255,0.05)", bordercolor=chart_grid,
+                                        borderwidth=1, font=dict(color=chart_font, size=11),
+                                        orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                             hovermode="x unified",
                             margin=dict(t=60, b=40, l=20, r=20),
                         )
-
                         st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Colonne 'Date creation devis' non détectée pour le graphique.")
@@ -1619,7 +1622,6 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
-    # ── FIX DOUBLE CLIC : clé stable + session_state pour sous-onglets ────────
     if "devis_tab" not in st.session_state:
         st.session_state["devis_tab"] = "⏳ En attente de signature"
 
@@ -1669,7 +1671,6 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
-    # ── FIX DOUBLE CLIC ────────────────────────────────────────────────────────
     if "fact_tab" not in st.session_state:
         st.session_state["fact_tab"] = "⚠️ À facturer"
 
@@ -1741,13 +1742,10 @@ elif page == "🏗️ Chantiers":
         df_ch["_has_reserve"] = False
 
     nb_reserves = int(df_ch["_has_reserve"].sum())
-
     ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
 
-    # ── FIX DOUBLE CLIC ────────────────────────────────────────────────────────
     if "chantier_tab" not in st.session_state:
         st.session_state["chantier_tab"] = "🟡 En cours"
-    # Réinitialise si la valeur stockée n'est plus dans la liste (ex: nb_reserves a changé)
     if st.session_state["chantier_tab"] not in ch_tab_opts:
         st.session_state["chantier_tab"] = ch_tab_opts[0]
 
@@ -1823,7 +1821,6 @@ elif page == "📅 Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── FIX DOUBLE CLIC : vue planning ────────────────────────────────────────
     if "plan_view_tab" not in st.session_state:
         st.session_state["plan_view_tab"] = "📅 Calendrier mensuel"
 
@@ -1842,7 +1839,6 @@ elif page == "📅 Planning":
     )
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── CALENDRIER MENSUEL ─────────────────────────────────────────────────────
     if view_mode == "📅 Calendrier mensuel":
         if "plan_year" not in st.session_state: st.session_state["plan_year"] = today.year
         if "plan_month" not in st.session_state: st.session_state["plan_month"] = today.month
@@ -1911,7 +1907,6 @@ elif page == "📅 Planning":
             else:
                 st.info("Aucun chantier prévu ce jour.")
 
-    # ── GANTT ──────────────────────────────────────────────────────────────────
     elif view_mode == "📊 Gantt":
         df_gantt = df_plan.sort_values("_start")
         fig_gantt = px.timeline(
@@ -1922,8 +1917,7 @@ elif page == "📅 Planning":
             color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"},
         )
         fig_gantt.update_layout(
-            paper_bgcolor=chart_bg,
-            plot_bgcolor=chart_bg,
+            paper_bgcolor=chart_bg, plot_bgcolor=chart_bg,
             font_color=chart_font,
             margin=dict(t=20, b=20, l=10, r=10),
             height=max(400, len(df_gantt) * 42 + 80),
@@ -1932,7 +1926,6 @@ elif page == "📅 Planning":
         )
         st.plotly_chart(fig_gantt, use_container_width=True)
 
-    # ── LISTE ──────────────────────────────────────────────────────────────────
     elif view_mode == "📋 Liste":
         filtre_statut = st.multiselect(
             "Filtrer par statut",
