@@ -974,7 +974,7 @@ elif page == "📄 Créer un devis":
     import streamlit.components.v1 as components
     page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user}"
 
     # ── Chargement catalogue ───────────────────────────────────────────────────
     @st.cache_data(ttl=60, show_spinner=False)
@@ -996,8 +996,7 @@ elif page == "📄 Créer un devis":
                 prix    = row_d.get("prix vente ht", row_d.get("total ht", "")).strip()
                 desc    = row_d.get("description", "").strip()
                 cat     = row_d.get("catégorie", row_d.get("categorie", "")).strip()
-                label   = article + (f"  –  {prix} € HT" if prix else "")
-                items.append({"label": label, "article": article, "description": desc,
+                items.append({"article": article, "description": desc,
                                "prix_ht": prix, "categorie": cat, "source": "catalogue"})
             return items
         except Exception:
@@ -1038,7 +1037,7 @@ elif page == "📄 Créer un devis":
 
     catalogue_items   = _load_catalogue_devis(user)
     prestations_items = _load_prestations_devis(user)
-    cat_labels        = ["— Choisir un article —"]    + [it["article"] for it in catalogue_items]
+    cat_labels        = ["— Choisir un article —"] + [it["article"] for it in catalogue_items]
     prest_labels      = ["— Choisir une prestation —"] + [it["label"] for it in prestations_items]
 
     def _parse_prix(val):
@@ -1062,8 +1061,8 @@ elif page == "📄 Créer un devis":
         client_nom   = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
         client_email = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
     with c2:
-        client_tel        = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
-        client_adresse    = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
+        client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
+        client_adresse = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
 
     st.markdown("---")
     st.markdown("#### 🏗️ Chantier")
@@ -1113,9 +1112,9 @@ elif page == "📄 Créer un devis":
         with st.container(border=True):
             col_src, col_del = st.columns([6, 1])
             with col_src:
-                src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source","libre"), 2)
+                src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source", "libre"), 2)
                 src = st.radio(
-                f"src_{i}", ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
+                    f"src_{i}", ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
                     horizontal=True, key=f"src_{i}", index=src_idx,
                     label_visibility="collapsed",
                 )
@@ -1123,7 +1122,7 @@ elif page == "📄 Créer un devis":
                 if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
                     to_del.append(i)
 
-           if src == "🗂️ Divers":
+            if src == "🗂️ Divers":
                 ligne["source"] = "catalogue"
                 sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
                 if sel != cat_labels[0]:
@@ -1172,11 +1171,25 @@ elif page == "📄 Créer un devis":
         st.rerun()
 
     # ── Totaux ─────────────────────────────────────────────────────────────────
-    total_ht  = sum(
-        float(st.session_state.get(f"pht_{i}", st.session_state.get(f"pht2_{i}", st.session_state.get(f"pht3_{i}", l["prix_ht"])))) *
-        float(st.session_state.get(f"qte_{i}",  st.session_state.get(f"qte2_{i}",  st.session_state.get(f"qte3_{i}",  l["qte"]))))
-        for i, l in enumerate(lignes)
-    )
+    def _get_prix(i, l):
+        src = l.get("source", "libre")
+        if src == "catalogue":
+            return float(l["prix_ht"])
+        elif src == "prestations":
+            return float(st.session_state.get(f"pht2_{i}", l["prix_ht"]))
+        else:
+            return float(st.session_state.get(f"pht3_{i}", l["prix_ht"]))
+
+    def _get_qte(i, l):
+        src = l.get("source", "libre")
+        if src == "catalogue":
+            return float(st.session_state.get(f"qte_{i}", l["qte"]))
+        elif src == "prestations":
+            return float(st.session_state.get(f"qte2_{i}", l["qte"]))
+        else:
+            return float(st.session_state.get(f"qte3_{i}", l["qte"]))
+
+    total_ht  = sum(_get_prix(i, l) * _get_qte(i, l) for i, l in enumerate(lignes))
     total_tva = round(total_ht * tva_taux, 2)
     total_ttc = round(total_ht + total_tva, 2)
 
@@ -1222,15 +1235,16 @@ elif page == "📄 Créer un devis":
             "tva": {"taux": tva_taux, "taux_pct": tva_pct_str, "sur_debits": tva_debits_bool},
             "prestations": [
                 {"numero": i+1, "article": l["article"].strip(), "description": l["description"].strip(),
-                 "categorie": l.get("categorie",""), "qte": l["qte"],
-                 "prix_ht": round(l["prix_ht"], 2), "total_ht": round(l["qte"] * l["prix_ht"], 2)}
+                 "categorie": l.get("categorie",""), "qte": _get_qte(i, l),
+                 "prix_ht": round(_get_prix(i, l), 2),
+                 "total_ht": round(_get_qte(i, l) * _get_prix(i, l), 2)}
                 for i, l in enumerate(lignes) if l["article"].strip()
             ],
             "totaux": {"total_ht": round(total_ht, 2), "tva": total_tva, "total_ttc": total_ttc},
             "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
         }
 
-    # ── Boutons ─────────────────────────────────────────────────────────────────
+    # ── Boutons ────────────────────────────────────────────────────────────────
     col_prev, col_send = st.columns(2)
     with col_prev:
         if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
@@ -1269,40 +1283,35 @@ elif page == "📄 Créer un devis":
                     except Exception as ex:
                         st.error(f"Erreur inattendue : {ex}")
 
-    # ── Prévisualisation ────────────────────────────────────────────────────────
+    # ── Prévisualisation ───────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
 
-        # Construction lignes HTML
         lignes_html = ""
         for i, l in enumerate(lignes):
             if not l["article"].strip():
                 continue
-            prix = float(st.session_state.get(f"pht_{i}", st.session_state.get(f"pht2_{i}", st.session_state.get(f"pht3_{i}", l["prix_ht"]))))
-            qte  = float(st.session_state.get(f"qte_{i}",  st.session_state.get(f"qte2_{i}",  st.session_state.get(f"qte3_{i}",  l["qte"]))))
-            l["prix_ht"] = prix
-            l["qte"]     = qte
+            prix       = _get_prix(i, l)
+            qte        = _get_qte(i, l)
             total_ht_l = round(qte * prix, 2)
             tva_l      = round(total_ht_l * tva_taux, 2)
             ttc_l      = round(total_ht_l + tva_l, 2)
             bg         = "#f8fafc" if i % 2 == 0 else "#ffffff"
-            source_badge = " <span style='color:#94a3b8;font-size:7px;'>[Divers]</span>" if l.get("source") == "catalogue" else ""
             desc_part  = f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>" if l.get("description","").strip() else ""
             lignes_html += f"""
             <tr style="background:{bg};">
               <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
               <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
-                <strong style="font-size:9px;">{l['article']}</strong>{source_badge}{desc_part}
+                <strong style="font-size:9px;">{l['article']}</strong>{desc_part}
               </td>
-              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['qte']:g}</td>
-              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['prix_ht']:,.2f} €</td>
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{qte:g}</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{prix:,.2f} €</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_pct_str} %</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_l:,.2f} €</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1d4ed8;">{ttc_l:,.2f} €</td>
             </tr>"""
 
         date_fin_str = (date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")
-
         tva_mention = (
             "TVA à taux super-réduit (travaux d'amélioration énergétique)"
             if tva_taux == 0.055 else
@@ -1452,10 +1461,8 @@ tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; ver
 </body>
 </html>"""
 
-        # Calcul hauteur dynamique
         nb_lignes_valides = sum(1 for l in lignes if l["article"].strip())
         preview_height = 820 + nb_lignes_valides * 32
-
         components.html(preview_html, height=preview_height, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1464,7 +1471,7 @@ tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; ver
             st.rerun()
 
     st.stop()
-
+    
 # ── CHARGEMENT DONNÉES ─────────────────────────────────────────────────────────
 df_raw, error = get_sheet_data(user)
 
