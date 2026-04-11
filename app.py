@@ -1354,154 +1354,170 @@ elif page == "📄 Créer un devis":
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<title>Devis</title>
 <style>
-* {{ box-sizing:border-box; margin:0; padding:0; }}
-body {{ font-family:'Segoe UI',Arial,sans-serif; font-size:9px; color:#1e293b; background:#fff; padding:20px; }}
-.header {{ display:flex; justify-content:space-between; align-items:flex-start;
-           border-bottom:3px solid #1d4ed8; padding-bottom:14px; margin-bottom:16px; }}
-.badge {{ background:#1d4ed8; color:#fff; font-size:18px; font-weight:800;
-          letter-spacing:3px; padding:4px 14px; border-radius:5px; display:inline-block; }}
-.doc-info {{ font-size:8px; color:#64748b; margin-top:6px; }}
-.doc-info span {{ background:#f1f5f9; padding:2px 8px; border-radius:3px; font-weight:600; margin-right:4px; }}
-.doc-info .blue {{ background:#eff6ff; color:#1d4ed8; }}
-.doc-info .green {{ background:#f0fdf4; color:#166534; }}
-.doc-info .yellow {{ background:#fef9c3; color:#854d0e; }}
-.company {{ text-align:right; font-size:8px; color:#475569; }}
-.company strong {{ font-size:11px; color:#1d4ed8; display:block; margin-bottom:2px; }}
-.two-cols {{ display:flex; gap:12px; margin-bottom:16px; }}
-.box {{ flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; }}
-.box-title {{ font-weight:700; font-size:8px; color:#1d4ed8; text-transform:uppercase;
-              letter-spacing:0.05em; margin-bottom:5px; }}
-.box p {{ color:#475569; margin-top:2px; line-height:1.5; }}
-.box strong {{ color:#1e293b; }}
-table {{ width:100%; border-collapse:collapse; font-size:8.5px; margin-bottom:14px; }}
-thead tr {{ background:#1d4ed8; color:#fff; }}
-thead th {{ padding:6px 8px; font-weight:700; }}
-th.r, td.r {{ text-align:right; }}
-th.c, td.c {{ text-align:center; }}
-tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; vertical-align:top; }}
-.totals {{ display:flex; justify-content:flex-end; margin-bottom:14px; }}
-.totals-inner {{ min-width:240px; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }}
-.trow {{ display:flex; justify-content:space-between; padding:5px 12px;
-         background:#f8fafc; font-size:8.5px; border-bottom:1px solid #e2e8f0; }}
-.trow.ttc {{ background:#1d4ed8; color:#fff; font-weight:700; font-size:10px; padding:7px 12px; }}
-.note {{ padding:6px 12px; border-left:3px solid #1d4ed8; background:#eff6ff;
-         border-radius:0 4px 4px 0; font-size:8px; color:#1e40af; margin-bottom:8px; }}
-.note2 {{ padding:5px 12px; border-left:3px solid #16a34a; background:#f0fdf4;
-          border-radius:0 4px 4px 0; font-size:8px; color:#166534; margin-bottom:8px; }}
-.sigs {{ display:flex; gap:20px; margin-top:16px; }}
-.sig-box {{ flex:1; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; min-height:60px; }}
-.sig-label {{ font-size:7.5px; color:#94a3b8; font-weight:600; text-transform:uppercase; }}
-.btn-row {{ display:flex; gap:12px; margin-top:20px; }}
-.btn {{ padding:10px 24px; border:none; border-radius:8px; font-weight:700;
-        cursor:pointer; font-size:0.85rem; }}
-.btn-print {{ background:#1d4ed8; color:#fff; }}
-.btn-send  {{ background:#16a34a; color:#fff; }}
-@media print {{ .btn-row {{ display:none; }} }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: 'Segoe UI', Arial, sans-serif; font-size: 9px; color: #1e293b; background: #fff; padding: 15px; }}
+  header {{ display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 3px solid #1d4ed8; }}
+  .header-left {{ display: flex; flex-direction: column; gap: 5px; }}
+  .badge-devis {{ display: inline-block; background: #1d4ed8; color: #fff; font-size: 16px; font-weight: 800; letter-spacing: 3px; padding: 3px 12px; border-radius: 4px; }}
+  .doc-info {{ font-size: 8px; color: #64748b; margin-top: 3px; }}
+  .doc-info span {{ background: #f1f5f9; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-weight: 600; }}
+  .header-right {{ display: flex; flex-direction: row; align-items: center; gap: 10px; }}
+  .logo-placeholder {{ width: 45px; height: 45px; border-radius: 6px; background: #1d4ed8; display: flex; align-items: center; justify-content: center; }}
+  .logo-initials {{ color: #fff; font-size: 14px; font-weight: 900; }}
+  .company-info {{ text-align: right; font-size: 8px; line-height: 1.5; color: #475569; }}
+  .company-info strong {{ font-size: 10px; color: #1d4ed8; display: block; }}
+  .section-title {{ font-weight: 700; font-size: 8px; color: #1d4ed8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px solid #e2e8f0; }}
+  .two-columns {{ display: flex; flex-direction: row; gap: 10px; margin-bottom: 12px; }}
+  .column {{ flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 7px 10px; }}
+  .column p {{ margin-top: 3px; line-height: 1.5; color: #334155; }}
+  .column p strong {{ font-size: 10px; color: #0f172a; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 8.5px; }}
+  thead tr {{ background: #1d4ed8; color: #fff; }}
+  thead th {{ padding: 5px 6px; text-align: left; font-weight: 600; font-size: 8px; text-transform: uppercase; }}
+  thead th.right {{ text-align: right; }}
+  thead th.center {{ text-align: center; }}
+  tbody tr:nth-child(even) {{ background: #f8fafc; }}
+  tbody td {{ padding: 5px 6px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: top; }}
+  td.right {{ text-align: right; }}
+  td.center {{ text-align: center; }}
+  td.qte {{ text-align: center; font-weight: 700; color: #1d4ed8; }}
+  .totals-wrapper {{ display: flex; justify-content: flex-end; margin-top: 8px; }}
+  .totals {{ min-width: 200px; border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }}
+  .totals-row {{ display: flex; justify-content: space-between; padding: 4px 10px; border-bottom: 1px solid #e2e8f0; font-size: 8.5px; }}
+  .totals-row.ht, .totals-row.tva {{ background: #f8fafc; }}
+  .totals-row.ttc {{ background: #1d4ed8; color: #fff; font-weight: 700; font-size: 10px; padding: 6px 10px; }}
+  .delai-box {{ margin-top: 8px; padding: 5px 10px; background: #eff6ff; border-left: 3px solid #1d4ed8; border-radius: 0 4px 4px 0; font-size: 8px; color: #1e40af; }}
+  .modalites-box {{ margin-top: 8px; padding: 8px 10px; border: 1px solid #bfdbfe; background: #f0f7ff; border-radius: 5px; font-size: 8px; }}
+  .modalites-title {{ font-weight: 700; color: #1d4ed8; font-size: 9px; margin-bottom: 3px; }}
+  .modalites-detail {{ color: #475569; margin-bottom: 6px; }}
+  .info-grid {{ display: flex; flex-direction: row; gap: 10px; margin-top: 8px; }}
+  .company-block, .legal-compact {{ flex: 1; font-size: 7.5px; line-height: 1.5; padding: 7px 8px; border-radius: 4px; background: #f8fafc; border: 1px solid #e2e8f0; }}
+  .company-block strong, .legal-compact strong {{ display: block; font-size: 8px; color: #1d4ed8; margin-bottom: 3px; text-transform: uppercase; }}
+  .company-block {{ border-left: 3px solid #1d4ed8; }}
+  .legal-compact {{ border-left: 3px solid #f59e0b; }}
+  .signature {{ margin-top: 8px; }}
+  .signature-block {{ max-width: 250px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 5px; background: #fafafa; }}
+  .sig-title {{ font-weight: 700; font-size: 8px; color: #1d4ed8; text-transform: uppercase; margin-bottom: 5px; }}
+  .sig-date {{ font-size: 7.5px; color: #64748b; margin-bottom: 20px; }}
+  .signature-line {{ border-bottom: 1px solid #94a3b8; width: 100%; }}
+  footer {{ margin-top: 8px; text-align: center; font-size: 7px; color: #94a3b8; padding-top: 6px; border-top: 1px solid #e2e8f0; }}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div>
-    <div class="badge">DEVIS</div>
+<header>
+  <div class="header-left">
+    <div class="badge-devis">DEVIS</div>
     <div class="doc-info">
       <span>Date : {datetime.now().strftime("%d/%m/%Y")}</span>
-      <span class="blue">TVA : {tva_pct_str} %</span>
-      <span class="green">{"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}</span>
-      <span class="yellow">{categorie_operation}</span>
+      <span>TVA : {tva_pct_str} %</span>
+      <span>{"TVA sur debits" if tva_debits_bool else "TVA sur encaissements"}</span>
+      <span>{categorie_operation}</span>
     </div>
   </div>
-  <div class="company">
-    <strong>Florian AI Batiment</strong>
-    108 rue de Falaise – 14000 Caen<br>
-    contact@florian-ai-batiment.fr
+  <div class="header-right">
+    <div class="company-info">
+      <strong>Florian AI Batiment</strong>
+      108 rue de Falaise<br>
+      14000 Caen<br>
+      SIRET 812 345 678 00027<br>
+      TVA FR12 812345678<br>
+      06 12 34 56 78<br>
+      contact@florian-ai-batiment.fr
+    </div>
+    <div class="logo-placeholder">
+      <span class="logo-initials">FA</span>
+    </div>
   </div>
-</div>
+</header>
 
-<div class="two-cols">
-  <div class="box">
-    <div class="box-title">👤 Client</div>
+<div class="two-columns">
+  <div class="column">
+    <div class="section-title">Client</div>
     <p><strong>{client_nom}</strong></p>
     <p>{client_adresse}</p>
     <p>{client_email}</p>
     {"<p>" + client_tel + "</p>" if client_tel.strip() else ""}
   </div>
-  <div class="box">
-    <div class="box-title">🏗️ Chantier</div>
+  <div class="column">
+    <div class="section-title">Objet des travaux</div>
     <p><strong>{objet_travaux}</strong></p>
     <p>📍 {adresse_chantier}</p>
-    <p>Début : <strong>{date_debut.strftime("%d/%m/%Y")}</strong></p>
-    <p>Durée : <strong>{duree_jours} jour(s) ouvré(s)</strong></p>
-    <p>Fin estimée : <strong>{date_fin_str}</strong></p>
-    <p>Paiement : <strong>{modalite_paie}</strong></p>
+    <p>Debut : {date_debut.strftime("%d/%m/%Y")}</p>
+    <p>Duree : {duree_jours} jour(s) ouvre(s)</p>
+    <p>Fin estimee : {date_fin_str}</p>
+    <p>Paiement : {modalite_paie}</p>
   </div>
 </div>
 
+<div class="section-title">Detail des prestations</div>
 <table>
   <thead>
     <tr>
-      <th class="c" style="width:28px;">N°</th>
-      <th>Désignation / Prestation</th>
-      <th class="c" style="width:38px;">Qté</th>
-      <th class="r" style="width:72px;">PU HT (€)</th>
-      <th class="r" style="width:42px;">TVA</th>
-      <th class="r" style="width:65px;">Mnt TVA (€)</th>
-      <th class="r" style="width:72px;">Total TTC (€)</th>
+      <th class="center" style="width:28px;">N°</th>
+      <th>Prestation</th>
+      <th class="center" style="width:35px;">Qte</th>
+      <th class="right" style="width:60px;">HT (€)</th>
+      <th class="right" style="width:55px;">TVA (€)</th>
+      <th class="right" style="width:65px;">TTC (€)</th>
     </tr>
   </thead>
   <tbody>
-    {lignes_html if lignes_html else
-     '<tr><td colspan="7" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignée</td></tr>'}
+    {lignes_html if lignes_html else '<tr><td colspan="6" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignee</td></tr>'}
   </tbody>
 </table>
 
-<div class="totals">
-  <div class="totals-inner">
-    <div class="trow"><span style="color:#475569;">Total HT</span><strong>{total_ht:,.2f} €</strong></div>
-    <div class="trow"><span style="color:#475569;">TVA ({tva_pct_str} %)</span><strong>{total_tva:,.2f} €</strong></div>
-    <div class="trow ttc"><span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span></div>
+<div class="totals-wrapper">
+  <div class="totals">
+    <div class="totals-row ht"><span>Total HT</span><strong>{total_ht:,.2f} €</strong></div>
+    <div class="totals-row tva"><span>TVA ({tva_pct_str} %)</span><strong>{total_tva:,.2f} €</strong></div>
+    <div class="totals-row ttc"><span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span></div>
   </div>
 </div>
 
-<div class="note"><strong>Modalité de paiement :</strong> {modalite_paie}</div>
-<div class="note2"><strong>TVA {tva_pct_str} % :</strong> {tva_mention} — {"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}</div>
-
-<div class="sigs">
-  <div class="sig-box"><div class="sig-label">Signature client — Bon pour accord</div></div>
-  <div class="sig-box"><div class="sig-label">Signature entreprise</div></div>
+<div class="delai-box">
+  Delai de prestation : <strong>{duree_jours} jours</strong> a compter de la signature du devis
 </div>
 
-<div class="btn-row">
-  <button class="btn btn-print"
-    onclick="
-      fetch('{WEBHOOK_URL}', {{
-        method:'POST',
-        headers:{{'Content-Type':'application/json'}},
-        body: JSON.stringify({{sent_from_preview: true, action: 'imprimer', user: '{user}'}})
-      }})
-      .then(r => alert(r.ok ? '✅ Envoyé à n8n (impression) !' : '❌ Erreur ' + r.status))
-      .catch(e => alert('❌ ' + e));
-    ">
-    🖨️ Imprimer / PDF
-  </button>
-  <button class="btn btn-send"
-    onclick="
-      fetch('{WEBHOOK_URL}', {{
-        method:'POST',
-        headers:{{'Content-Type':'application/json'}},
-        body: JSON.stringify({{sent_from_preview: true, action: 'envoyer', user: '{user}'}})
-      }})
-      .then(r => alert(r.ok ? '✅ Devis envoyé à n8n !' : '❌ Erreur ' + r.status))
-      .catch(e => alert('❌ ' + e));
-    ">
-    📤 Envoyer au client
-  </button>
+<div class="modalites-box">
+  <div class="modalites-title">Modalites de paiement - {modalite_paie}</div>
+  <div class="modalites-detail">{modalite_paie}</div>
+  <div style="color:#b45309;margin-bottom:6px;">Paiement sous 30 jours a compter de la facturation - Tout retard entraine des penalites au taux legal en vigueur.</div>
+  <div style="margin-bottom:6px; color:#475569;">Modes de paiement acceptes : Cheque, Virement bancaire, Carte bancaire</div>
 </div>
+
+<div class="info-grid">
+  <div class="company-block">
+    <strong>Informations societe</strong>
+    Florian AI Batiment - SARL au capital de 10 000 €<br>
+    SIRET 812 345 678 00027 | RCS Caen | TVA FR12 812345678<br>
+    Assurance decennale : AXA France IARD - Contrat n° DEC-2025-45879
+  </div>
+  <div class="legal-compact">
+    <strong>Conditions generales de vente</strong>
+    Devis valable 30 jours. Retard de paiement - penalites legales + indemnite 40 €.<br>
+    {"TVA 5,5% applicable selon art. 278-0 bis CGI (travaux economie d'energie, logement +2 ans)." if tva_taux == 0.055 else "TVA 10% applicable selon art. 279-0 bis CGI (travaux de renovation, logement +2 ans)." if tva_taux == 0.10 else "TVA 20% - Taux normal applicable."}<br>
+    Retractation 14 jours (art. L221-18). Litige : Tribunal de Commerce de Caen.
+  </div>
+</div>
+
+<div class="signature">
+  <div class="signature-block">
+    <div class="sig-title">Bon pour accord - Client</div>
+    <div class="sig-date">Date : ___________________________</div>
+    <div style="font-size:7px; color:#94a3b8; margin-bottom:15px;">Precede de la mention Lu et approuve</div>
+    <div class="signature-line"></div>
+  </div>
+</div>
+
+<footer>
+  Florian AI Batiment - SIRET 812 345 678 00027 - contact@florian-ai-batiment.fr - 06 12 34 56 78 - Document valable 30 jours
+</footer>
 
 </body>
 </html>"""
-
         nb_lignes_valides = sum(1 for l in lignes if l["article"].strip())
         preview_height = 820 + nb_lignes_valides * 32
         components.html(preview_html, height=preview_height, scrolling=True)
