@@ -1073,7 +1073,7 @@ elif page == "📄 Créer un devis":
     c1, c2 = st.columns(2)
     with c1:
         client_nom   = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
-        client_email = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
+        client_email = st.text_input("Email", placeholder="jean.dupont@email.com (optionnel)", key="dv_email")
     with c2:
         client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
         client_adresse = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
@@ -1296,7 +1296,6 @@ elif page == "📄 Créer un devis":
     def _validate():
         errs = []
         if not client_nom.strip():       errs.append("Nom client manquant")
-        if not client_email.strip():     errs.append("Email client manquant")
         if not adresse_chantier.strip(): errs.append("Adresse chantier manquante")
         if not objet_travaux.strip():    errs.append("Objet des travaux manquant")
         if not any(l["article"].strip() for l in lignes):
