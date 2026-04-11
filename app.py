@@ -1124,7 +1124,7 @@ elif page == "📄 Créer un devis":
                     ligne["article"] = ""
                     ligne["prix_ht"] = 0.0
                     ligne["qte"] = 1.0
-                  st.rerun()
+                   st.rerun()
             with col_del:
                 if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
                     to_del.append(i)
