@@ -1124,18 +1124,18 @@ elif page == "📄 Créer un devis":
                     to_del.append(i)
 
             if src == "🗂️ Divers":
-    ligne["source"] = "catalogue"
-    sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
-    if sel != cat_labels[0]:
-        found = next((it for it in catalogue_items if it["article"] == sel), None)
-        if found and sel != ligne.get("_prev_sel"):
-            ligne.update({"article": found["article"], "description": "",
-                           "categorie": found["categorie"], "_prev_sel": sel,
-                           "prix_ht": 0.0})
-            st.rerun()
-    cq, cp = st.columns(2)
-    ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
-    ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
+                ligne["source"] = "catalogue"
+                sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
+                if sel != cat_labels[0]:
+                    found = next((it for it in catalogue_items if it["article"] == sel), None)
+                    if found and sel != ligne.get("_prev_sel"):
+                        ligne.update({"article": found["article"], "description": "",
+                                       "categorie": found["categorie"], "_prev_sel": sel,
+                                       "prix_ht": 0.0})
+                        st.rerun()
+                cq, cp = st.columns(2)
+                ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
                         st.rerun()
                 cq, cp = st.columns(2)
                 ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
