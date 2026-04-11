@@ -1147,7 +1147,7 @@ elif page == "📄 Créer un devis":
                 if ligne.get("article"):
                     st.caption(f"Qté : **{ligne['qte']:g}** — Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
 
-           elif src == "🔧 Prestations" :
+           elif src == "🔧Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
