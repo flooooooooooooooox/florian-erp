@@ -968,12 +968,10 @@ elif page == "📝 Éditeur Google Sheet":
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CRÉER UN DEVIS
-# ══════════════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CRÉER UN DEVIS  — VERSION CORRIGÉE
+# PAGE : CRÉER UN DEVIS  — VERSION CORRIGÉE v2
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📄 Créer un devis":
+    import streamlit.components.v1 as components
     page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
     WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user}"
@@ -1040,9 +1038,14 @@ elif page == "📄 Créer un devis":
 
     catalogue_items   = _load_catalogue_devis(user)
     prestations_items = _load_prestations_devis(user)
+    cat_labels        = ["— Choisir un article —"]    + [it["label"] for it in catalogue_items]
+    prest_labels      = ["— Choisir une prestation —"] + [it["label"] for it in prestations_items]
 
-    cat_labels   = ["— Choisir un article —"]   + [it["label"] for it in catalogue_items]
-    prest_labels = ["— Choisir une prestation —"] + [it["label"] for it in prestations_items]
+    def _parse_prix(val):
+        try:
+            return float(str(val).replace(",",".").replace(" ","").replace("\u202f","") or 0)
+        except Exception:
+            return 0.0
 
     # ── Init session ───────────────────────────────────────────────────────────
     if "devis_lignes" not in st.session_state:
@@ -1056,27 +1059,21 @@ elif page == "📄 Créer un devis":
     st.markdown("#### 👤 Informations client")
     c1, c2 = st.columns(2)
     with c1:
-        client_nom     = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
-        client_email   = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
+        client_nom   = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
+        client_email = st.text_input("Email *", placeholder="jean.dupont@email.com", key="dv_email")
     with c2:
-        client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
-        client_adresse = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
+        client_tel        = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
+        client_adresse    = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
 
     st.markdown("---")
-
-    # ── Chantier ───────────────────────────────────────────────────────────────
     st.markdown("#### 🏗️ Chantier")
     c3, c4 = st.columns(2)
     with c3:
-        objet_travaux      = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
-        adresse_chantier   = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
+        objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
+        adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
-            "Travaux de rénovation",
-            "Travaux neuf",
-            "Travaux d'entretien / maintenance",
-            "Installation équipement",
-            "Mise aux normes",
-            "Autre",
+            "Travaux de rénovation", "Travaux neufs", "Travaux d'entretien / maintenance",
+            "Installation équipement", "Mise aux normes", "Autre",
         ], key="dv_cat_op")
     with c4:
         modalite_paie = st.selectbox("Modalité de paiement", [
@@ -1087,41 +1084,39 @@ elif page == "📄 Créer un devis":
         date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
 
-    # ── TVA ────────────────────────────────────────────────────────────────────
+    st.markdown("---")
     st.markdown("#### 🧾 TVA")
-    c_tva1, c_tva2 = st.columns([2, 3])
+    c_tva1, c_tva2 = st.columns([2, 2])
     with c_tva1:
         tva_option = st.radio("Taux TVA applicable", [
-            "5,5 % (travaux d'amélioration énergétique)",
+            "5,5 % (amélioration énergétique)",
             "10 % (travaux de rénovation)",
             "20 % (travaux neufs / autres)",
         ], key="dv_tva")
     with c_tva2:
-        tva_debits = st.radio("TVA sur débits ou encaissements ?", [
-            "TVA sur encaissements (par défaut artisans)",
+        tva_debits_option = st.radio("Régime TVA", [
+            "TVA sur encaissements",
             "TVA sur débits",
         ], key="dv_tva_debits")
 
-    tva_taux = 0.055 if "5,5" in tva_option else (0.10 if "10" in tva_option else 0.20)
-    tva_debits_bool = "débits" in tva_debits
+    tva_taux        = 0.055 if "5,5" in tva_option else (0.10 if "10 %" in tva_option else 0.20)
+    tva_debits_bool = "débits" in tva_debits_option
+    tva_pct_str     = "5,5" if tva_taux == 0.055 else str(int(tva_taux * 100))
 
     st.markdown("---")
-
-    # ── Prestations ────────────────────────────────────────────────────────────
     st.markdown("#### 🛠️ Prestations")
 
-    lignes  = st.session_state.devis_lignes
-    to_del  = []
+    lignes = st.session_state.devis_lignes
+    to_del = []
 
     for i, ligne in enumerate(lignes):
         with st.container(border=True):
             col_src, col_del = st.columns([6, 1])
             with col_src:
+                src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source","libre"), 2)
                 src = st.radio(
-                    f"Source_{i}",
-                    ["📚 Catalogue", "🔧 Prestations", "✏️ Saisie libre"],
-                    horizontal=True, key=f"src_{i}",
-                    index={"catalogue": 0, "prestations": 1}.get(ligne.get("source", "libre"), 2),
+                    f"src_{i}", ["📚 Catalogue", "🔧 Prestations", "✏️ Saisie libre"],
+                    horizontal=True, key=f"src_{i}", index=src_idx,
                     label_visibility="collapsed",
                 )
             with col_del:
@@ -1130,51 +1125,39 @@ elif page == "📄 Créer un devis":
 
             if src == "📚 Catalogue":
                 ligne["source"] = "catalogue"
-                sel = st.selectbox("Article catalogue", cat_labels, key=f"cat_{i}")
+                sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
                 if sel != cat_labels[0]:
                     found = next((it for it in catalogue_items if it["label"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": found["description"],
-                                       "categorie": found["categorie"], "_prev_sel": sel})
-                        try:
-                            ligne["prix_ht"] = float(str(found["prix_ht"]).replace(",",".").replace(" ","").replace("\u202f","") or 0)
-                        except Exception:
-                            ligne["prix_ht"] = 0.0
-                        for k in [f"pht_{i}"]:
-                            st.session_state.pop(k, None)
+                                       "categorie": found["categorie"], "_prev_sel": sel,
+                                       "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
                 cq, cp = st.columns(2)
-                with cq: ligne["qte"]     = st.number_input("Qté", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
-                with cp: ligne["prix_ht"] = st.number_input("PU HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
+                ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
-                sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}")
+                sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
                     found = next((it for it in prestations_items if it["label"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": found["description"],
-                                       "categorie": found["categorie"], "_prev_sel": sel})
-                        try:
-                            ligne["prix_ht"] = float(str(found["prix_ht"]).replace(",",".").replace(" ","").replace("\u202f","") or 0)
-                        except Exception:
-                            ligne["prix_ht"] = 0.0
-                        for k in [f"pht2_{i}"]:
-                            st.session_state.pop(k, None)
+                                       "categorie": found["categorie"], "_prev_sel": sel,
+                                       "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
                 cq2, cp2 = st.columns(2)
-                with cq2: ligne["qte"]     = st.number_input("Qté", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-                with cp2: ligne["prix_ht"] = st.number_input("PU HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
+                ligne["qte"]     = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
+                ligne["prix_ht"] = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
 
             else:
-                ligne["source"]  = "libre"
-                ligne["article"] = st.text_input("Désignation *", value=ligne.get("article",""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
+                ligne["source"]      = "libre"
+                ligne["article"]     = st.text_input("Désignation *", value=ligne.get("article",""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
                 ligne["description"] = st.text_input("Description", value=ligne.get("description",""), key=f"desc_{i}")
                 cq3, cp3 = st.columns(2)
-                with cq3: ligne["qte"]     = st.number_input("Qté", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte3_{i}")
-                with cp3: ligne["prix_ht"] = st.number_input("PU HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht3_{i}")
-
-            st.caption(f"💶 Total ligne : **{ligne['qte'] * ligne['prix_ht']:,.2f} €** HT")
+                ligne["qte"]     = cq3.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte3_{i}")
+                ligne["prix_ht"] = cp3.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht3_{i}")
 
     for idx in sorted(to_del, reverse=True):
         st.session_state.devis_lignes.pop(idx)
@@ -1189,9 +1172,8 @@ elif page == "📄 Créer un devis":
 
     # ── Totaux ─────────────────────────────────────────────────────────────────
     total_ht  = sum(l["qte"] * l["prix_ht"] for l in lignes)
-    total_tva = total_ht * tva_taux
-    total_ttc = total_ht + total_tva
-    tva_pct   = int(round(tva_taux * 100)) if tva_taux != 0.055 else "5,5"
+    total_tva = round(total_ht * tva_taux, 2)
+    total_ttc = round(total_ht + total_tva, 2)
 
     st.markdown(f"""
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
@@ -1200,7 +1182,7 @@ elif page == "📄 Créer un devis":
           <span style="color:var(--text-muted);">Total HT</span><strong>{total_ht:,.2f} €</strong>
         </div>
         <div style="display:flex;justify-content:space-between;padding:6px 14px;background:var(--bg-surface);font-size:0.88rem;">
-          <span style="color:var(--text-muted);">TVA ({tva_pct} %)</span><strong>{total_tva:,.2f} €</strong>
+          <span style="color:var(--text-muted);">TVA ({tva_pct_str} %)</span><strong>{total_tva:,.2f} €</strong>
         </div>
         <div style="display:flex;justify-content:space-between;padding:8px 14px;background:#1d4ed8;color:#fff;font-weight:700;font-size:1rem;">
           <span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span>
@@ -1214,76 +1196,44 @@ elif page == "📄 Créer un devis":
     # ── Validation ─────────────────────────────────────────────────────────────
     def _validate():
         errs = []
-        if not client_nom.strip():        errs.append("Nom client manquant")
-        if not client_email.strip():      errs.append("Email client manquant")
-        if not adresse_chantier.strip():  errs.append("Adresse chantier manquante")
-        if not objet_travaux.strip():     errs.append("Objet des travaux manquant")
+        if not client_nom.strip():       errs.append("Nom client manquant")
+        if not client_email.strip():     errs.append("Email client manquant")
+        if not adresse_chantier.strip(): errs.append("Adresse chantier manquante")
+        if not objet_travaux.strip():    errs.append("Objet des travaux manquant")
         if not any(l["article"].strip() for l in lignes):
             errs.append("Au moins une prestation est requise")
         return errs
 
     def _build_payload():
         return {
-            "client": {
-                "nom": client_nom.strip(), "email": client_email.strip(),
-                "tel": client_tel.strip(), "adresse": client_adresse.strip(),
-            },
-            "chantier": {
-                "objet": objet_travaux.strip(),
-                "adresse": adresse_chantier.strip(),
-                "categorie_operation": categorie_operation,
-                "date_debut": date_debut.strftime("%Y-%m-%d"),
-                "duree_jours": int(duree_jours),
-                "date_fin_estimee": (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
-                "modalite_paiement": modalite_paie,
-            },
-            "tva": {
-                "taux": tva_taux,
-                "taux_pct": str(tva_pct),
-                "sur_debits": tva_debits_bool,
-            },
+            "client": {"nom": client_nom.strip(), "email": client_email.strip(),
+                       "tel": client_tel.strip(), "adresse": client_adresse.strip()},
+            "chantier": {"objet": objet_travaux.strip(), "adresse": adresse_chantier.strip(),
+                         "categorie_operation": categorie_operation,
+                         "date_debut": date_debut.strftime("%Y-%m-%d"),
+                         "duree_jours": int(duree_jours),
+                         "date_fin_estimee": (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
+                         "modalite_paiement": modalite_paie},
+            "tva": {"taux": tva_taux, "taux_pct": tva_pct_str, "sur_debits": tva_debits_bool},
             "prestations": [
-                {
-                    "numero": i + 1,
-                    "article": l["article"].strip(),
-                    "description": l["description"].strip(),
-                    "categorie": l.get("categorie", ""),
-                    "qte": l["qte"],
-                    "prix_ht": round(l["prix_ht"], 2),
-                    "total_ht": round(l["qte"] * l["prix_ht"], 2),
-                }
+                {"numero": i+1, "article": l["article"].strip(), "description": l["description"].strip(),
+                 "categorie": l.get("categorie",""), "qte": l["qte"],
+                 "prix_ht": round(l["prix_ht"], 2), "total_ht": round(l["qte"] * l["prix_ht"], 2)}
                 for i, l in enumerate(lignes) if l["article"].strip()
             ],
-            "totaux": {
-                "total_ht": round(total_ht, 2),
-                "tva": round(total_tva, 2),
-                "total_ttc": round(total_ttc, 2),
-            },
-            "meta": {
-                "cree_par": user,
-                "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "source": "streamlit_erp",
-            },
+            "totaux": {"total_ht": round(total_ht, 2), "tva": total_tva, "total_ttc": total_ttc},
+            "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
         }
 
-    # ── Boutons action ─────────────────────────────────────────────────────────
-    col_prev, col_print, col_send = st.columns(3)
+    # ── Boutons ─────────────────────────────────────────────────────────────────
+    col_prev, col_send = st.columns(2)
     with col_prev:
-        if st.button("👁️ Prévisualiser", use_container_width=True, key="btn_preview"):
+        if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
             errs = _validate()
             if errs:
                 for e in errs: st.error(f"❌ {e}")
             else:
                 st.session_state.devis_preview = True
-
-    with col_print:
-        if st.button("🖨️ Imprimer / PDF", use_container_width=True, key="btn_print"):
-            errs = _validate()
-            if errs:
-                for e in errs: st.error(f"❌ {e}")
-            else:
-                st.session_state.devis_preview = True
-                st.session_state.devis_print   = True
 
     with col_send:
         if st.button("🚀 Envoyer à n8n", use_container_width=True, type="primary", key="btn_send_n8n"):
@@ -1303,7 +1253,6 @@ elif page == "📄 Créer un devis":
                                 {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
                             ]
                             st.session_state.devis_preview = False
-                            st.session_state.devis_print   = False
                             st.cache_data.clear()
                         else:
                             st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
@@ -1315,196 +1264,189 @@ elif page == "📄 Créer un devis":
                     except Exception as ex:
                         st.error(f"Erreur inattendue : {ex}")
 
-    # ── Prévisualisation HTML propre ───────────────────────────────────────────
+    # ── Prévisualisation ────────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
-        st.markdown("### 👁️ Prévisualisation du devis")
 
-        # Construction des lignes HTML du tableau
+        # Construction lignes HTML
         lignes_html = ""
         for i, l in enumerate(lignes):
             if not l["article"].strip():
                 continue
-            total_ht_l  = round(l["qte"] * l["prix_ht"], 2)
-            tva_l       = round(total_ht_l * tva_taux, 2)
-            ttc_l       = round(total_ht_l + tva_l, 2)
-            bg          = "#f8fafc" if i % 2 == 0 else "#ffffff"
-            desc_html   = f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>" if l.get("description","").strip() else ""
+            total_ht_l = round(l["qte"] * l["prix_ht"], 2)
+            tva_l      = round(total_ht_l * tva_taux, 2)
+            ttc_l      = round(total_ht_l + tva_l, 2)
+            bg         = "#f8fafc" if i % 2 == 0 else "#ffffff"
+            desc_part  = f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>" if l.get("description","").strip() else ""
             lignes_html += f"""
             <tr style="background:{bg};">
               <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
               <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
-                <strong style="font-size:9px;">{l['article']}</strong>{desc_html}
+                <strong style="font-size:9px;">{l['article']}</strong>{desc_part}
               </td>
               <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['qte']:g}</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['prix_ht']:,.2f} €</td>
-              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_pct} %</td>
+              <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_pct_str} %</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#64748b;">{tva_l:,.2f} €</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1d4ed8;">{ttc_l:,.2f} €</td>
             </tr>"""
 
         date_fin_str = (date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")
 
-        # HTML complet du devis — rendu propre
-        preview_html = f"""
-        <div id="devis-preview" style="background:#fff;color:#1e293b;padding:24px;border-radius:10px;
-             font-family:'Segoe UI',Arial,sans-serif;font-size:9px;border:1px solid #e2e8f0;max-width:900px;">
+        tva_mention = (
+            "TVA à taux super-réduit (travaux d'amélioration énergétique)"
+            if tva_taux == 0.055 else
+            "TVA à taux réduit (travaux de rénovation dans logement de plus de 2 ans)"
+            if tva_taux == 0.10 else
+            "TVA à taux normal (travaux neufs ou hors logement)"
+        )
 
-          <!-- EN-TÊTE -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;
-               border-bottom:3px solid #1d4ed8;padding-bottom:14px;margin-bottom:16px;">
-            <div>
-              <div style="background:#1d4ed8;color:#fff;font-size:18px;font-weight:800;
-                   letter-spacing:3px;padding:4px 14px;border-radius:5px;display:inline-block;">DEVIS</div>
-              <div style="font-size:8px;color:#64748b;margin-top:6px;">
-                <span style="background:#f1f5f9;padding:2px 8px;border-radius:3px;font-weight:600;">
-                  Date : {datetime.now().strftime("%d/%m/%Y")}</span>
-                <span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:3px;
-                      font-weight:600;margin-left:6px;">TVA : {tva_pct} %</span>
-                <span style="background:#f0fdf4;color:#166534;padding:2px 8px;border-radius:3px;
-                      font-weight:600;margin-left:6px;">{"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}</span>
-              </div>
-              <div style="font-size:8px;color:#64748b;margin-top:4px;">
-                <span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:3px;font-weight:600;">
-                  {categorie_operation}</span>
-              </div>
-            </div>
-            <div style="text-align:right;font-size:8px;color:#475569;">
-              <strong style="font-size:11px;color:#1d4ed8;display:block;margin-bottom:2px;">Florian AI Batiment</strong>
-              108 rue de Falaise – 14000 Caen<br>contact@florian-ai-batiment.fr
-            </div>
-          </div>
+        preview_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+* {{ box-sizing:border-box; margin:0; padding:0; }}
+body {{ font-family:'Segoe UI',Arial,sans-serif; font-size:9px; color:#1e293b; background:#fff; padding:20px; }}
+.header {{ display:flex; justify-content:space-between; align-items:flex-start;
+           border-bottom:3px solid #1d4ed8; padding-bottom:14px; margin-bottom:16px; }}
+.badge {{ background:#1d4ed8; color:#fff; font-size:18px; font-weight:800;
+          letter-spacing:3px; padding:4px 14px; border-radius:5px; display:inline-block; }}
+.doc-info {{ font-size:8px; color:#64748b; margin-top:6px; }}
+.doc-info span {{ background:#f1f5f9; padding:2px 8px; border-radius:3px; font-weight:600; margin-right:4px; }}
+.doc-info .blue {{ background:#eff6ff; color:#1d4ed8; }}
+.doc-info .green {{ background:#f0fdf4; color:#166534; }}
+.doc-info .yellow {{ background:#fef9c3; color:#854d0e; }}
+.company {{ text-align:right; font-size:8px; color:#475569; }}
+.company strong {{ font-size:11px; color:#1d4ed8; display:block; margin-bottom:2px; }}
+.two-cols {{ display:flex; gap:12px; margin-bottom:16px; }}
+.box {{ flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; }}
+.box-title {{ font-weight:700; font-size:8px; color:#1d4ed8; text-transform:uppercase;
+              letter-spacing:0.05em; margin-bottom:5px; }}
+.box p {{ color:#475569; margin-top:2px; line-height:1.5; }}
+.box strong {{ color:#1e293b; }}
+table {{ width:100%; border-collapse:collapse; font-size:8.5px; margin-bottom:14px; }}
+thead tr {{ background:#1d4ed8; color:#fff; }}
+thead th {{ padding:6px 8px; font-weight:700; }}
+th.r, td.r {{ text-align:right; }}
+th.c, td.c {{ text-align:center; }}
+tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; vertical-align:top; }}
+.totals {{ display:flex; justify-content:flex-end; margin-bottom:14px; }}
+.totals-inner {{ min-width:240px; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }}
+.trow {{ display:flex; justify-content:space-between; padding:5px 12px;
+         background:#f8fafc; font-size:8.5px; border-bottom:1px solid #e2e8f0; }}
+.trow.ttc {{ background:#1d4ed8; color:#fff; font-weight:700; font-size:10px; padding:7px 12px; }}
+.note {{ padding:6px 12px; border-left:3px solid #1d4ed8; background:#eff6ff;
+         border-radius:0 4px 4px 0; font-size:8px; color:#1e40af; margin-bottom:8px; }}
+.note2 {{ padding:5px 12px; border-left:3px solid #16a34a; background:#f0fdf4;
+          border-radius:0 4px 4px 0; font-size:8px; color:#166534; margin-bottom:8px; }}
+.sigs {{ display:flex; gap:20px; margin-top:16px; }}
+.sig-box {{ flex:1; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; min-height:60px; }}
+.sig-label {{ font-size:7.5px; color:#94a3b8; font-weight:600; text-transform:uppercase; }}
+.btn-row {{ display:flex; gap:12px; margin-top:20px; }}
+.btn {{ padding:10px 24px; border:none; border-radius:8px; font-weight:700;
+        cursor:pointer; font-size:0.85rem; }}
+.btn-print {{ background:#1d4ed8; color:#fff; }}
+.btn-send  {{ background:#16a34a; color:#fff; }}
+@media print {{ .btn-row {{ display:none; }} }}
+</style>
+</head>
+<body>
 
-          <!-- CLIENT / CHANTIER -->
-          <div style="display:flex;gap:12px;margin-bottom:16px;">
-            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
-              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;
-                   letter-spacing:0.05em;margin-bottom:5px;">👤 Client</div>
-              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{client_nom}</div>
-              <div style="color:#475569;">{client_adresse}</div>
-              <div style="color:#475569;">{client_email}</div>
-              {f'<div style="color:#475569;">{client_tel}</div>' if client_tel.strip() else ""}
-            </div>
-            <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
-              <div style="font-weight:700;font-size:8px;color:#1d4ed8;text-transform:uppercase;
-                   letter-spacing:0.05em;margin-bottom:5px;">🏗️ Chantier</div>
-              <div style="font-weight:700;font-size:9px;color:#1e293b;margin-bottom:2px;">{objet_travaux}</div>
-              <div style="color:#475569;">📍 {adresse_chantier}</div>
-              <div style="color:#475569;">Début : <strong style="color:#1e293b;">{date_debut.strftime("%d/%m/%Y")}</strong></div>
-              <div style="color:#475569;">Durée : <strong style="color:#1e293b;">{duree_jours} jour(s) ouvré(s)</strong></div>
-              <div style="color:#475569;">Fin estimée : <strong style="color:#1e293b;">{date_fin_str}</strong></div>
-              <div style="color:#475569;">Paiement : <strong style="color:#1e293b;">{modalite_paie}</strong></div>
-            </div>
-          </div>
+<div class="header">
+  <div>
+    <div class="badge">DEVIS</div>
+    <div class="doc-info">
+      <span>Date : {datetime.now().strftime("%d/%m/%Y")}</span>
+      <span class="blue">TVA : {tva_pct_str} %</span>
+      <span class="green">{"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}</span>
+      <span class="yellow">{categorie_operation}</span>
+    </div>
+  </div>
+  <div class="company">
+    <strong>Florian AI Batiment</strong>
+    108 rue de Falaise – 14000 Caen<br>
+    contact@florian-ai-batiment.fr
+  </div>
+</div>
 
-          <!-- TABLEAU PRESTATIONS -->
-          <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:14px;">
-            <thead>
-              <tr style="background:#1d4ed8;color:#fff;">
-                <th style="padding:6px 8px;width:28px;text-align:center;font-weight:700;">N°</th>
-                <th style="padding:6px 8px;text-align:left;font-weight:700;">Désignation / Prestation</th>
-                <th style="padding:6px 8px;width:40px;text-align:center;font-weight:700;">Qté</th>
-                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">PU HT (€)</th>
-                <th style="padding:6px 8px;width:45px;text-align:right;font-weight:700;">TVA</th>
-                <th style="padding:6px 8px;width:65px;text-align:right;font-weight:700;">Mnt TVA (€)</th>
-                <th style="padding:6px 8px;width:75px;text-align:right;font-weight:700;">Total TTC (€)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lignes_html if lignes_html else
-               '<tr><td colspan="7" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignée</td></tr>'}
-            </tbody>
-          </table>
+<div class="two-cols">
+  <div class="box">
+    <div class="box-title">👤 Client</div>
+    <p><strong>{client_nom}</strong></p>
+    <p>{client_adresse}</p>
+    <p>{client_email}</p>
+    {"<p>" + client_tel + "</p>" if client_tel.strip() else ""}
+  </div>
+  <div class="box">
+    <div class="box-title">🏗️ Chantier</div>
+    <p><strong>{objet_travaux}</strong></p>
+    <p>📍 {adresse_chantier}</p>
+    <p>Début : <strong>{date_debut.strftime("%d/%m/%Y")}</strong></p>
+    <p>Durée : <strong>{duree_jours} jour(s) ouvré(s)</strong></p>
+    <p>Fin estimée : <strong>{date_fin_str}</strong></p>
+    <p>Paiement : <strong>{modalite_paie}</strong></p>
+  </div>
+</div>
 
-          <!-- TOTAUX -->
-          <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
-            <div style="min-width:240px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
-              <div style="display:flex;justify-content:space-between;padding:5px 12px;
-                   background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
-                <span style="color:#475569;">Total HT</span>
-                <strong style="color:#1e293b;">{total_ht:,.2f} €</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:5px 12px;
-                   background:#f8fafc;font-size:8.5px;border-bottom:1px solid #e2e8f0;">
-                <span style="color:#475569;">TVA ({tva_pct} %)</span>
-                <strong style="color:#1e293b;">{total_tva:,.2f} €</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:7px 12px;
-                   background:#1d4ed8;font-size:10px;">
-                <span style="color:#fff;font-weight:700;">TOTAL TTC</span>
-                <span style="color:#fff;font-weight:800;">{total_ttc:,.2f} €</span>
-              </div>
-            </div>
-          </div>
+<table>
+  <thead>
+    <tr>
+      <th class="c" style="width:28px;">N°</th>
+      <th>Désignation / Prestation</th>
+      <th class="c" style="width:38px;">Qté</th>
+      <th class="r" style="width:72px;">PU HT (€)</th>
+      <th class="r" style="width:42px;">TVA</th>
+      <th class="r" style="width:65px;">Mnt TVA (€)</th>
+      <th class="r" style="width:72px;">Total TTC (€)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {lignes_html if lignes_html else
+     '<tr><td colspan="7" style="padding:12px;text-align:center;color:#94a3b8;font-style:italic;">Aucune prestation renseignée</td></tr>'}
+  </tbody>
+</table>
 
-          <!-- MODALITÉ + MENTION TVA -->
-          <div style="padding:6px 12px;background:#eff6ff;border-left:3px solid #1d4ed8;
-               border-radius:0 4px 4px 0;font-size:8px;color:#1e40af;margin-bottom:8px;">
-            <strong>Modalité de paiement :</strong> {modalite_paie}
-          </div>
-          <div style="padding:5px 12px;background:#f0fdf4;border-left:3px solid #16a34a;
-               border-radius:0 4px 4px 0;font-size:8px;color:#166534;margin-bottom:8px;">
-            <strong>Taux de TVA :</strong> {tva_pct} % —
-            {"TVA à taux super-réduit (travaux d'amélioration énergétique)" if tva_taux == 0.055 else
-             "TVA à taux réduit (travaux de rénovation dans logement de plus de 2 ans)" if tva_taux == 0.10 else
-             "TVA à taux normal (travaux neufs ou hors logement)"}
-            — {"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}
-          </div>
+<div class="totals">
+  <div class="totals-inner">
+    <div class="trow"><span style="color:#475569;">Total HT</span><strong>{total_ht:,.2f} €</strong></div>
+    <div class="trow"><span style="color:#475569;">TVA ({tva_pct_str} %)</span><strong>{total_tva:,.2f} €</strong></div>
+    <div class="trow ttc"><span>TOTAL TTC</span><span>{total_ttc:,.2f} €</span></div>
+  </div>
+</div>
 
-          <!-- SIGNATURE -->
-          <div style="display:flex;gap:20px;margin-top:16px;">
-            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
-              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">
-                Signature client — Bon pour accord</div>
-            </div>
-            <div style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;min-height:60px;">
-              <div style="font-size:7.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">
-                Signature entreprise</div>
-            </div>
-          </div>
+<div class="note"><strong>Modalité de paiement :</strong> {modalite_paie}</div>
+<div class="note2"><strong>TVA {tva_pct_str} % :</strong> {tva_mention} — {"TVA sur débits" if tva_debits_bool else "TVA sur encaissements"}</div>
 
-        </div>
+<div class="sigs">
+  <div class="sig-box"><div class="sig-label">Signature client — Bon pour accord</div></div>
+  <div class="sig-box"><div class="sig-label">Signature entreprise</div></div>
+</div>
 
-        <!-- BOUTON IMPRESSION -->
-        <script>
-        function printDevis() {{
-            var content = document.getElementById('devis-preview').innerHTML;
-            var w = window.open('', '_blank');
-            w.document.write('<html><head><title>Devis</title><style>'
-              + '* {{box-sizing:border-box;margin:0;padding:0;}} body {{font-family:Segoe UI,Arial,sans-serif;font-size:9px;color:#1e293b;padding:15px;}}'
-              + '@media print {{ .no-print {{ display:none; }} }}'
-              + '</style></head><body>' + content + '</body></html>');
-            w.document.close();
-            w.focus();
-            setTimeout(function(){{ w.print(); }}, 400);
-        }}
-        </script>
-        <div style="display:flex;gap:12px;margin-top:16px;" class="no-print">
-          <button onclick="printDevis()"
-            style="background:#1d4ed8;color:#fff;border:none;padding:10px 24px;border-radius:8px;
-                   font-weight:700;cursor:pointer;font-size:0.9rem;">
-            🖨️ Imprimer / Télécharger PDF
-          </button>
-        </div>
-        """
+<div class="btn-row">
+  <button class="btn btn-print" onclick="window.print()">🖨️ Imprimer / PDF</button>
+  <button class="btn btn-send"
+    onclick="
+      fetch('{WEBHOOK_URL}', {{
+        method:'POST',
+        headers:{{'Content-Type':'application/json'}},
+        body: JSON.stringify({{sent_from_preview: true, user: '{user}'}})
+      }})
+      .then(r => alert(r.ok ? '✅ Devis envoyé à n8n !' : '❌ Erreur ' + r.status))
+      .catch(e => alert('❌ ' + e));
+    ">
+    📤 Envoyer à n8n
+  </button>
+</div>
 
-        st.markdown(preview_html, unsafe_allow_html=True)
+</body>
+</html>"""
 
-        # Déclencher l'impression auto si bouton "Imprimer" cliqué
-        if st.session_state.get("devis_print"):
-            st.session_state.devis_print = False
-            st.components.v1.html("""
-            <script>
-            window.parent.document.querySelector('#devis-preview') &&
-            setTimeout(function(){
-                var w = window.open('','_blank');
-                w.document.write('<html><body>' +
-                    window.parent.document.getElementById('devis-preview').innerHTML +
-                    '</body></html>');
-                w.document.close(); w.print();
-            }, 600);
-            </script>
-            """, height=0)
+        # Calcul hauteur dynamique
+        nb_lignes_valides = sum(1 for l in lignes if l["article"].strip())
+        preview_height = 820 + nb_lignes_valides * 32
+
+        components.html(preview_html, height=preview_height, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("✏️ Modifier le devis", key="btn_close_preview"):
