@@ -1088,14 +1088,65 @@ elif page == "📄 Créer un devis":
             "Travaux de rénovation", "Travaux neufs", "Travaux d'entretien / maintenance",
             "Installation équipement", "Mise aux normes", "Autre",
         ], key="dv_cat_op")
+        siren_client = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
         modalite_paie = st.selectbox("Modalité de paiement", [
-            "Acompte / Solde", "Paiement intégral à la commande",
-            "Paiement comptant / immédiat", "Paiement échelonné / progressif",
+            "Acompte / Solde",
+            "Paiement intégral à la commande",
+            "Paiement comptant / immédiat",
+            "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
         date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
+
+    # ── Paramètres selon modalité ──────────────────────────────────────────────
+    pct_acompte   = 30
+    pct_solde     = 70
+    segments      = []
+    jours_differe = 0
+
+    if modalite_paie == "Acompte / Solde":
+        st.markdown("##### ⚙️ Répartition acompte / solde")
+        ca1, ca2 = st.columns(2)
+        with ca1:
+            pct_acompte = st.slider("Acompte (%)", min_value=10, max_value=90, value=30, step=5, key="dv_pct_acompte")
+        pct_solde = 100 - pct_acompte
+        with ca2:
+            st.metric("Solde (%)", f"{pct_solde} %")
+        segments = [
+            {"etape": "À la commande", "percent": pct_acompte},
+            {"etape": "À la réception", "percent": pct_solde},
+        ]
+
+    elif modalite_paie == "Paiement échelonné / progressif":
+        st.markdown("##### ⚙️ Répartition échelonnée")
+        ce1, ce2, ce3 = st.columns(3)
+        with ce1:
+            pct_cmd = st.slider("À la commande (%)", min_value=0, max_value=100, value=20, step=5, key="dv_pct_cmd")
+        with ce2:
+            pct_enc = st.slider("En cours (%)", min_value=0, max_value=100-pct_cmd, value=min(30, 100-pct_cmd), step=5, key="dv_pct_enc")
+        pct_fin = 100 - pct_cmd - pct_enc
+        with ce3:
+            st.metric("À la réception (%)", f"{pct_fin} %")
+        if pct_fin < 0:
+            st.error("❌ Le total dépasse 100% — ajuste les pourcentages.")
+        segments = [
+            {"etape": "À la commande",    "percent": pct_cmd},
+            {"etape": "En cours de chantier", "percent": pct_enc},
+            {"etape": "À la réception",   "percent": pct_fin},
+        ]
+
+    elif modalite_paie == "Paiement différé / à terme":
+        st.markdown("##### ⚙️ Délai de paiement")
+        jours_differe = st.number_input("Nombre de jours après réception", min_value=1, max_value=365, value=30, step=1, key="dv_jours_differe")
+        segments = [{"etape": f"À terme ({jours_differe}j)", "percent": 100}]
+
+    elif modalite_paie == "Paiement intégral à la commande":
+        segments = [{"etape": "À la commande", "percent": 100}]
+
+    elif modalite_paie == "Paiement comptant / immédiat":
+        segments = [{"etape": "À la réception", "percent": 100}]
 
     st.markdown("---")
     st.markdown("#### 🧾 TVA")
