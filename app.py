@@ -1473,18 +1473,29 @@ tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; ver
 </div>
 
 <div class="btn-row">
-  <button class="btn btn-print" onclick="window.print()">🖨️ Imprimer / PDF</button>
+  <button class="btn btn-print"
+    onclick="
+      fetch('{WEBHOOK_URL}', {{
+        method:'POST',
+        headers:{{'Content-Type':'application/json'}},
+        body: JSON.stringify({{sent_from_preview: true, action: 'imprimer', user: '{user}'}})
+      }})
+      .then(r => alert(r.ok ? '✅ Envoyé à n8n (impression) !' : '❌ Erreur ' + r.status))
+      .catch(e => alert('❌ ' + e));
+    ">
+    🖨️ Imprimer / PDF
+  </button>
   <button class="btn btn-send"
     onclick="
       fetch('{WEBHOOK_URL}', {{
         method:'POST',
         headers:{{'Content-Type':'application/json'}},
-        body: JSON.stringify({{sent_from_preview: true, user: '{user}'}})
+        body: JSON.stringify({{sent_from_preview: true, action: 'envoyer', user: '{user}'}})
       }})
       .then(r => alert(r.ok ? '✅ Devis envoyé à n8n !' : '❌ Erreur ' + r.status))
       .catch(e => alert('❌ ' + e));
     ">
-    📤 Envoyer à n8n
+    📤 Envoyer au client
   </button>
 </div>
 
