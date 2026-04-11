@@ -1140,44 +1140,44 @@ elif page == "📄 Créer un devis":
                     found = next((it for it in catalogue_items if it["article"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": "",
-                                       "categorie": found["categorie"], "_prev_sel": sel,
-                                       "prix_ht": _parse_prix(found["prix_ht"]),
-                                       "qte": 1.0})
+                                      "categorie": found["categorie"], "_prev_sel": sel,
+                                      "prix_ht": _parse_prix(found["prix_ht"]),
+                                      "qte": 1.0})
                         st.rerun()
                 if ligne.get("article"):
                     st.caption(f"Qté : **{ligne['qte']:g}** — Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
 
-           elif src == "🔧Prestations":
+            elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
                     found = next((it for it in prestations_items if it["label"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": found["description"],
-                                       "categorie": found["categorie"], "_prev_sel": sel,
-                                       "prix_ht": _parse_prix(found["prix_ht"])})
+                                      "categorie": found["categorie"], "_prev_sel": sel,
+                                      "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
                 cq2, cp2 = st.columns(2)
                 new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
                 new_pht2 = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
-                ligne["qte"]     = new_qte2
+                ligne["qte"] = new_qte2
                 ligne["prix_ht"] = new_pht2
 
             else:
-                ligne["source"]      = "libre"
-                ligne["article"]     = st.text_input("Désignation *", value=ligne.get("article",""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
-                ligne["description"] = st.text_input("Description", value=ligne.get("description",""), key=f"desc_{i}")
+                ligne["source"] = "libre"
+                ligne["article"] = st.text_input("Désignation *", value=ligne.get("article", ""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
+                ligne["description"] = st.text_input("Description", value=ligne.get("description", ""), key=f"desc_{i}")
                 cq3, cp3 = st.columns(2)
                 new_qte3 = cq3.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte3_{i}")
                 new_pht3 = cp3.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht3_{i}")
-                ligne["qte"]     = new_qte3
+                ligne["qte"] = new_qte3
                 ligne["prix_ht"] = new_pht3
-                
+
     for idx in sorted(to_del, reverse=True):
         st.session_state.devis_lignes.pop(idx)
     if to_del:
         st.rerun()
-
+        
     if st.button("➕ Ajouter une ligne", key="add_ligne"):
         st.session_state.devis_lignes.append(
             {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
