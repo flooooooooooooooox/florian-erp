@@ -1138,8 +1138,6 @@ elif page == "📄 Créer un devis":
                 ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
 
             elif src == "🔧 Prestations":
-
-            elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
