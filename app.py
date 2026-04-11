@@ -754,7 +754,14 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucune ligne.")
                 else:
                     headers_p2 = list(df_p.columns)
-                    row_labels = [f"Ligne {i+2} — {df_p.iloc[i,0]} / {df_p.iloc[i,1] if len(headers_p2)>1 else ''}" for i in range(len(df_p))]
+                    def _get_presta_label(i):
+                        for h in headers_p2:
+                            if "sous" in h.lower() or "prestation" in h.lower() or "designation" in h.lower() or "désignation" in h.lower():
+                                val = str(df_p.iloc[i][h]).strip()
+                                if val:
+                                    return f"Ligne {i+2} — {val}"
+                        return f"Ligne {i+2} — {df_p.iloc[i,0]} / {df_p.iloc[i,1] if len(headers_p2)>1 else ''}"
+                    row_labels = [_get_presta_label(i) for i in range(len(df_p))]
                     sel_idx = st.selectbox("Ligne à modifier", range(len(df_p)), format_func=lambda i: row_labels[i], key="sel_mod_presta")
                     cur_mo = cur_fourn = 0.0; cur_marge = 30.0; cur_qte = 1.0
                     for h in headers_p2:
@@ -809,7 +816,14 @@ elif page == "📝 Éditeur Google Sheet":
                     st.info("Aucune ligne.")
                 else:
                     headers_p3 = list(df_p.columns)
-                    row_labels2 = [f"Ligne {i+2} — {df_p.iloc[i,0]} / {df_p.iloc[i,1] if len(headers_p3)>1 else ''}" for i in range(len(df_p))]
+                    def _get_presta_label2(i):
+                        for h in headers_p3:
+                            if "sous" in h.lower() or "prestation" in h.lower() or "designation" in h.lower() or "désignation" in h.lower():
+                                val = str(df_p.iloc[i][h]).strip()
+                                if val:
+                                    return f"Ligne {i+2} — {val}"
+                        return f"Ligne {i+2} — {df_p.iloc[i,0]} / {df_p.iloc[i,1] if len(headers_p3)>1 else ''}"
+                    row_labels2 = [_get_presta_label2(i) for i in range(len(df_p))]
                     del_idx = st.selectbox("Ligne à supprimer", range(len(df_p)), format_func=lambda i: row_labels2[i], key="sel_del_presta")
                     st.warning(f"⚠️ Suppression irréversible : **{row_labels2[del_idx]}**")
                     if st.button("🗑️ Confirmer la suppression", key="btn_del_presta"):
