@@ -1186,18 +1186,18 @@ elif page == "📄 Créer un devis":
         if src == "catalogue":
             return float(l["prix_ht"])
         elif src == "prestations":
-            return float(st.session_state.get(f"pht2_{i}", l["prix_ht"]))
+            return float(l["prix_ht"])
         else:
-            return float(st.session_state.get(f"pht3_{i}", l["prix_ht"]))
+            return float(l["prix_ht"])
 
     def _get_qte(i, l):
         src = l.get("source", "libre")
         if src == "catalogue":
-            return float(st.session_state.get(f"qte_{i}", l["qte"]))
+            return float(l["qte"])
         elif src == "prestations":
-            return float(st.session_state.get(f"qte2_{i}", l["qte"]))
+            return float(l["qte"])
         else:
-            return float(st.session_state.get(f"qte3_{i}", l["qte"]))
+            return float(l["qte"])
 
     total_ht  = sum(_get_prix(i, l) * _get_qte(i, l) for i, l in enumerate(lignes))
     total_tva = round(total_ht * tva_taux, 2)
