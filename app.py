@@ -1171,7 +1171,11 @@ elif page == "📄 Créer un devis":
         st.rerun()
 
     # ── Totaux ─────────────────────────────────────────────────────────────────
-    total_ht  = sum(l["qte"] * l["prix_ht"] for l in lignes)
+    total_ht  = sum(
+        float(st.session_state.get(f"pht_{i}", st.session_state.get(f"pht2_{i}", st.session_state.get(f"pht3_{i}", l["prix_ht"])))) *
+        float(st.session_state.get(f"qte_{i}",  st.session_state.get(f"qte2_{i}",  st.session_state.get(f"qte3_{i}",  l["qte"]))))
+        for i, l in enumerate(lignes)
+    )
     total_tva = round(total_ht * tva_taux, 2)
     total_ttc = round(total_ht + total_tva, 2)
 
@@ -1273,16 +1277,21 @@ elif page == "📄 Créer un devis":
         for i, l in enumerate(lignes):
             if not l["article"].strip():
                 continue
-            total_ht_l = round(l["qte"] * l["prix_ht"], 2)
-            tva_l      = round(total_ht_l * tva_taux, 2)
+            prix = float(st.session_state.get(f"pht_{i}", st.session_state.get(f"pht2_{i}", st.session_state.get(f"pht3_{i}", l["prix_ht"]))))
+            qte  = float(st.session_state.get(f"qte_{i}",  st.session_state.get(f"qte2_{i}",  st.session_state.get(f"qte3_{i}",  l["qte"]))))
+            l["prix_ht"] = prix
+            l["qte"]     = qte
+            total_ht_l = round(qte * prix, 2)
+           tva_l      = round(total_ht_l * tva_taux, 2)
             ttc_l      = round(total_ht_l + tva_l, 2)
             bg         = "#f8fafc" if i % 2 == 0 else "#ffffff"
+            source_badge = " <span style='color:#94a3b8;font-size:7px;'>[Divers]</span>" if l.get("source") == "catalogue" else ""
             desc_part  = f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>" if l.get("description","").strip() else ""
             lignes_html += f"""
             <tr style="background:{bg};">
               <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
               <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
-                <strong style="font-size:9px;">{l['article']}</strong>{desc_part}
+                <strong style="font-size:9px;">{l['article']}</strong>{source_badge}{desc_part}
               </td>
               <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['qte']:g}</td>
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;color:#1e293b;">{l['prix_ht']:,.2f} €</td>
