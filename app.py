@@ -1137,9 +1137,6 @@ elif page == "📄 Créer un devis":
                 ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
                 ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
                         st.rerun()
-                cq, cp = st.columns(2)
-                ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
-                ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
