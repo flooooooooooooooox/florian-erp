@@ -1282,7 +1282,7 @@ elif page == "📄 Créer un devis":
             l["prix_ht"] = prix
             l["qte"]     = qte
             total_ht_l = round(qte * prix, 2)
-           tva_l      = round(total_ht_l * tva_taux, 2)
+            tva_l      = round(total_ht_l * tva_taux, 2)
             ttc_l      = round(total_ht_l + tva_l, 2)
             bg         = "#f8fafc" if i % 2 == 0 else "#ffffff"
             source_badge = " <span style='color:#94a3b8;font-size:7px;'>[Divers]</span>" if l.get("source") == "catalogue" else ""
