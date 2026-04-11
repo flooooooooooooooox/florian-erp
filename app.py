@@ -1355,12 +1355,14 @@ def _build_payload():
         }
 
     # ── Boutons ────────────────────────────────────────────────────────────────
-if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
+    if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
         errs = _validate()
         if errs:
             for e in errs: st.error(f"❌ {e}")
         else:
             st.session_state.devis_preview = True
+
+    if st.session_state.get("devis_preview"):
     # ── Prévisualisation ───────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
