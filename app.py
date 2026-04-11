@@ -1038,7 +1038,7 @@ elif page == "📄 Créer un devis":
 
     catalogue_items   = _load_catalogue_devis(user)
     prestations_items = _load_prestations_devis(user)
-    cat_labels        = ["— Choisir un article —"]    + [it["label"] for it in catalogue_items]
+    cat_labels        = ["— Choisir un article —"]    + [it["article"] for it in catalogue_items]
     prest_labels      = ["— Choisir une prestation —"] + [it["label"] for it in prestations_items]
 
     def _parse_prix(val):
@@ -1115,7 +1115,7 @@ elif page == "📄 Créer un devis":
             with col_src:
                 src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source","libre"), 2)
                 src = st.radio(
-                    f"src_{i}", ["📚 Catalogue", "🔧 Prestations", "✏️ Saisie libre"],
+                f"src_{i}", ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
                     horizontal=True, key=f"src_{i}", index=src_idx,
                     label_visibility="collapsed",
                 )
@@ -1123,15 +1123,19 @@ elif page == "📄 Créer un devis":
                 if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
                     to_del.append(i)
 
-            if src == "📚 Catalogue":
-                ligne["source"] = "catalogue"
-                sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
-                if sel != cat_labels[0]:
-                    found = next((it for it in catalogue_items if it["label"] == sel), None)
-                    if found and sel != ligne.get("_prev_sel"):
-                        ligne.update({"article": found["article"], "description": found["description"],
-                                       "categorie": found["categorie"], "_prev_sel": sel,
-                                       "prix_ht": _parse_prix(found["prix_ht"])})
+            if src == "🗂️ Divers":
+    ligne["source"] = "catalogue"
+    sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
+    if sel != cat_labels[0]:
+        found = next((it for it in catalogue_items if it["article"] == sel), None)
+        if found and sel != ligne.get("_prev_sel"):
+            ligne.update({"article": found["article"], "description": "",
+                           "categorie": found["categorie"], "_prev_sel": sel,
+                           "prix_ht": 0.0})
+            st.rerun()
+    cq, cp = st.columns(2)
+    ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+    ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
                         st.rerun()
                 cq, cp = st.columns(2)
                 ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
