@@ -1163,7 +1163,7 @@ elif page == "📄 Créer un devis":
                 ligne["qte"]     = new_qte2
                 ligne["prix_ht"] = new_pht2
 
-               else:
+            else:
                 ligne["source"]      = "libre"
                 ligne["article"]     = st.text_input("Désignation *", value=ligne.get("article",""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
                 ligne["description"] = st.text_input("Description", value=ligne.get("description",""), key=f"desc_{i}")
