@@ -1158,8 +1158,10 @@ elif page == "📄 Créer un devis":
                                       "prix_ht": _parse_prix(found["prix_ht"]),
                                       "qte": 1.0})
                         st.rerun()
+                new_qte = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                ligne["qte"] = new_qte
                 if ligne.get("article"):
-                    st.caption(f"Qté : **{ligne['qte']:g}** — Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
+                    st.caption(f"Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
