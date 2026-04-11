@@ -1077,6 +1077,7 @@ elif page == "📄 Créer un devis":
 
     st.markdown("---")
     st.markdown("#### 🏗️ Chantier")
+    c3, c4 = st.columns(2)
     with c3:
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
