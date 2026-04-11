@@ -1085,8 +1085,12 @@ elif page == "📄 Créer un devis":
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
-            "Travaux de rénovation", "Travaux neufs", "Travaux d'entretien / maintenance",
-            "Installation équipement", "Mise aux normes", "Autre",
+            "Prestation",
+            "Service",
+            "Fourniture",
+            "Fourniture et pose",
+            "Main d'œuvre",
+            "Autre",
         ], key="dv_cat_op")
         siren_client = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
