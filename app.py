@@ -1507,9 +1507,42 @@ tbody td {{ padding:5px 6px; border-bottom:1px solid #e2e8f0; color:#334155; ver
         components.html(preview_html, height=preview_height, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("✏️ Modifier le devis", key="btn_close_preview"):
-            st.session_state.devis_preview = False
-            st.rerun()
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            if st.button("✏️ Modifier le devis", key="btn_close_preview", use_container_width=True):
+                st.session_state.devis_preview = False
+                st.rerun()
+        with col_b:
+            if st.button("🖨️ Imprimer / PDF", key="btn_imprimer", use_container_width=True):
+                payload = _build_payload()
+                payload["action"] = "imprimer"
+                try:
+                    resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
+                    if resp.status_code in (200, 201):
+                        st.success("✅ Envoyé à n8n pour impression !")
+                        st.balloons()
+                    else:
+                        st.error(f"❌ Erreur {resp.status_code}")
+                except Exception as ex:
+                    st.error(f"Erreur : {ex}")
+        with col_c:
+            if st.button("📤 Envoyer au client", key="btn_envoyer_client", use_container_width=True, type="primary"):
+                payload = _build_payload()
+                payload["action"] = "envoyer"
+                try:
+                    resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
+                    if resp.status_code in (200, 201):
+                        st.success("✅ Devis envoyé au client !")
+                        st.balloons()
+                        st.session_state.devis_lignes = [
+                            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
+                        ]
+                        st.session_state.devis_preview = False
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"❌ Erreur {resp.status_code}")
+                except Exception as ex:
+                    st.error(f"Erreur : {ex}")
 
     st.stop()
     
