@@ -1077,7 +1077,6 @@ elif page == "📄 Créer un devis":
 
     st.markdown("---")
     st.markdown("#### 🏗️ Chantier")
-    c3, c4 = st.columns(2)
     with c3:
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
@@ -1089,7 +1088,7 @@ elif page == "📄 Créer un devis":
             "Main d'œuvre",
             "Autre",
         ], key="dv_cat_op")
-        siren_client = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
+        siren_client        = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
         modalite_paie = st.selectbox("Modalité de paiement", [
             "Acompte / Solde",
@@ -1351,44 +1350,12 @@ elif page == "📄 Créer un devis":
         }
 
     # ── Boutons ────────────────────────────────────────────────────────────────
-    col_prev, col_send = st.columns(2)
-    with col_prev:
-        if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
-            errs = _validate()
-            if errs:
-                for e in errs: st.error(f"❌ {e}")
-            else:
-                st.session_state.devis_preview = True
-
-    with col_send:
-        if st.button("🚀 Envoyer à n8n", use_container_width=True, type="primary", key="btn_send_n8n"):
-            errs = _validate()
-            if errs:
-                for e in errs: st.error(f"❌ {e}")
-            else:
-                payload = _build_payload()
-                with st.spinner("📡 Envoi à n8n en cours..."):
-                    try:
-                        resp = requests.post(WEBHOOK_URL, json=payload, timeout=30,
-                                             headers={"Content-Type": "application/json"})
-                        if resp.status_code in (200, 201):
-                            st.success("✅ Devis envoyé ! n8n s'occupe du PDF, du mail et de Sheets.")
-                            st.balloons()
-                            st.session_state.devis_lignes = [
-                                {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
-                            ]
-                            st.session_state.devis_preview = False
-                            st.cache_data.clear()
-                        else:
-                            st.error(f"❌ n8n a répondu avec le code {resp.status_code}")
-                            st.code(resp.text[:500])
-                    except requests.exceptions.Timeout:
-                        st.error("⏱️ Timeout — n8n ne répond pas dans les 30 secondes.")
-                    except requests.exceptions.ConnectionError:
-                        st.error(f"🔌 Impossible de joindre {WEBHOOK_URL}")
-                    except Exception as ex:
-                        st.error(f"Erreur inattendue : {ex}")
-
+    if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
+        errs = _validate()
+        if errs:
+            for e in errs: st.error(f"❌ {e}")
+        else:
+            st.session_state.devis_preview = True
     # ── Prévisualisation ───────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
