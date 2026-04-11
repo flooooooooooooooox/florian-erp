@@ -1147,7 +1147,7 @@ elif page == "📄 Créer un devis":
                 if ligne.get("article"):
                     st.caption(f"Qté : **{ligne['qte']:g}** — Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
 
-            elif src == "🔧 Prestations":
+           elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
@@ -1158,17 +1158,21 @@ elif page == "📄 Créer un devis":
                                        "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
                 cq2, cp2 = st.columns(2)
-                ligne["qte"]     = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-                ligne["prix_ht"] = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
+                new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
+                new_pht2 = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
+                ligne["qte"]     = new_qte2
+                ligne["prix_ht"] = new_pht2
 
-            else:
+               else:
                 ligne["source"]      = "libre"
                 ligne["article"]     = st.text_input("Désignation *", value=ligne.get("article",""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
                 ligne["description"] = st.text_input("Description", value=ligne.get("description",""), key=f"desc_{i}")
                 cq3, cp3 = st.columns(2)
-                ligne["qte"]     = cq3.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte3_{i}")
-                ligne["prix_ht"] = cp3.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht3_{i}")
-
+                new_qte3 = cq3.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte3_{i}")
+                new_pht3 = cp3.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht3_{i}")
+                ligne["qte"]     = new_qte3
+                ligne["prix_ht"] = new_pht3
+                
     for idx in sorted(to_del, reverse=True):
         st.session_state.devis_lignes.pop(idx)
     if to_del:
