@@ -1098,7 +1098,6 @@ elif page == "📄 Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-        date_debut  = st.date_input("Date début des travaux *", value=datetime.today(), key="dv_debut")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
 
     # ── Paramètres selon modalité ──────────────────────────────────────────────
@@ -1331,9 +1330,9 @@ elif page == "📄 Créer un devis":
                 "objet":              objet_travaux.strip(),
                 "adresse":            adresse_chantier.strip(),
                 "categorie_operation": categorie_operation,
-                "date_debut":         date_debut.strftime("%Y-%m-%d"),
+                "date_debut":         datetime.today().strftime("%Y-%m-%d"),
                 "duree_jours":        int(duree_jours),
-                "date_fin_estimee":   (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
+                "date_fin_estimee":   (datetime.today() + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
                 "modalite_paiement":  modalite_paie,
                 "phrase_modalite":    phrase_modalite,
                 "segments":           segments,
@@ -1418,7 +1417,7 @@ elif page == "📄 Créer un devis":
               <td style="padding:5px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1d4ed8;">{ttc_l:,.2f} €</td>
             </tr>"""
 
-        date_fin_str = (date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")
+        date_fin_str = (datetime.today() + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")
         segments_html = "".join([
             f"<p>• {s['etape']} : <strong>{s['percent']}%</strong> — {round(total_ttc * s['percent'] / 100, 2):,.2f} €</p>"
             for s in segments if s["percent"] > 0
@@ -1521,7 +1520,6 @@ elif page == "📄 Créer un devis":
     <p><strong>{objet_travaux}</strong></p>
     <p>📍 {adresse_chantier}</p>
     <p>Categorie : {categorie_operation}</p>
-    <p>Debut : {date_debut.strftime("%d/%m/%Y")}</p>
     <p>Duree : {duree_jours} jour(s) ouvre(s)</p>
     <p>Fin estimee : {date_fin_str}</p>
   </div>
