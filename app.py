@@ -1116,8 +1116,7 @@ elif page == "📄 Créer un devis":
                 src = st.radio(
                     f"src_{i}", ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
                     horizontal=True, key=f"src_{i}", index=src_idx,
-                    label_visibility="collapsed",
-                )
+                    label_visibility="collapsed",)
                 prev_src_key = f"_prev_src_{i}"
                 if st.session_state.get(prev_src_key) != src:
                     st.session_state[prev_src_key] = src
