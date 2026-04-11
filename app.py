@@ -1114,17 +1114,21 @@ elif page == "📄 Créer un devis":
             with col_src:
                 src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source", "libre"), 2)
                 src = st.radio(
-                    f"src_{i}", ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
-                    horizontal=True, key=f"src_{i}", index=src_idx,
-                    label_visibility="collapsed",)
-                prev_src_key = f"_prev_src_{i}"
-                if st.session_state.get(prev_src_key) != src:
-                    st.session_state[prev_src_key] = src
-                    ligne["_prev_sel"] = None
-                    ligne["article"] = ""
-                    ligne["prix_ht"] = 0.0
-                    ligne["qte"] = 1.0
-                   st.rerun()
+                    f"src_{i}",
+                    ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
+                    horizontal=True,
+                    key=f"src_{i}",
+                    index=src_idx,
+                    label_visibility="collapsed",
+                )
+            prev_src_key = f"_prev_src_{i}"
+            if st.session_state.get(prev_src_key) != src:
+                st.session_state[prev_src_key] = src
+                ligne["_prev_sel"] = None
+                ligne["article"] = ""
+                ligne["prix_ht"] = 0.0
+                ligne["qte"] = 1.0
+                st.rerun()
             with col_del:
                 if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
                     to_del.append(i)
