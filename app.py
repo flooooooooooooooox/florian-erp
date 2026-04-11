@@ -1141,12 +1141,11 @@ elif page == "📄 Créer un devis":
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": "",
                                        "categorie": found["categorie"], "_prev_sel": sel,
-                                       "prix_ht": _parse_prix(found["prix_ht"])})
+                                       "prix_ht": _parse_prix(found["prix_ht"]),
+                                       "qte": 1.0})
                         st.rerun()
-                st.session_state[f"qte_{i}"] = ligne["qte"]
-                st.session_state[f"pht_{i}"] = ligne["prix_ht"]
-                if ligne["prix_ht"] > 0 or ligne["qte"] > 0:
-                    st.caption(f"Qté : **{ligne['qte']:g}** — Prix unitaire HT : **{ligne['prix_ht']:,.2f} €**")
+                if ligne.get("article"):
+                    st.caption(f"Qté : **{ligne['qte']:g}** — Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
