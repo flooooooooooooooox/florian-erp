@@ -1087,10 +1087,6 @@ elif page == "📄 Créer un devis":
         categorie_operation = st.selectbox("Catégorie d'opération", [
             "Prestation",
             "Service",
-            "Fourniture",
-            "Fourniture et pose",
-            "Main d'œuvre",
-            "Autre",
         ], key="dv_cat_op")
         siren_client = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
