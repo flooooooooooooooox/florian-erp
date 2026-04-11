@@ -1123,7 +1123,7 @@ elif page == "📄 Créer un devis":
                 if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
                     to_del.append(i)
 
-            if src == "🗂️ Divers":
+           if src == "🗂️ Divers":
                 ligne["source"] = "catalogue"
                 sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
                 if sel != cat_labels[0]:
@@ -1131,11 +1131,12 @@ elif page == "📄 Créer un devis":
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": "",
                                        "categorie": found["categorie"], "_prev_sel": sel,
-                                       "prix_ht": 0.0})
+                                       "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
-                cq, cp = st.columns(2)
-                ligne["qte"]     = cq.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
-                ligne["prix_ht"] = cp.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht_{i}")
+                ligne["qte"] = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                st.session_state[f"pht_{i}"] = ligne["prix_ht"]
+                if ligne["prix_ht"] > 0:
+                    st.caption(f"Prix unitaire HT : **{ligne['prix_ht']:,.2f} €**")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
