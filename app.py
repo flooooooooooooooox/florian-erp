@@ -990,7 +990,6 @@ elif page == "📄 Créer un devis":
 
     WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
 
-    # ── Chargement catalogue ───────────────────────────────────────────────────
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_catalogue_devis(u):
         ws, err = get_worksheet(u, "catalogue")
@@ -1016,7 +1015,6 @@ elif page == "📄 Créer un devis":
         except Exception:
             return []
 
-    # ── Chargement prestations ─────────────────────────────────────────────────
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_prestations_devis(u):
         ws, err = get_worksheet(u, "Feuille 1")
@@ -1060,7 +1058,6 @@ elif page == "📄 Créer un devis":
         except Exception:
             return 0.0
 
-    # ── Init session ───────────────────────────────────────────────────────────
     if "devis_lignes" not in st.session_state:
         st.session_state.devis_lignes = [
             {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
@@ -1087,6 +1084,10 @@ elif page == "📄 Créer un devis":
         categorie_operation = st.selectbox("Catégorie d'opération", [
             "Prestation",
             "Service",
+            "Fourniture",
+            "Fourniture et pose",
+            "Main d'œuvre",
+            "Autre",
         ], key="dv_cat_op")
         siren_client = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
@@ -1105,6 +1106,7 @@ elif page == "📄 Créer un devis":
     pct_solde     = 70
     segments      = []
     jours_differe = 0
+    phrase_modalite = ""
 
     if modalite_paie == "Acompte / Solde":
         st.markdown("##### ⚙️ Répartition acompte / solde")
@@ -1132,9 +1134,9 @@ elif page == "📄 Créer un devis":
         if pct_fin < 0:
             st.error("❌ Le total dépasse 100% — ajuste les pourcentages.")
         segments = [
-            {"etape": "À la commande",    "percent": pct_cmd},
+            {"etape": "À la commande",        "percent": pct_cmd},
             {"etape": "En cours de chantier", "percent": pct_enc},
-            {"etape": "À la réception",   "percent": pct_fin},
+            {"etape": "À la réception",       "percent": pct_fin},
         ]
 
     elif modalite_paie == "Paiement différé / à terme":
@@ -1244,7 +1246,7 @@ elif page == "📄 Créer un devis":
         st.session_state.devis_lignes.pop(idx)
     if to_del:
         st.rerun()
-        
+
     if st.button("➕ Ajouter une ligne", key="add_ligne"):
         st.session_state.devis_lignes.append(
             {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
@@ -1253,26 +1255,37 @@ elif page == "📄 Créer un devis":
 
     # ── Totaux ─────────────────────────────────────────────────────────────────
     def _get_prix(i, l):
-        src = l.get("source", "libre")
-        if src == "catalogue":
-            return float(l["prix_ht"])
-        elif src == "prestations":
-            return float(l["prix_ht"])
-        else:
-            return float(l["prix_ht"])
+        return float(l["prix_ht"])
 
     def _get_qte(i, l):
-        src = l.get("source", "libre")
-        if src == "catalogue":
-            return float(l["qte"])
-        elif src == "prestations":
-            return float(l["qte"])
-        else:
-            return float(l["qte"])
+        return float(l["qte"])
 
     total_ht  = sum(_get_prix(i, l) * _get_qte(i, l) for i, l in enumerate(lignes))
     total_tva = round(total_ht * tva_taux, 2)
     total_ttc = round(total_ht + total_tva, 2)
+
+    # ── Phrase modalité (calculée après totaux) ────────────────────────────────
+    if modalite_paie == "Acompte / Solde":
+        montant_acompte = round(total_ttc * pct_acompte / 100, 2)
+        montant_solde   = round(total_ttc * pct_solde   / 100, 2)
+        phrase_modalite = f"Acompte de {pct_acompte}% à la commande ({montant_acompte:,.2f} €) — Solde de {pct_solde}% à la réception ({montant_solde:,.2f} €)"
+
+    elif modalite_paie == "Paiement échelonné / progressif":
+        parts = []
+        for s in segments:
+            if s["percent"] > 0:
+                montant_s = round(total_ttc * s["percent"] / 100, 2)
+                parts.append(f"{s['percent']}% {s['etape'].lower()} ({montant_s:,.2f} €)")
+        phrase_modalite = " — ".join(parts)
+
+    elif modalite_paie == "Paiement différé / à terme":
+        phrase_modalite = f"Paiement intégral de {total_ttc:,.2f} € sous {jours_differe} jours après réception"
+
+    elif modalite_paie == "Paiement intégral à la commande":
+        phrase_modalite = f"Paiement intégral de {total_ttc:,.2f} € à la commande"
+
+    elif modalite_paie == "Paiement comptant / immédiat":
+        phrase_modalite = f"Paiement comptant de {total_ttc:,.2f} € à la réception"
 
     st.markdown(f"""
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
@@ -1290,6 +1303,9 @@ elif page == "📄 Créer un devis":
     </div>
     """, unsafe_allow_html=True)
 
+    if phrase_modalite:
+        st.info(f"💬 **{phrase_modalite}**")
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Validation ─────────────────────────────────────────────────────────────
@@ -1304,14 +1320,25 @@ elif page == "📄 Créer un devis":
 
     def _build_payload():
         return {
-            "client": {"nom": client_nom.strip(), "email": client_email.strip(),
-                       "tel": client_tel.strip(), "adresse": client_adresse.strip()},
-            "chantier": {"objet": objet_travaux.strip(), "adresse": adresse_chantier.strip(),
-                         "categorie_operation": categorie_operation,
-                         "date_debut": date_debut.strftime("%Y-%m-%d"),
-                         "duree_jours": int(duree_jours),
-                         "date_fin_estimee": (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
-                         "modalite_paiement": modalite_paie},
+            "client": {
+                "nom":    client_nom.strip(),
+                "email":  client_email.strip(),
+                "tel":    client_tel.strip(),
+                "adresse": client_adresse.strip(),
+                "siren":  siren_client.strip(),
+            },
+            "chantier": {
+                "objet":              objet_travaux.strip(),
+                "adresse":            adresse_chantier.strip(),
+                "categorie_operation": categorie_operation,
+                "date_debut":         date_debut.strftime("%Y-%m-%d"),
+                "duree_jours":        int(duree_jours),
+                "date_fin_estimee":   (date_debut + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
+                "modalite_paiement":  modalite_paie,
+                "phrase_modalite":    phrase_modalite,
+                "segments":           segments,
+                "jours_differe":      jours_differe,
+            },
             "tva": {"taux": tva_taux, "taux_pct": tva_pct_str, "sur_debits": tva_debits_bool},
             "prestations": [
                 {"numero": i+1, "article": l["article"].strip(), "description": l["description"].strip(),
@@ -1392,13 +1419,11 @@ elif page == "📄 Créer un devis":
             </tr>"""
 
         date_fin_str = (date_debut + timedelta(days=int(duree_jours))).strftime("%d/%m/%Y")
-        tva_mention = (
-            "TVA à taux super-réduit (travaux d'amélioration énergétique)"
-            if tva_taux == 0.055 else
-            "TVA à taux réduit (travaux de rénovation dans logement de plus de 2 ans)"
-            if tva_taux == 0.10 else
-            "TVA à taux normal (travaux neufs ou hors logement)"
-        )
+        segments_html = "".join([
+            f"<p>• {s['etape']} : <strong>{s['percent']}%</strong> — {round(total_ttc * s['percent'] / 100, 2):,.2f} €</p>"
+            for s in segments if s["percent"] > 0
+        ])
+        siren_html_preview = f"<p>SIREN : {siren_client.strip()}</p>" if siren_client.strip() else ""
 
         preview_html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -1432,7 +1457,6 @@ elif page == "📄 Créer un devis":
   tbody td {{ padding: 5px 6px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: top; }}
   td.right {{ text-align: right; }}
   td.center {{ text-align: center; }}
-  td.qte {{ text-align: center; font-weight: 700; color: #1d4ed8; }}
   .totals-wrapper {{ display: flex; justify-content: flex-end; margin-top: 8px; }}
   .totals {{ min-width: 200px; border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }}
   .totals-row {{ display: flex; justify-content: space-between; padding: 4px 10px; border-bottom: 1px solid #e2e8f0; font-size: 8.5px; }}
@@ -1490,15 +1514,16 @@ elif page == "📄 Créer un devis":
     <p>{client_adresse}</p>
     <p>{client_email}</p>
     {"<p>" + client_tel + "</p>" if client_tel.strip() else ""}
+    {siren_html_preview}
   </div>
   <div class="column">
     <div class="section-title">Objet des travaux</div>
     <p><strong>{objet_travaux}</strong></p>
     <p>📍 {adresse_chantier}</p>
+    <p>Categorie : {categorie_operation}</p>
     <p>Debut : {date_debut.strftime("%d/%m/%Y")}</p>
     <p>Duree : {duree_jours} jour(s) ouvre(s)</p>
     <p>Fin estimee : {date_fin_str}</p>
-    <p>Paiement : {modalite_paie}</p>
   </div>
 </div>
 
@@ -1533,8 +1558,9 @@ elif page == "📄 Créer un devis":
 
 <div class="modalites-box">
   <div class="modalites-title">Modalites de paiement - {modalite_paie}</div>
-  <div class="modalites-detail">{modalite_paie}</div>
-  <div style="color:#b45309;margin-bottom:6px;">Paiement sous 30 jours a compter de la facturation - Tout retard entraine des penalites au taux legal en vigueur.</div>
+  <div class="modalites-detail">{phrase_modalite}</div>
+  {segments_html}
+  <div style="color:#b45309;margin-bottom:6px;margin-top:4px;">Paiement sous 30 jours a compter de la facturation - Tout retard entraine des penalites au taux legal en vigueur.</div>
   <div style="margin-bottom:6px; color:#475569;">Modes de paiement acceptes : Cheque, Virement bancaire, Carte bancaire</div>
 </div>
 
@@ -1568,8 +1594,9 @@ elif page == "📄 Créer un devis":
 
 </body>
 </html>"""
+
         nb_lignes_valides = sum(1 for l in lignes if l["article"].strip())
-        preview_height = 820 + nb_lignes_valides * 32
+        preview_height = 900 + nb_lignes_valides * 32
         components.html(preview_html, height=preview_height, scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
