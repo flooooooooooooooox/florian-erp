@@ -1317,7 +1317,7 @@ elif page == "📄 Créer un devis":
             errs.append("Au moins une prestation est requise")
         return errs
 
-def _build_payload():
+    def _build_payload():
         return {
             "nom_complet":         client_nom.strip(),
             "adresse":             client_adresse.strip(),
@@ -1362,7 +1362,6 @@ def _build_payload():
         else:
             st.session_state.devis_preview = True
 
-    if st.session_state.get("devis_preview"):
     # ── Prévisualisation ───────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
