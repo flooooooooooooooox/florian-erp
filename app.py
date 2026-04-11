@@ -1317,37 +1317,41 @@ elif page == "📄 Créer un devis":
             errs.append("Au moins une prestation est requise")
         return errs
 
-    def _build_payload():
+def _build_payload():
         return {
-            "client": {
-                "nom":    client_nom.strip(),
-                "email":  client_email.strip(),
-                "tel":    client_tel.strip(),
-                "adresse": client_adresse.strip(),
-                "siren":  siren_client.strip(),
-            },
-            "chantier": {
-                "objet":              objet_travaux.strip(),
-                "adresse":            adresse_chantier.strip(),
-                "categorie_operation": categorie_operation,
-                "date_debut":         datetime.today().strftime("%Y-%m-%d"),
-                "duree_jours":        int(duree_jours),
-                "date_fin_estimee":   (datetime.today() + timedelta(days=int(duree_jours))).strftime("%Y-%m-%d"),
-                "modalite_paiement":  modalite_paie,
-                "phrase_modalite":    phrase_modalite,
-                "segments":           segments,
-                "jours_differe":      jours_differe,
-            },
-            "tva": {"taux": tva_taux, "taux_pct": tva_pct_str, "sur_debits": tva_debits_bool},
+            "nom_complet":         client_nom.strip(),
+            "adresse":             client_adresse.strip(),
+            "email":               client_email.strip(),
+            "tel":                 client_tel.strip(),
+            "siren_client":        siren_client.strip(),
+            "objet":               objet_travaux.strip(),
+            "adresse_chantier":    adresse_chantier.strip(),
+            "categorie_operation": categorie_operation,
+            "duree_jours":         int(duree_jours),
+            "modalite_paiement":   modalite_paie,
+            "phrase_modalite":     phrase_modalite,
+            "phrase_modalité":     phrase_modalite,
+            "segments":            segments,
+            "jours_differe":       jours_differe,
+            "tva_choisi":          float(tva_pct_str.replace(",", ".")),
+            "tva_debits":          "Oui" if tva_debits_bool else "Non",
             "prestations": [
-                {"numero": i+1, "article": l["article"].strip(), "description": l["description"].strip(),
-                 "categorie": l.get("categorie",""), "qte": _get_qte(i, l),
-                 "prix_ht": round(_get_prix(i, l), 2),
-                 "total_ht": round(_get_qte(i, l) * _get_prix(i, l), 2)}
+                {
+                    "libelle":     l["article"].strip(),
+                    "description": l["description"].strip(),
+                    "quantite":    _get_qte(i, l),
+                    "HT":          round(_get_prix(i, l) * _get_qte(i, l), 2),
+                    "TVA":         round(_get_prix(i, l) * _get_qte(i, l) * tva_taux, 2),
+                    "TTC":         round(_get_prix(i, l) * _get_qte(i, l) * (1 + tva_taux), 2),
+                }
                 for i, l in enumerate(lignes) if l["article"].strip()
             ],
-            "totaux": {"total_ht": round(total_ht, 2), "tva": total_tva, "total_ttc": total_ttc},
-            "meta": {"cree_par": user, "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M"), "source": "streamlit_erp"},
+            "totalHT":  round(total_ht, 2),
+            "TVA":      round(total_tva, 2),
+            "totalTTC": round(total_ttc, 2),
+            "cree_par": user,
+            "cree_le":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "source":   "streamlit_erp",
         }
 
     # ── Boutons ────────────────────────────────────────────────────────────────
