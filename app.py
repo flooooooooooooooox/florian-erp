@@ -1132,10 +1132,10 @@ elif page == "📄 Créer un devis":
                                        "categorie": found["categorie"], "_prev_sel": sel,
                                        "prix_ht": _parse_prix(found["prix_ht"])})
                         st.rerun()
-                ligne["qte"] = st.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte_{i}")
+                st.session_state[f"qte_{i}"] = ligne["qte"]
                 st.session_state[f"pht_{i}"] = ligne["prix_ht"]
-                if ligne["prix_ht"] > 0:
-                    st.caption(f"Prix unitaire HT : **{ligne['prix_ht']:,.2f} €**")
+                if ligne["prix_ht"] > 0 or ligne["qte"] > 0:
+                    st.caption(f"Qté : **{ligne['qte']:g}** — Prix unitaire HT : **{ligne['prix_ht']:,.2f} €**")
 
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
