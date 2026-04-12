@@ -1887,11 +1887,11 @@ elif page == "📅 Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if "plan_view_tab" not in st.session_state: st.session_state["plan_view_tab"] = "📅 Semaine"
     _plan_opts = ["📅 Semaine", "📆 Mois", "📊 Gantt", "📋 Liste"]
+    if "plan_view_tab" not in st.session_state or st.session_state["plan_view_tab"] not in _plan_opts:
+        st.session_state["plan_view_tab"] = "📅 Semaine"
     def _on_plan_view(): st.session_state["plan_view_tab"] = st.session_state["_plan_view_radio"]
     view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio", index=_plan_opts.index(st.session_state["plan_view_tab"]), on_change=_on_plan_view)
-
     JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     MOIS_FR = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
     COLOR_MAP = {"en-cours": "#3B82F6", "retard": "#EF4444", "termine": "#10B981"}
