@@ -1372,26 +1372,25 @@ elif page == "📄 Créer un devis":
                         st.rerun()
                 cq2, cp2 = st.columns(2)
                 new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-               elif src == "🔧 Prestations":
-    ligne["source"] = "prestations"
-    sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
-    if sel != prest_labels[0]:
-        found = next((it for it in prestations_items if it["label"] == sel), None)
-        if found and sel != ligne.get("_prev_sel"):
-            ligne["article"]     = found["article"]
-            ligne["description"] = found["description"]
-            ligne["categorie"]   = found["categorie"]
-            ligne["_prev_sel"]   = sel
-            ligne["prix_ht"]     = _parse_prix(found["prix_ht"])
-            ligne["qte"]         = 1.0
-            st.session_state[f"pht2_{i}"] = float(ligne["prix_ht"])
-            st.session_state[f"qte2_{i}"] = 1.0
-            st.rerun()
-    cq2, cp2 = st.columns(2)
-    new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-    ligne["qte"]    = new_qte2
-    ligne["prix_ht"] = new_pht2
-                ligne["qte"] = new_qte2
+                elif src == "🔧 Prestations":
+                ligne["source"] = "prestations"
+                sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
+                if sel != prest_labels[0]:
+                    found = next((it for it in prestations_items if it["label"] == sel), None)
+                    if found and sel != ligne.get("_prev_sel"):
+                        ligne["article"]     = found["article"]
+                        ligne["description"] = found["description"]
+                        ligne["categorie"]   = found["categorie"]
+                        ligne["_prev_sel"]   = sel
+                        ligne["prix_ht"]     = _parse_prix(found["prix_ht"])
+                        ligne["qte"]         = 1.0
+                        st.session_state[f"pht2_{i}"] = float(ligne["prix_ht"])
+                        st.session_state[f"qte2_{i}"] = 1.0
+                        st.rerun()
+                cq2, cp2 = st.columns(2)
+                new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
+                new_pht2 = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
+                ligne["qte"]     = new_qte2
                 ligne["prix_ht"] = new_pht2
             else:
                 ligne["source"] = "libre"
