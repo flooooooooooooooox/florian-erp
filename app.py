@@ -1911,7 +1911,7 @@ elif page == "📅 Planning":
             if st.button("◀", use_container_width=True, key="plan_prev"):
                 st.session_state["plan_week_offset"] -= 1; st.rerun()
         with nav2:
-            st.markdown(f"<div style='text-align:center;font-family:Syne,sans-serif;font-weight:700;font-size:1.1rem;padding-top:5px;color:var(--text-main);'>{monday.strftime('%d %B')} — {week_days[-1].strftime('%d %B %Y')}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center;font-family:Syne,sans-serif;font-weight:700;font-size:1.1rem;padding-top:5px;'>{monday.strftime('%d %B')} — {week_days[-1].strftime('%d %B %Y')}</div>", unsafe_allow_html=True)
         with nav3:
             if st.button("▶", use_container_width=True, key="plan_next"):
                 st.session_state["plan_week_offset"] += 1; st.rerun()
@@ -1921,112 +1921,121 @@ elif page == "📅 Planning":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Afficher les 7 jours en colonnes
-        cols_week = st.columns(7)
-        for di, wd in enumerate(week_days):
-            is_today = wd.date() == today.date()
-            is_weekend = wd.weekday() >= 5
-
-            # Événements de ce jour
-            day_evs = df_plan[
-                (df_plan["_start"].dt.date <= wd.date()) &
-                (df_plan["_end"].dt.date >= wd.date())
-            ]
-
-            with cols_week[di]:
-                # Header du jour
-                if is_today:
-                    header_bg = "#3B82F6"
-                    header_color = "#fff"
-                elif is_weekend:
-                    header_bg = "rgba(255,255,255,0.03)"
-                    header_color = "rgba(255,255,255,0.3)"
-                else:
-                    header_bg = "rgba(255,255,255,0.06)"
-                    header_color = "rgba(255,255,255,0.8)"
-
-                st.markdown(f"""
-                <div style='text-align:center;background:{header_bg};border-radius:8px 8px 0 0;padding:8px 4px;margin-bottom:0;'>
-                    <div style='font-size:0.65rem;font-weight:700;color:{header_color};text-transform:uppercase;letter-spacing:0.06em;opacity:0.8;'>{JOURS_FR[wd.weekday()]}</div>
-                    <div style='font-size:1.4rem;font-weight:800;color:{header_color};font-family:Syne,sans-serif;line-height:1.1;'>{wd.day}</div>
-                </div>
-                <div style='min-height:120px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-top:none;border-radius:0 0 8px 8px;padding:4px;'>
-                """, unsafe_allow_html=True)
-
-                if day_evs.empty:
-                    st.markdown("<div style='text-align:center;padding:20px 4px;font-size:0.65rem;color:rgba(255,255,255,0.15);'>—</div>", unsafe_allow_html=True)
-                else:
-                    for _, ev in day_evs.iterrows():
-                        color = COLOR_MAP[ev["_statut_code"]]
-                        chantier_v = str(ev[COL_CHANTIER]) if COL_CHANTIER else ""
-                        client_v = str(ev[COL_CLIENT]) if COL_CLIENT else ""
-                        sal_v = str(ev[COL_SALARIE]) if COL_SALARIE and not pd.isna(ev.get(COL_SALARIE, "")) else ""
-                        h_deb = ev["_h_deb"]
-                        h_fin = ev["_h_fin"]
-                        h_label = f"{int(h_deb):02d}h–{int(h_fin):02d}h"
-
-                        st.markdown(f"""
-                        <div style='background:{color}22;border-left:3px solid {color};border-radius:0 4px 4px 0;padding:4px 5px;margin-bottom:4px;cursor:pointer;'>
-                            <div style='font-size:0.65rem;font-weight:700;color:{color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' title='{chantier_v}'>{chantier_v[:14] + "…" if len(chantier_v) > 14 else chantier_v}</div>
-                            <div style='font-size:0.58rem;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{client_v[:12] + "…" if len(client_v) > 12 else client_v}</div>
-                            {"<div style='font-size:0.55rem;color:rgba(255,255,255,0.35);'>👷 " + (sal_v[:10] + "…" if len(sal_v) > 10 else sal_v) + "</div>" if sal_v and sal_v != "nan" else ""}
-                            <div style='font-size:0.55rem;color:rgba(255,255,255,0.3);margin-top:2px;'>🕐 {h_label}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                st.markdown("</div>", unsafe_allow_html=True)
-
-        # Légende
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("""
-        <div style='display:flex;gap:16px;flex-wrap:wrap;'>
-            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#3B82F6;display:inline-block;'></span>En cours</span>
-            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#EF4444;display:inline-block;'></span>En retard</span>
-            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;'></span>Terminé</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Détail de la semaine
-        st.markdown("---")
-        st.markdown("**📋 Détail des chantiers cette semaine**")
+        # Collecter tous les événements de la semaine
         week_evs = df_plan[
             (df_plan["_start"].dt.date <= week_days[-1].date()) &
             (df_plan["_end"].dt.date >= week_days[0].date())
         ].sort_values("_start")
 
-        if week_evs.empty:
-            st.info("Aucun chantier cette semaine.")
-        else:
-            for _, row in week_evs.iterrows():
-                color = COLOR_MAP[row["_statut_code"]]
-                sal = str(row[COL_SALARIE]) if COL_SALARIE and not pd.isna(row.get(COL_SALARIE, "")) else ""
-                h_deb = row["_h_deb"]
-                h_fin = row["_h_fin"]
-                chantier_v = str(row[COL_CHANTIER]) if COL_CHANTIER else ""
-                client_v = str(row[COL_CLIENT]) if COL_CLIENT else ""
-                debut_v = row["_start"].strftime("%d/%m")
-                fin_v = row["_end"].strftime("%d/%m")
-                montant_v = fmt(row["_montant"])
-                label_statut = {"en-cours": "En cours", "retard": "En retard", "termine": "Terminé"}[row["_statut_code"]]
+        # Afficher par jour
+        for wd in week_days:
+            is_today = wd.date() == today.date()
+            is_weekend = wd.weekday() >= 5
 
-                st.markdown(f"""
-                <div class="erp-card" style="border-left:3px solid {color};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                    <div style="flex:1;">
-                        <div style="font-weight:700;font-size:0.92rem;font-family:Syne,sans-serif;color:var(--text-main);">{chantier_v}</div>
-                        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">
-                            👤 {client_v}
-                            {" • 👷 " + sal if sal and sal != "nan" else ""}
-                        </div>
-                        <div style="margin-top:5px;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:0.68rem;font-weight:700;background:{color}22;color:{color};border:1px solid {color}44;">{label_statut}</span>
+            day_evs = df_plan[
+                (df_plan["_start"].dt.date <= wd.date()) &
+                (df_plan["_end"].dt.date >= wd.date())
+            ]
+
+            # Couleur header selon le jour
+            if is_today:
+                day_border = "#3B82F6"
+                day_header_bg = "rgba(59,130,246,0.2)"
+                day_num_color = "#60A5FA"
+            elif is_weekend:
+                day_border = "rgba(255,255,255,0.08)"
+                day_header_bg = "rgba(255,255,255,0.03)"
+                day_num_color = "rgba(255,255,255,0.25)"
+            else:
+                day_border = "rgba(255,255,255,0.1)"
+                day_header_bg = "rgba(255,255,255,0.05)"
+                day_num_color = "rgba(255,255,255,0.85)"
+
+            nb = len(day_evs)
+            badge = f"<span style='background:#3B82F6;color:#fff;border-radius:99px;padding:1px 7px;font-size:0.7rem;font-weight:700;margin-left:8px;'>{nb}</span>" if nb > 0 else ""
+
+            st.markdown(f"""
+            <div style='border:1px solid {day_border};border-radius:10px;overflow:hidden;margin-bottom:10px;'>
+                <div style='background:{day_header_bg};padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {day_border};'>
+                    <div style='display:flex;align-items:center;gap:10px;'>
+                        <div style='font-size:1.6rem;font-weight:800;color:{day_num_color};font-family:Syne,sans-serif;line-height:1;'>{wd.day}</div>
+                        <div>
+                            <div style='font-size:0.85rem;font-weight:700;color:{day_num_color};text-transform:uppercase;letter-spacing:0.05em;'>{JOURS_FR[wd.weekday()]}</div>
+                            <div style='font-size:0.72rem;color:rgba(255,255,255,0.3);'>{wd.strftime("%d/%m/%Y")}</div>
                         </div>
                     </div>
-                    <div style="text-align:right;flex-shrink:0;">
-                        <div style="font-size:0.8rem;color:{color};font-weight:600;">🕐 {int(h_deb):02d}h – {int(h_fin):02d}h</div>
-                        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📅 {debut_v} → {fin_v}</div>
-                        <div style="font-size:0.8rem;font-weight:700;color:var(--text-main);margin-top:2px;">{montant_v}</div>
+                    <div>{badge if nb > 0 else "<span style='font-size:0.72rem;color:rgba(255,255,255,0.2);'>Aucun chantier</span>"}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if day_evs.empty:
+                st.markdown("<div style='padding:14px 16px;color:rgba(255,255,255,0.2);font-size:0.8rem;font-style:italic;'>Aucune intervention prévue</div>", unsafe_allow_html=True)
+            else:
+                for _, ev in day_evs.iterrows():
+                    color = COLOR_MAP[ev["_statut_code"]]
+                    label_statut = {"en-cours": "🔵 En cours", "retard": "🔴 En retard", "termine": "✅ Terminé"}[ev["_statut_code"]]
+
+                    chantier_v = str(ev[COL_CHANTIER]) if COL_CHANTIER else "—"
+                    client_v   = str(ev[COL_CLIENT])   if COL_CLIENT   else "—"
+                    num_v      = str(ev[COL_NUM])       if COL_NUM      else "—"
+                    montant_v  = fmt(ev["_montant"])
+                    sal_v      = str(ev[COL_SALARIE])   if COL_SALARIE and not pd.isna(ev.get(COL_SALARIE, "")) else "—"
+                    adresse_v  = str(ev[COL_ADRESSE])   if COL_ADRESSE and not pd.isna(ev.get(COL_ADRESSE, "")) else "—"
+                    h_deb      = ev["_h_deb"]
+                    h_fin      = ev["_h_fin"]
+                    debut_v    = ev["_start"].strftime("%d/%m/%Y")
+                    fin_v      = ev["_end"].strftime("%d/%m/%Y")
+
+                    st.markdown(f"""
+                    <div style='padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04);border-left:4px solid {color};background:rgba(255,255,255,0.02);'>
+
+                        <!-- Ligne 1 : Chantier + statut + heure -->
+                        <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>
+                            <div style='display:flex;align-items:center;gap:10px;'>
+                                <span style='font-size:1rem;font-weight:800;color:{color};font-family:Syne,sans-serif;'>{chantier_v}</span>
+                                <span style='font-size:0.7rem;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:4px;'>{num_v}</span>
+                                <span style='font-size:0.72rem;padding:2px 8px;border-radius:99px;background:{color}22;color:{color};border:1px solid {color}44;font-weight:600;'>{label_statut}</span>
+                            </div>
+                            <div style='background:{color}22;border:1px solid {color}44;border-radius:8px;padding:6px 12px;text-align:center;'>
+                                <div style='font-size:1rem;font-weight:800;color:{color};font-family:Syne,sans-serif;'>{int(h_deb):02d}h – {int(h_fin):02d}h</div>
+                                <div style='font-size:0.65rem;color:rgba(255,255,255,0.35);'>horaires</div>
+                            </div>
+                        </div>
+
+                        <!-- Ligne 2 : Infos détaillées -->
+                        <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;'>
+                            <div style='background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;'>
+                                <div style='font-size:0.62rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;'>👤 Client</div>
+                                <div style='font-size:0.82rem;font-weight:600;color:rgba(255,255,255,0.85);'>{client_v}</div>
+                            </div>
+                            <div style='background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;'>
+                                <div style='font-size:0.62rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;'>👷 Salarié</div>
+                                <div style='font-size:0.82rem;font-weight:600;color:rgba(255,255,255,0.85);'>{sal_v}</div>
+                            </div>
+                            <div style='background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;'>
+                                <div style='font-size:0.62rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;'>📅 Période</div>
+                                <div style='font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.85);'>{debut_v} → {fin_v}</div>
+                            </div>
+                            <div style='background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;'>
+                                <div style='font-size:0.62rem;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;'>💶 Montant</div>
+                                <div style='font-size:0.82rem;font-weight:700;color:{color};'>{montant_v}</div>
+                            </div>
+                        </div>
+
+                        {"<div style='margin-top:6px;padding:4px 10px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:0.75rem;color:rgba(255,255,255,0.35);'>📍 " + adresse_v + "</div>" if adresse_v and adresse_v not in ["—","nan",""] else ""}
                     </div>
-                </div>""", unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # Légende
+        st.markdown("""
+        <div style='display:flex;gap:16px;margin-top:8px;'>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#3B82F6;display:inline-block;'></span>En cours</span>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#EF4444;display:inline-block;'></span>En retard</span>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:5px;'><span style='width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;'></span>Terminé</span>
+        </div>
+        """, unsafe_allow_html=True)
     # ── VUE MOIS ─────────────────────────────────────────────────────────────
     elif view_mode == "📆 Mois":
         if "plan_year" not in st.session_state: st.session_state["plan_year"] = today.year
