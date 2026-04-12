@@ -1898,7 +1898,7 @@ elif page == "📅 Planning":
     BG_MAP = {"en-cours": "rgba(59,130,246,0.15)", "retard": "rgba(239,68,68,0.15)", "termine": "rgba(16,185,129,0.15)"}
 
     # ── VUE SEMAINE ──────────────────────────────────────────────────────────
-   if view_mode == "📅 Semaine":
+    if view_mode == "📅 Semaine":
         if "plan_week_offset" not in st.session_state:
             st.session_state["plan_week_offset"] = 0
 
