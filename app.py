@@ -1073,7 +1073,7 @@ elif page == "🔔 Notifications":
                 <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">💶 {montant} €</div>
                 """, unsafe_allow_html=True)
 
-                c1, c2, c3 = st.columns(3)
+                c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     date_debut_notif = st.date_input(
                         "📅 Date début travaux",
@@ -1082,11 +1082,17 @@ elif page == "🔔 Notifications":
                     )
                 with c2:
                     heure_intervention = st.time_input(
-                        "🕐 Heure d'intervention",
+                        "🕐 Heure de début",
                         value=datetime.strptime("08:00", "%H:%M").time(),
                         key=f"notif_heure_{idx}"
                     )
                 with c3:
+                    heure_fin = st.time_input(
+                        "🕔 Heure de fin",
+                        value=datetime.strptime("17:00", "%H:%M").time(),
+                        key=f"notif_heure_fin_{idx}"
+                    )
+                with c4:
                     salarie_sel = st.selectbox(
                         "👷 Salarié(e)",
                         ["— Choisir —"] + salaries,
@@ -1104,6 +1110,7 @@ elif page == "🔔 Notifications":
                             "montant":            montant,
                             "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
                             "heure_intervention": heure_intervention.strftime("%H:%M"),
+                            "heure_fin":          heure_fin.strftime("%H:%M"),
                             "salarie":            salarie_sel,
                             "planifie_par":       user,
                             "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
