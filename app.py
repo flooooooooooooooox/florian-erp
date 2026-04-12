@@ -1360,19 +1360,7 @@ elif page == "📄 Créer un devis":
                 ligne["qte"] = new_qte
                 if ligne.get("article"):
                     st.caption(f"Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
-            elif src == "🔧 Prestations":
-                ligne["source"] = "prestations"
-                sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
-                if sel != prest_labels[0]:
-                    found = next((it for it in prestations_items if it["label"] == sel), None)
-                    if found and sel != ligne.get("_prev_sel"):
-                        ligne.update({"article": found["article"], "description": found["description"],
-                                      "categorie": found["categorie"], "_prev_sel": sel,
-                                      "prix_ht": _parse_prix(found["prix_ht"])})
-                        st.rerun()
-                cq2, cp2 = st.columns(2)
-                new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-                elif src == "🔧 Prestations":
+            eelif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
