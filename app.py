@@ -428,6 +428,7 @@ with st.sidebar:
         "💶 Factures & Paiements",
         "🏗️ Chantiers",
         "📅 Planning",
+        "🔔 Notifications",
         "🗂️ Espace Clients",
         "📁 Tous les dossiers",
         "📝 Éditeur Google Sheet",
@@ -979,7 +980,156 @@ elif page == "📝 Éditeur Google Sheet":
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
+
+    # ── FIN ÉDITEUR GOOGLE SHEET ───────────────────────────────────────────────
     st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : NOTIFICATIONS  ← ICI, au niveau racine, APRÈS le st.stop() de l'éditeur
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🔔 Notifications":
+    page_header("🔔 Notifications", "Devis signés en attente de planification")
+
+    WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook-test/reponse-{user}"
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_salaries(u):
+        ws, err = get_worksheet(u, "liste")
+        if err:
+            return []
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return []
+            headers = [h.strip().lower() for h in vals[0]]
+            sal_col = next((h for h in headers if "salar" in h), None)
+            if not sal_col:
+                sal_col = headers[0]
+            idx = headers.index(sal_col)
+            return [r[idx].strip() for r in vals[1:] if len(r) > idx and r[idx].strip()]
+        except Exception:
+            return []
+
+    @st.cache_data(ttl=15, show_spinner=False)
+    def _load_notifications(u):
+        ws, err = get_worksheet(u, "notifications")
+        if err:
+            return err, pd.DataFrame()
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return None, pd.DataFrame()
+            headers = _dedup_headers(vals[0])
+            rows = vals[1:]
+            n = len(headers)
+            padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+            df_n = pd.DataFrame(padded, columns=headers)
+            df_n = df_n.replace("", pd.NA).dropna(how="all").fillna("")
+            return None, df_n
+        except Exception as e:
+            return str(e), pd.DataFrame()
+
+    salaries = _load_salaries(user)
+    err_n, df_notif = _load_notifications(user)
+
+    if err_n:
+        st.error(f"❌ Onglet 'notifications' introuvable : {err_n}")
+        st.info("Crée un onglet 'notifications' dans ton Google Sheet avec les colonnes : date_reception, numero_devis, nom_client, objet, montant, statut")
+        st.stop()
+
+    df_attente = df_notif[df_notif.get("statut", pd.Series(dtype=str)).astype(str).str.strip() == "en_attente"] if "statut" in df_notif.columns else df_notif
+    nb_attente_notif = len(df_attente)
+
+    col_n1, col_n2 = st.columns(2)
+    col_n1.metric("🔔 En attente de planification", nb_attente_notif)
+    col_n2.metric("✅ Planifiés", len(df_notif) - nb_attente_notif)
+
+    if st.button("🔄 Actualiser", key="btn_refresh_notif"):
+        _load_notifications.clear()
+        st.rerun()
+
+    st.markdown("---")
+
+    if nb_attente_notif == 0:
+        st.success("✅ Aucune notification en attente !")
+    else:
+        for idx, (row_idx, row) in enumerate(df_attente.iterrows()):
+            numero  = str(row.get("numero_devis", "")).strip()
+            client  = str(row.get("nom_client", "")).strip()
+            objet   = str(row.get("objet", "")).strip()
+            montant = str(row.get("montant", "")).strip()
+            date_r  = str(row.get("date_reception", "")).strip()
+
+            with st.container(border=True):
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <div>
+                    <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;">{numero}</span>
+                    <strong style="margin-left:8px;font-size:0.95rem;">{client}</strong>
+                  </div>
+                  <div style="font-size:0.8rem;color:#64748b;">{date_r}</div>
+                </div>
+                <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">🏗️ {objet}</div>
+                <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">💶 {montant} €</div>
+                """, unsafe_allow_html=True)
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    date_debut_notif = st.date_input(
+                        "📅 Date début travaux",
+                        value=datetime.today(),
+                        key=f"notif_date_{idx}"
+                    )
+                with c2:
+                    heure_intervention = st.time_input(
+                        "🕐 Heure d'intervention",
+                        value=datetime.strptime("08:00", "%H:%M").time(),
+                        key=f"notif_heure_{idx}"
+                    )
+                with c3:
+                    salarie_sel = st.selectbox(
+                        "👷 Salarié(e)",
+                        ["— Choisir —"] + salaries,
+                        key=f"notif_sal_{idx}"
+                    )
+
+                if st.button("📤 Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
+                    if salarie_sel == "— Choisir —":
+                        st.error("❌ Sélectionne un(e) salarié(e)")
+                    else:
+                        payload_notif = {
+                            "numero_devis":       numero,
+                            "nom_client":         client,
+                            "objet":              objet,
+                            "montant":            montant,
+                            "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
+                            "heure_intervention": heure_intervention.strftime("%H:%M"),
+                            "salarie":            salarie_sel,
+                            "planifie_par":       user,
+                            "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        }
+                        try:
+                            resp = requests.post(
+                                WEBHOOK_REPONSE,
+                                json=payload_notif,
+                                timeout=30,
+                                headers={"Content-Type": "application/json"}
+                            )
+                            if resp.status_code in (200, 201):
+                                ws_n, _ = get_worksheet(user, "notifications")
+                                if ws_n:
+                                    sheet_row = row_idx + 2
+                                    statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
+                                    if statut_col:
+                                        ws_n.update_cell(sheet_row, statut_col, "planifie")
+                                _load_notifications.clear()
+                                st.success(f"✅ Planification envoyée à n8n pour {client} !")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Erreur n8n : {resp.status_code}")
+                        except Exception as ex:
+                            st.error(f"Erreur : {ex}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CRÉER UN DEVIS  — VERSION CORRIGÉE v2
@@ -1065,7 +1215,6 @@ elif page == "📄 Créer un devis":
     if "devis_preview" not in st.session_state:
         st.session_state.devis_preview = False
 
-    # ── Infos client ───────────────────────────────────────────────────────────
     st.markdown("#### 👤 Informations client")
     c1, c2 = st.columns(2)
     with c1:
@@ -1082,12 +1231,7 @@ elif page == "📄 Créer un devis":
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
-            "Prestation",
-            "Service",
-            "Fourniture",
-            "Fourniture et pose",
-            "Main d'œuvre",
-            "Autre",
+            "Prestation", "Service", "Fourniture", "Fourniture et pose", "Main d'œuvre", "Autre",
         ], key="dv_cat_op")
         siren_client        = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
@@ -1100,7 +1244,6 @@ elif page == "📄 Créer un devis":
         ], key="dv_modal")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
 
-    # ── Paramètres selon modalité ──────────────────────────────────────────────
     pct_acompte   = 30
     pct_solde     = 70
     segments      = []
@@ -1119,7 +1262,6 @@ elif page == "📄 Créer un devis":
             {"etape": "À la commande", "percent": pct_acompte},
             {"etape": "À la réception", "percent": pct_solde},
         ]
-
     elif modalite_paie == "Paiement échelonné / progressif":
         st.markdown("##### ⚙️ Répartition échelonnée")
         ce1, ce2, ce3 = st.columns(3)
@@ -1137,15 +1279,12 @@ elif page == "📄 Créer un devis":
             {"etape": "En cours de chantier", "percent": pct_enc},
             {"etape": "À la réception",       "percent": pct_fin},
         ]
-
     elif modalite_paie == "Paiement différé / à terme":
         st.markdown("##### ⚙️ Délai de paiement")
         jours_differe = st.number_input("Nombre de jours après réception", min_value=1, max_value=365, value=30, step=1, key="dv_jours_differe")
         segments = [{"etape": f"À terme ({jours_differe}j)", "percent": 100}]
-
     elif modalite_paie == "Paiement intégral à la commande":
         segments = [{"etape": "À la commande", "percent": 100}]
-
     elif modalite_paie == "Paiement comptant / immédiat":
         segments = [{"etape": "À la réception", "percent": 100}]
 
@@ -1214,7 +1353,6 @@ elif page == "📄 Créer un devis":
                 ligne["qte"] = new_qte
                 if ligne.get("article"):
                     st.caption(f"Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
-
             elif src == "🔧 Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
@@ -1230,7 +1368,6 @@ elif page == "📄 Créer un devis":
                 new_pht2 = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
                 ligne["qte"] = new_qte2
                 ligne["prix_ht"] = new_pht2
-
             else:
                 ligne["source"] = "libre"
                 ligne["article"] = st.text_input("Désignation *", value=ligne.get("article", ""), key=f"art_{i}", placeholder="Ex : Pose carrelage")
@@ -1252,7 +1389,6 @@ elif page == "📄 Créer un devis":
         )
         st.rerun()
 
-    # ── Totaux ─────────────────────────────────────────────────────────────────
     def _get_prix(i, l):
         return float(l["prix_ht"])
 
@@ -1263,12 +1399,10 @@ elif page == "📄 Créer un devis":
     total_tva = round(total_ht * tva_taux, 2)
     total_ttc = round(total_ht + total_tva, 2)
 
-    # ── Phrase modalité (calculée après totaux) ────────────────────────────────
     if modalite_paie == "Acompte / Solde":
         montant_acompte = round(total_ttc * pct_acompte / 100, 2)
         montant_solde   = round(total_ttc * pct_solde   / 100, 2)
         phrase_modalite = f"Acompte de {pct_acompte}% à la commande ({montant_acompte:,.2f} €) — Solde de {pct_solde}% à la réception ({montant_solde:,.2f} €)"
-
     elif modalite_paie == "Paiement échelonné / progressif":
         parts = []
         for s in segments:
@@ -1276,13 +1410,10 @@ elif page == "📄 Créer un devis":
                 montant_s = round(total_ttc * s["percent"] / 100, 2)
                 parts.append(f"{s['percent']}% {s['etape'].lower()} ({montant_s:,.2f} €)")
         phrase_modalite = " — ".join(parts)
-
     elif modalite_paie == "Paiement différé / à terme":
         phrase_modalite = f"Paiement intégral de {total_ttc:,.2f} € sous {jours_differe} jours après réception"
-
     elif modalite_paie == "Paiement intégral à la commande":
         phrase_modalite = f"Paiement intégral de {total_ttc:,.2f} € à la commande"
-
     elif modalite_paie == "Paiement comptant / immédiat":
         phrase_modalite = f"Paiement comptant de {total_ttc:,.2f} € à la réception"
 
@@ -1307,7 +1438,6 @@ elif page == "📄 Créer un devis":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Validation ─────────────────────────────────────────────────────────────
     def _validate():
         errs = []
         if not client_nom.strip():       errs.append("Nom client manquant")
@@ -1328,6 +1458,7 @@ elif page == "📄 Créer un devis":
             "adresse_chantier":    adresse_chantier.strip(),
             "categorie_operation": categorie_operation,
             "duree_jours":         int(duree_jours),
+            "date_debut":          datetime.today().strftime("%Y-%m-%d"),
             "modalite_paiement":   modalite_paie,
             "phrase_modalite":     phrase_modalite,
             "phrase_modalité":     phrase_modalite,
@@ -1354,7 +1485,6 @@ elif page == "📄 Créer un devis":
             "source":   "streamlit_erp",
         }
 
-    # ── Boutons ────────────────────────────────────────────────────────────────
     if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
         errs = _validate()
         if errs:
@@ -1362,7 +1492,6 @@ elif page == "📄 Créer un devis":
         else:
             st.session_state.devis_preview = True
 
-    # ── Prévisualisation ───────────────────────────────────────────────────────
     if st.session_state.get("devis_preview"):
         st.markdown("---")
 
@@ -1609,7 +1738,7 @@ elif page == "📄 Créer un devis":
                     st.error(f"Erreur : {ex}")
 
     st.stop()
-    
+
 # ── CHARGEMENT DONNÉES ─────────────────────────────────────────────────────────
 df_raw, error = get_sheet_data(user)
 
