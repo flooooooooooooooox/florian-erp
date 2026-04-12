@@ -1389,7 +1389,6 @@ elif page == "📄 Créer un devis":
             st.rerun()
     cq2, cp2 = st.columns(2)
     new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
-    new_pht2 = cp2.number_input("Prix unitaire HT (€)", min_value=0.0, value=float(ligne["prix_ht"]), step=10.0, key=f"pht2_{i}")
     ligne["qte"]    = new_qte2
     ligne["prix_ht"] = new_pht2
                 ligne["qte"] = new_qte2
