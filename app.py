@@ -396,6 +396,13 @@ def page_header(title, subtitle=""):
     </div>
     """, unsafe_allow_html=True)
 
+def safe_radio_index(options, key, default=0):
+    """Retourne l'index sécurisé pour st.radio, évite ValueError si la valeur en session est obsolète."""
+    val = st.session_state.get(key)
+    if val in options:
+        return options.index(val)
+    return default
+
 # ── SIDEBAR ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("<div style='padding: 20px 16px 8px;'>", unsafe_allow_html=True)
@@ -981,11 +988,10 @@ elif page == "📝 Éditeur Google Sheet":
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-    # ── FIN ÉDITEUR GOOGLE SHEET ───────────────────────────────────────────────
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : NOTIFICATIONS  ← ICI, au niveau racine, APRÈS le st.stop() de l'éditeur
+# PAGE : NOTIFICATIONS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🔔 Notifications":
     page_header("🔔 Notifications", "Devis signés en attente de planification")
@@ -1139,13 +1145,13 @@ elif page == "🔔 Notifications":
                             st.error(f"Erreur : {ex}")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CRÉER UN DEVIS  — VERSION CORRIGÉE v2
+# PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📄 Créer un devis":
     import streamlit.components.v1 as components
     page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user}"
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_catalogue_devis(u):
@@ -1847,12 +1853,14 @@ if page == "📊 Vue Générale":
                     if d2.empty:
                         st.info("Aucune donnée sur cette période.")
                     else:
+                        _chart_opts = ["📊 Barres empilées", "📈 Courbes"]
                         chart_mode = st.radio(
                             "Type de graphique",
-                            ["📊 Barres empilées", "📈 Courbes"],
+                            _chart_opts,
                             horizontal=True,
                             key="chart_mode_toggle",
                             label_visibility="collapsed",
+                            index=safe_radio_index(_chart_opts, "chart_mode_toggle"),
                         )
 
                         d2["_mois_key"]   = d2["_date"].dt.to_period("M").astype(str)
@@ -1984,14 +1992,18 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
+    _DEVIS_OPTS = ["⏳ En attente de signature", "✅ Devis signés"]
     if "devis_tab" not in st.session_state:
-        st.session_state["devis_tab"] = "⏳ En attente de signature"
+        st.session_state["devis_tab"] = _DEVIS_OPTS[0]
 
     def _on_devis_tab():
         st.session_state["devis_tab"] = st.session_state["_devis_tab_radio"]
 
-    tab_devis_choice = st.radio("", ["⏳ En attente de signature", "✅ Devis signés"], horizontal=True, key="_devis_tab_radio",
-        index=["⏳ En attente de signature", "✅ Devis signés"].index(st.session_state["devis_tab"]), on_change=_on_devis_tab)
+    tab_devis_choice = st.radio(
+        "", _DEVIS_OPTS, horizontal=True, key="_devis_tab_radio",
+        index=safe_radio_index(_DEVIS_OPTS, "devis_tab"),
+        on_change=_on_devis_tab,
+    )
     st.markdown("---")
     if tab_devis_choice == "⏳ En attente de signature":
         d = df_d[~df_d["_signe"]]
@@ -2025,14 +2037,18 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
+    _FACT_OPTS = ["⚠️ À facturer", "✅ Factures émises"]
     if "fact_tab" not in st.session_state:
-        st.session_state["fact_tab"] = "⚠️ À facturer"
+        st.session_state["fact_tab"] = _FACT_OPTS[0]
 
     def _on_fact_tab():
         st.session_state["fact_tab"] = st.session_state["_fact_tab_radio"]
 
-    tab_fact_choice = st.radio("", ["⚠️ À facturer", "✅ Factures émises"], horizontal=True, key="_fact_tab_radio",
-        index=["⚠️ À facturer", "✅ Factures émises"].index(st.session_state["fact_tab"]), on_change=_on_fact_tab)
+    tab_fact_choice = st.radio(
+        "", _FACT_OPTS, horizontal=True, key="_fact_tab_radio",
+        index=safe_radio_index(_FACT_OPTS, "fact_tab"),
+        on_change=_on_fact_tab,
+    )
     st.markdown("---")
     if tab_fact_choice == "⚠️ À facturer":
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
@@ -2077,15 +2093,16 @@ elif page == "🏗️ Chantiers":
     ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
 
     if "chantier_tab" not in st.session_state:
-        st.session_state["chantier_tab"] = "🟡 En cours"
-    if st.session_state["chantier_tab"] not in ch_tab_opts:
         st.session_state["chantier_tab"] = ch_tab_opts[0]
 
     def _on_chantier_tab():
         st.session_state["chantier_tab"] = st.session_state["_chantier_tab_radio"]
 
-    tab_ch_choice = st.radio("", ch_tab_opts, horizontal=True, key="_chantier_tab_radio",
-        index=ch_tab_opts.index(st.session_state["chantier_tab"]), on_change=_on_chantier_tab)
+    tab_ch_choice = st.radio(
+        "", ch_tab_opts, horizontal=True, key="_chantier_tab_radio",
+        index=safe_radio_index(ch_tab_opts, "chantier_tab"),
+        on_change=_on_chantier_tab,
+    )
     st.markdown("---")
     if tab_ch_choice == "🟡 En cours":
         d = df_ch[~df_ch["_pv"]]
@@ -2142,15 +2159,20 @@ elif page == "📅 Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if "plan_view_tab" not in st.session_state:
-        st.session_state["plan_view_tab"] = "📅 Calendrier mensuel"
     _plan_opts = ["📅 Calendrier mensuel", "📊 Gantt", "📋 Liste"]
+    if "plan_view_tab" not in st.session_state:
+        st.session_state["plan_view_tab"] = _plan_opts[0]
 
     def _on_plan_view():
         st.session_state["plan_view_tab"] = st.session_state["_plan_view_radio"]
 
-    view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio",
-        index=_plan_opts.index(st.session_state["plan_view_tab"]), on_change=_on_plan_view)
+    # ── CORRECTIF : safe_radio_index évite le ValueError si la valeur stockée
+    #    ne correspond plus à aucune option (ex. après un redéploiement).
+    view_mode = st.radio(
+        "Vue", _plan_opts, horizontal=True, key="_plan_view_radio",
+        index=safe_radio_index(_plan_opts, "plan_view_tab"),
+        on_change=_on_plan_view,
+    )
     st.markdown("<br>", unsafe_allow_html=True)
 
     if view_mode == "📅 Calendrier mensuel":
