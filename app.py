@@ -1898,8 +1898,9 @@ elif page == "📅 Planning":
     BG_MAP = {"en-cours": "rgba(59,130,246,0.15)", "retard": "rgba(239,68,68,0.15)", "termine": "rgba(16,185,129,0.15)"}
 
     # ── VUE SEMAINE ──────────────────────────────────────────────────────────
-    if view_mode == "📅 Semaine":
-        if "plan_week_offset" not in st.session_state: st.session_state["plan_week_offset"] = 0
+   if view_mode == "📅 Semaine":
+        if "plan_week_offset" not in st.session_state:
+            st.session_state["plan_week_offset"] = 0
 
         offset = st.session_state["plan_week_offset"]
         monday = today - timedelta(days=today.weekday()) + timedelta(weeks=offset)
@@ -1918,94 +1919,125 @@ elif page == "📅 Planning":
             if st.button("Aujourd'hui", use_container_width=True):
                 st.session_state["plan_week_offset"] = 0; st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # Heures affichées
         HOUR_START = 7
         HOUR_END = 20
-        HOUR_HEIGHT = 50  # px par heure
+        HOUR_HEIGHT = 60
 
         total_height = (HOUR_END - HOUR_START) * HOUR_HEIGHT
-        now_offset = (today.hour + today.minute/60 - HOUR_START) * HOUR_HEIGHT if HOUR_START <= today.hour < HOUR_END else -1
+        now_top = (today.hour + today.minute / 60 - HOUR_START) * HOUR_HEIGHT
 
-        # Construire le HTML du calendrier
-        # Colonnes : heure + 7 jours
-        col_width_pct = 100 / 8
+        # Header jours
+        header_html = "<div style='display:grid;grid-template-columns:50px repeat(7,1fr);background:#0d1929;border-bottom:2px solid rgba(59,130,246,0.3);'>"
+        header_html += "<div style='padding:10px 4px;'></div>"
+        for wd in week_days:
+            is_today = wd.date() == today.date()
+            bg = "rgba(59,130,246,0.15)" if is_today else "transparent"
+            color = "#60A5FA" if is_today else "rgba(255,255,255,0.6)"
+            num_color = "#3B82F6" if is_today else "rgba(255,255,255,0.9)"
+            header_html += f"""
+            <div style='text-align:center;padding:8px 4px;background:{bg};border-left:1px solid rgba(255,255,255,0.05);'>
+                <div style='font-size:0.68rem;font-weight:700;color:{color};text-transform:uppercase;letter-spacing:0.08em;'>{JOURS_FR[wd.weekday()]}</div>
+                <div style='font-size:1.3rem;font-weight:800;color:{num_color};font-family:Syne,sans-serif;line-height:1.2;'>{wd.day}</div>
+                <div style='font-size:0.62rem;color:rgba(255,255,255,0.3);'>{wd.strftime("%b")}</div>
+            </div>"""
+        header_html += "</div>"
 
-        html_cal = f"""
-        <div style="font-family:'DM Sans',sans-serif;background:var(--bg-card,#111e30);border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;">
-        <!-- HEADER -->
-        <div style="display:grid;grid-template-columns:60px repeat(7,1fr);border-bottom:1px solid rgba(255,255,255,0.08);">
-            <div style="padding:8px;background:rgba(0,0,0,0.1);"></div>
-        """
+        # Body
+        body_html = f"<div style='position:relative;display:grid;grid-template-columns:50px repeat(7,1fr);height:{total_height}px;background:#0d1929;'>"
 
-        for d in week_days:
-            is_today = d.date() == today.date()
-            day_color = "#3B82F6" if is_today else "rgba(255,255,255,0.5)"
-            day_bg = "rgba(59,130,246,0.12)" if is_today else "transparent"
-            html_cal += f"""
-            <div style="padding:8px 4px;text-align:center;background:{day_bg};border-left:1px solid rgba(255,255,255,0.05);">
-                <div style="font-size:0.7rem;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.05em;">{JOURS_FR[d.weekday()]}</div>
-                <div style="font-size:1.1rem;font-weight:700;color:{day_color};font-family:Syne,sans-serif;">{d.day}</div>
-            </div>
-            """
-
-        html_cal += "</div>"
-
-        # BODY
-        html_cal += f'<div style="position:relative;display:grid;grid-template-columns:60px repeat(7,1fr);height:{total_height}px;overflow-y:auto;">'
-
-        # Lignes d'heures
+        # Colonne heures + lignes horizontales
         for h in range(HOUR_START, HOUR_END):
             top = (h - HOUR_START) * HOUR_HEIGHT
-            html_cal += f"""
-            <div style="position:absolute;left:0;right:0;top:{top}px;display:grid;grid-template-columns:60px repeat(7,1fr);pointer-events:none;z-index:0;">
-                <div style="text-align:right;padding-right:8px;padding-top:2px;font-size:0.62rem;color:rgba(255,255,255,0.25);line-height:1;">{h:02d}h</div>
-                {"".join(['<div style="border-left:1px solid rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.04);height:' + str(HOUR_HEIGHT) + 'px;"></div>' for _ in range(7)])}
-            </div>
-            """
+            body_html += f"""
+            <div style='position:absolute;left:0;right:0;top:{top}px;height:{HOUR_HEIGHT}px;pointer-events:none;display:grid;grid-template-columns:50px repeat(7,1fr);z-index:0;'>
+                <div style='font-size:0.62rem;color:rgba(255,255,255,0.2);text-align:right;padding-right:6px;padding-top:3px;font-weight:600;'>{h:02d}h</div>
+                {"".join([f'<div style="border-left:1px solid rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.05);"></div>' for _ in range(7)])}
+            </div>"""
 
-        # Ligne "maintenant"
-        if now_offset >= 0 and week_days[0].date() <= today.date() <= week_days[-1].date():
-            day_idx = today.weekday()
-            col_left = 60 + day_idx * ((total_height) // (HOUR_END - HOUR_START))  # approx
-            html_cal += f"""
-            <div style="position:absolute;top:{now_offset}px;left:60px;right:0;height:2px;background:#EF4444;z-index:5;pointer-events:none;">
-                <div style="width:8px;height:8px;border-radius:50%;background:#EF4444;position:absolute;left:-4px;top:-3px;"></div>
-            </div>
-            """
+        # Ligne rouge "maintenant"
+        if HOUR_START <= today.hour < HOUR_END and week_days[0].date() <= today.date() <= week_days[-1].date():
+            body_html += f"""
+            <div style='position:absolute;top:{now_top}px;left:50px;right:0;height:2px;background:#EF4444;z-index:10;pointer-events:none;'>
+                <div style='position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:#EF4444;'></div>
+            </div>"""
 
         # Événements
         for _, ev in df_plan.iterrows():
             ev_start = ev["_start"].date()
             ev_end   = ev["_end"].date()
-            h_deb = float(ev["_h_deb"])
-            h_fin = float(ev["_h_fin"])
-            statut = ev["_statut_code"]
-            color  = COLOR_MAP[statut]
-            bg     = BG_MAP[statut]
-            client_name = str(ev[COL_CLIENT]) if COL_CLIENT else ""
-            chantier_name = str(ev[COL_CHANTIER]) if COL_CHANTIER else client_name
-            salarie_name = str(ev[COL_SALARIE]) if COL_SALARIE and not pd.isna(ev.get(COL_SALARIE, "")) else ""
+            h_deb    = float(ev["_h_deb"])
+            h_fin    = float(ev["_h_fin"])
+            statut   = ev["_statut_code"]
+            color    = COLOR_MAP[statut]
+            client_v = str(ev[COL_CLIENT]) if COL_CLIENT else ""
+            chantier_v = str(ev[COL_CHANTIER]) if COL_CHANTIER else client_v
+            sal_v    = str(ev[COL_SALARIE]) if COL_SALARIE and COL_SALARIE in ev and not pd.isna(ev[COL_SALARIE]) else ""
 
             for di, wd in enumerate(week_days):
                 if ev_start <= wd.date() <= ev_end:
-                    top_px = max(0, (h_deb - HOUR_START) * HOUR_HEIGHT)
-                    height_px = max(20, (h_fin - h_deb) * HOUR_HEIGHT)
-                    left_pct = (di + 1) / 8 * 100
-                    width_pct = 1/8 * 100
+                    top_px  = max(0, (h_deb - HOUR_START) * HOUR_HEIGHT)
+                    height_px = max(24, (h_fin - h_deb) * HOUR_HEIGHT)
+                    # left et width en pourcentage de la zone des 7 colonnes
+                    col_w = f"calc((100% - 50px) / 7)"
+                    left  = f"calc(50px + {di} * (100% - 50px) / 7 + 2px)"
+                    width = f"calc((100% - 50px) / 7 - 4px)"
 
-                    html_cal += f"""
-                    <div style="position:absolute;top:{top_px}px;left:calc({left_pct}% + 2px);width:calc({width_pct}% - 4px);height:{height_px}px;background:{bg};border-left:3px solid {color};border-radius:4px;padding:3px 5px;overflow:hidden;z-index:2;cursor:pointer;" title="{chantier_name} — {client_name}">
-                        <div style="font-size:0.68rem;font-weight:700;color:{color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{chantier_name}</div>
-                        <div style="font-size:0.6rem;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{client_name}{' • ' + salarie_name if salarie_name else ''}</div>
-                        <div style="font-size:0.58rem;color:rgba(255,255,255,0.35);">{int(h_deb):02d}h – {int(h_fin):02d}h</div>
+                    body_html += f"""
+                    <div style='position:absolute;top:{top_px}px;left:{left};width:{width};height:{height_px}px;
+                        background:linear-gradient(135deg,{color}33,{color}18);
+                        border-left:3px solid {color};
+                        border-radius:0 5px 5px 0;
+                        padding:3px 5px;
+                        overflow:hidden;
+                        z-index:2;
+                        box-shadow:0 2px 8px rgba(0,0,0,0.3);
+                        cursor:pointer;'
+                        title="{chantier_v} — {client_v}">
+                        <div style='font-size:0.68rem;font-weight:700;color:{color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{chantier_v}</div>
+                        <div style='font-size:0.6rem;color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{client_v}{" • " + sal_v if sal_v and sal_v != "nan" else ""}</div>
+                        <div style='font-size:0.58rem;color:rgba(255,255,255,0.35);margin-top:1px;'>{int(h_deb):02d}h – {int(h_fin):02d}h</div>
+                    </div>"""
+
+        body_html += "</div>"
+
+        full_html = f"""
+        <div style='font-family:"DM Sans",sans-serif;border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.3);'>
+            {header_html}
+            <div style='overflow-y:auto;height:{min(total_height, 600)}px;'>
+                {body_html}
+            </div>
+        </div>
+        <div style='margin-top:8px;display:flex;gap:14px;'>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.5);'><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:#3B82F6;margin-right:4px;'></span>En cours</span>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.5);'><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:#EF4444;margin-right:4px;'></span>En retard</span>
+            <span style='font-size:0.75rem;color:rgba(255,255,255,0.5);'><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:#10B981;margin-right:4px;'></span>Terminé</span>
+        </div>
+        """
+
+        components.html(full_html, height=min(total_height, 600) + 120, scrolling=False)
+
+        # Détail chantiers de la semaine
+        st.markdown("---")
+        st.markdown("**📋 Chantiers de cette semaine**")
+        week_evs = df_plan[(df_plan["_start"].dt.date <= week_days[-1].date()) & (df_plan["_end"].dt.date >= week_days[0].date())]
+        if week_evs.empty:
+            st.info("Aucun chantier cette semaine.")
+        else:
+            for _, row in week_evs.iterrows():
+                color = COLOR_MAP[row["_statut_code"]]
+                sal = str(row[COL_SALARIE]) if COL_SALARIE and not pd.isna(row.get(COL_SALARIE,"")) else ""
+                h_deb = row["_h_deb"]; h_fin = row["_h_fin"]
+                st.markdown(f"""
+                <div class="erp-card" style="border-left:3px solid {color};padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-weight:700;font-family:Syne,sans-serif;">{row[COL_CHANTIER] if COL_CHANTIER else ""}</div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);">👤 {row[COL_CLIENT] if COL_CLIENT else ""}{" • 👷 " + sal if sal and sal != "nan" else ""}</div>
                     </div>
-                    """
-
-        html_cal += "</div></div>"
-
-        components.html(html_cal, height=total_height + 80, scrolling=True)
+                    <div style="text-align:right;">
+                        <div style="font-size:0.78rem;color:{color};font-weight:600;">🕐 {int(h_deb):02d}h – {int(h_fin):02d}h</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">{row["_start"].strftime("%d/%m")} → {row["_end"].strftime("%d/%m")}</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
 
     # ── VUE MOIS ─────────────────────────────────────────────────────────────
     elif view_mode == "📆 Mois":
