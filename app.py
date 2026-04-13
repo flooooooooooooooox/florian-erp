@@ -1105,7 +1105,20 @@ elif page == "🔔 Notifications":
                         key=f"notif_sal_{idx}"
                     )
 
-                if st.button("📤 Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
+                col_send, col_del_notif = st.columns([4, 1])
+                with col_del_notif:
+                    if st.button("🗑️ Supprimer", key=f"notif_del_{idx}", use_container_width=True):
+                        try:
+                            ws_del, _ = get_worksheet(user, "notifications")
+                            if ws_del:
+                                ws_del.delete_rows(row_idx + 2)
+                                _load_notifications.clear()
+                                st.success("✅ Notification supprimée !")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Erreur : {ex}")
+                with col_send:
+                    if st.button("📤 Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
                     if salarie_sel == "— Choisir —":
                         st.error("❌ Sélectionne un(e) salarié(e)")
                     else:
