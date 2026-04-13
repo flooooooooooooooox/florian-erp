@@ -2174,10 +2174,8 @@ elif page == "📅 Planning":
         return "en-cours"
 
     cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_ADRESSE, COL_SIGN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
-    df_plan = df_plan[df_plan[COL_SIGN].apply(is_checked)]
-        df[COL_DATE_DEBUT].replace("", pd.NA).notna() &
-        df[COL_DATE_FIN].replace("", pd.NA).notna()
-    ][cols_planning].copy()
+    mask_dates = df[COL_DATE_DEBUT].replace("", pd.NA).notna() & df[COL_DATE_FIN].replace("", pd.NA).notna()
+    df_plan = df[mask_dates][cols_planning].copy()
     df_plan["_start"] = pd.to_datetime(df.loc[df_plan.index, COL_DATE_DEBUT], dayfirst=True, errors="coerce")
     df_plan["_end"]   = pd.to_datetime(df.loc[df_plan.index, COL_DATE_FIN],   dayfirst=True, errors="coerce")
     df_plan = df_plan.dropna(subset=["_start", "_end"])
