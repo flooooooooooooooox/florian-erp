@@ -2256,17 +2256,72 @@ elif page == "📅 Planning":
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
             if not day_events.empty:
                 for _, row in day_events.iterrows():
-                    color = "#ff5c7a" if row["_statut_code"] == "retard" else "#00d68f" if row["_statut_code"] == "termine" else "#4f8ef7"
-                    sal   = str(row.get("_salarie",   "")).strip()
-                    hdeb  = str(row.get("_heure_deb", "")).strip()
-                    hfin  = str(row.get("_heure_fin", "")).strip()
-                    sal_str     = f" · 👷 {sal}"            if sal  and sal  != "nan" else ""
-                    horaire_str = f" · 🕐 {hdeb} → {hfin}" if hdeb and hfin and hdeb != "nan" and hfin != "nan" else (f" · 🕐 Début : {hdeb}" if hdeb and hdeb != "nan" else "")
+                    color   = "#ff5c7a" if row["_statut_code"] == "retard" else "#00d68f" if row["_statut_code"] == "termine" else "#4f8ef7"
+                    client  = str(row[COL_CLIENT]).strip()  if COL_CLIENT  else ""
+                    chant   = str(row[COL_CHANTIER]).strip() if COL_CHANTIER else client
+                    sal     = str(row.get("_salarie",   "")).strip()
+                    hdeb    = str(row.get("_heure_deb", "")).strip()
+                    hfin    = str(row.get("_heure_fin", "")).strip()
+                    sal     = "" if sal  == "nan" else sal
+                    hdeb    = "" if hdeb == "nan" else hdeb
+                    hfin    = "" if hfin == "nan" else hfin
+                    debut   = row["_start"].strftime("%d/%m/%Y")
+                    fin     = row["_end"].strftime("%d/%m/%Y")
+                    duree   = (row["_end"] - row["_start"]).days + 1
+
+                    # Badge salarié (seulement si différent du client)
+                    sal_badge = ""
+                    if sal and sal != client:
+                        sal_badge = (
+                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;'
+                            f'border-radius:8px;font-size:0.78rem;font-weight:600;'
+                            f'background:rgba(79,142,247,0.15);color:#4f8ef7;'
+                            f'border:1px solid rgba(79,142,247,0.3);">👷 {sal}</span>'
+                        )
+
+                    # Badge horaires
+                    if hdeb and hfin:
+                        note_multi = " · <em style='font-size:0.7rem;opacity:0.7;'>chaque jour</em>" if duree > 1 else ""
+                        horaire_badge = (
+                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;'
+                            f'border-radius:8px;font-size:0.78rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.15);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.3);">'
+                            f'🕐 <strong>{hdeb}</strong> → <strong>{hfin}</strong>{note_multi}</span>'
+                        )
+                    elif hdeb:
+                        horaire_badge = (
+                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;'
+                            f'border-radius:8px;font-size:0.78rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.15);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.3);">🕐 Début : <strong>{hdeb}</strong></span>'
+                        )
+                    else:
+                        horaire_badge = ""
+
+                    badges_row = f'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">{sal_badge}{horaire_badge}</div>' if (sal_badge or horaire_badge) else ""
+
                     st.markdown(f"""
-                    <div style="border-left:4px solid {color};padding:12px;background:var(--bg-surface);border-radius:6px;margin-bottom:10px;border:1px solid var(--border);">
-                        <div style="font-weight:bold;color:var(--text-main);font-size:1rem;">{row[COL_CHANTIER]}</div>
-                        <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">👤 {row[COL_CLIENT]}{sal_str}</div>
-                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">{horaire_str}</div>
+                    <div style="border-left:4px solid {color};padding:14px 16px;background:var(--bg-surface);
+                        border-radius:8px;margin-bottom:10px;border:1px solid var(--border);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div style="flex:1;">
+                          <div style="font-weight:700;color:var(--text-main);font-size:1rem;margin-bottom:3px;">{chant}</div>
+                          <div style="font-size:0.83rem;color:var(--text-muted);">👤 {client}</div>
+                          {badges_row}
+                        </div>
+                        <div style="text-align:right;flex-shrink:0;">
+                          <div style="margin-bottom:3px;">
+                            <span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;
+                                font-size:0.78rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span>
+                          </div>
+                          <div>
+                            <span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;
+                                font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin}</span>
+                          </div>
+                          <div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">{duree} jour(s)</div>
+                        </div>
+                      </div>
                     </div>""", unsafe_allow_html=True)
             else:
                 st.info("Aucun chantier prévu ce jour.")
