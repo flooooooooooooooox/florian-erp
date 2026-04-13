@@ -2173,8 +2173,8 @@ elif page == "📅 Planning":
         if row["_end"].date() < today.date(): return "retard"
         return "en-cours"
 
-    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_ADRESSE, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
-    df_plan = df[
+    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_ADRESSE, COL_SIGN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+    df_plan = df_plan[df_plan[COL_SIGN].apply(is_checked)]
         df[COL_DATE_DEBUT].replace("", pd.NA).notna() &
         df[COL_DATE_FIN].replace("", pd.NA).notna()
     ][cols_planning].copy()
@@ -2184,7 +2184,7 @@ elif page == "📅 Planning":
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
     df_plan["_montant"] = df.loc[df_plan.index, COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
     df_plan["_pv"]      = df.loc[df_plan.index, COL_PV].apply(is_checked) if COL_PV else False
-    df_plan = df_plan[df.loc[df_plan.index, COL_SIGN].apply(is_checked)]
+    df_plan = df_plan[df_plan[COL_SIGN].apply(is_checked)]
     st.write(f"DEBUG COL_SIGN = {COL_SIGN}")
     st.write(f"DEBUG nb lignes après filtre = {len(df_plan)}")
     df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
