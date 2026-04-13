@@ -2137,6 +2137,9 @@ elif page == "🏗️ Chantiers":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : PLANNING
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
 
@@ -2162,10 +2165,27 @@ elif page == "📅 Planning":
 
     df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
 
+    # ── Détection colonnes salarié / heures ──
+    COL_SALARIE   = fcol(df, "salarié", "salarie")
+    COL_HEURE_DEB = fcol(df, "heure_debut", "heure debut")
+    COL_HEURE_FIN = fcol(df, "heure_fin", "heure fin")
+    if COL_SALARIE:
+        df_plan["_salarie"]   = df_plan[COL_SALARIE].fillna("").astype(str)
+    else:
+        df_plan["_salarie"]   = ""
+    if COL_HEURE_DEB:
+        df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB].fillna("").astype(str)
+    else:
+        df_plan["_heure_deb"] = ""
+    if COL_HEURE_FIN:
+        df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN].fillna("").astype(str)
+    else:
+        df_plan["_heure_fin"] = ""
+
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("🟡 En cours", int((df_plan["_statut_code"] == "en-cours").sum()))
-    k2.metric("🔴 En retard", int((df_plan["_statut_code"] == "retard").sum()))
-    k3.metric("✅ Terminés", int((df_plan["_statut_code"] == "termine").sum()))
+    k1.metric("🟡 En cours",       int((df_plan["_statut_code"] == "en-cours").sum()))
+    k2.metric("🔴 En retard",      int((df_plan["_statut_code"] == "retard").sum()))
+    k3.metric("✅ Terminés",        int((df_plan["_statut_code"] == "termine").sum()))
     k4.metric("📅 Démarrent (7j)", int(((df_plan["_start"].dt.date >= today.date()) & (df_plan["_start"].dt.date <= (today + timedelta(days=7)).date())).sum()))
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -2177,8 +2197,6 @@ elif page == "📅 Planning":
     def _on_plan_view():
         st.session_state["plan_view_tab"] = st.session_state["_plan_view_radio"]
 
-    # ── CORRECTIF : safe_radio_index évite le ValueError si la valeur stockée
-    #    ne correspond plus à aucune option (ex. après un redéploiement).
     view_mode = st.radio(
         "Vue", _plan_opts, horizontal=True, key="_plan_view_radio",
         index=safe_radio_index(_plan_opts, "plan_view_tab"),
@@ -2186,8 +2204,9 @@ elif page == "📅 Planning":
     )
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ══ CALENDRIER MENSUEL ══════════════════════════════════════════════════
     if view_mode == "📅 Calendrier mensuel":
-        if "plan_year" not in st.session_state: st.session_state["plan_year"] = today.year
+        if "plan_year"  not in st.session_state: st.session_state["plan_year"]  = today.year
         if "plan_month" not in st.session_state: st.session_state["plan_month"] = today.month
 
         mois_fr = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
@@ -2196,7 +2215,8 @@ elif page == "📅 Planning":
             if st.button("◀ Mois Précédent", use_container_width=True):
                 if st.session_state["plan_month"] == 1:
                     st.session_state["plan_month"] = 12; st.session_state["plan_year"] -= 1
-                else: st.session_state["plan_month"] -= 1
+                else:
+                    st.session_state["plan_month"] -= 1
                 st.rerun()
         with nav2:
             st.markdown(f"<h2 style='text-align:center;margin:0;color:var(--text-main);'>{mois_fr[st.session_state['plan_month']]} {st.session_state['plan_year']}</h2>", unsafe_allow_html=True)
@@ -2204,17 +2224,18 @@ elif page == "📅 Planning":
             if st.button("Mois Suivant ▶", use_container_width=True):
                 if st.session_state["plan_month"] == 12:
                     st.session_state["plan_month"] = 1; st.session_state["plan_year"] += 1
-                else: st.session_state["plan_month"] += 1
+                else:
+                    st.session_state["plan_month"] += 1
                 st.rerun()
 
         sel_y, sel_m = st.session_state["plan_year"], st.session_state["plan_month"]
-        days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+        days_fr  = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
         cal_grid = calendar.monthcalendar(sel_y, sel_m)
 
         with st.container(border=True):
             cols_h = st.columns(7)
-            for i, d in enumerate(days_fr):
-                cols_h[i].markdown(f"<div style='text-align:center; font-weight:bold; color:var(--primary);'>{d}</div>", unsafe_allow_html=True)
+            for i, d_name in enumerate(days_fr):
+                cols_h[i].markdown(f"<div style='text-align:center;font-weight:bold;color:var(--primary);'>{d_name}</div>", unsafe_allow_html=True)
             for week in cal_grid:
                 cols_w = st.columns(7)
                 for i, day in enumerate(week):
@@ -2223,7 +2244,7 @@ elif page == "📅 Planning":
                         evs = df_plan[(df_plan["_start"].dt.date <= current_date) & (df_plan["_end"].dt.date >= current_date)]
                         label = str(day)
                         if not evs.empty:
-                            if "retard" in evs["_statut_code"].values: label += " 🔴"
+                            if "retard"   in evs["_statut_code"].values: label += " 🔴"
                             elif "en-cours" in evs["_statut_code"].values: label += " 🔵"
                             else: label += " 🟢"
                         if cols_w[i].button(label, key=f"d_{sel_y}_{sel_m}_{day}", use_container_width=True):
@@ -2235,22 +2256,57 @@ elif page == "📅 Planning":
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
             if not day_events.empty:
                 for _, row in day_events.iterrows():
-                    color = "#ff5c7a" if row['_statut_code']=="retard" else "#00d68f" if row['_statut_code']=="termine" else "#4f8ef7"
-                    st.markdown(f"""<div style="border-left:4px solid {color};padding:12px;background:var(--bg-surface);border-radius:6px;margin-bottom:10px;border:1px solid var(--border);border-left:4px solid {color};">
+                    color = "#ff5c7a" if row["_statut_code"] == "retard" else "#00d68f" if row["_statut_code"] == "termine" else "#4f8ef7"
+                    sal   = str(row.get("_salarie",   "")).strip()
+                    hdeb  = str(row.get("_heure_deb", "")).strip()
+                    hfin  = str(row.get("_heure_fin", "")).strip()
+                    sal_str     = f" · 👷 {sal}"            if sal  and sal  != "nan" else ""
+                    horaire_str = f" · 🕐 {hdeb} → {hfin}" if hdeb and hfin and hdeb != "nan" and hfin != "nan" else (f" · 🕐 Début : {hdeb}" if hdeb and hdeb != "nan" else "")
+                    st.markdown(f"""
+                    <div style="border-left:4px solid {color};padding:12px;background:var(--bg-surface);border-radius:6px;margin-bottom:10px;border:1px solid var(--border);">
                         <div style="font-weight:bold;color:var(--text-main);font-size:1rem;">{row[COL_CHANTIER]}</div>
-                        <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">👤 {row[COL_CLIENT]}</div>
+                        <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">👤 {row[COL_CLIENT]}{sal_str}</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">{horaire_str}</div>
                     </div>""", unsafe_allow_html=True)
             else:
                 st.info("Aucun chantier prévu ce jour.")
 
+    # ══ GANTT ════════════════════════════════════════════════════════════════
     elif view_mode == "📊 Gantt":
         df_gantt = df_plan.sort_values("_start")
-        fig_gantt = px.timeline(df_gantt, x_start="_start", x_end="_end", y=COL_CHANTIER or COL_CLIENT, color="_statut_code", color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"})
-        fig_gantt.update_layout(paper_bgcolor=chart_bg, plot_bgcolor=chart_bg, font_color=chart_font, margin=dict(t=20, b=20, l=10, r=10), height=max(400, len(df_gantt)*42+80), xaxis=dict(gridcolor=chart_grid), yaxis=dict(gridcolor=chart_grid, autorange="reversed"))
+        # Texte de survol avec salarié + heures
+        df_gantt["_hover"] = df_gantt.apply(lambda r: (
+            f"👤 {r[COL_CLIENT] if COL_CLIENT else ''}<br>"
+            f"👷 {r['_salarie']}<br>"
+            f"🕐 {r['_heure_deb']} → {r['_heure_fin']}"
+        ), axis=1)
+        fig_gantt = px.timeline(
+            df_gantt,
+            x_start="_start", x_end="_end",
+            y=COL_CHANTIER or COL_CLIENT,
+            color="_statut_code",
+            color_discrete_map={"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"},
+            hover_name=COL_CHANTIER or COL_CLIENT,
+            custom_data=["_hover"],
+        )
+        fig_gantt.update_traces(hovertemplate="%{hover_name}<br>%{customdata[0]}<extra></extra>")
+        fig_gantt.update_layout(
+            paper_bgcolor=chart_bg, plot_bgcolor=chart_bg, font_color=chart_font,
+            margin=dict(t=20, b=20, l=10, r=10),
+            height=max(400, len(df_gantt) * 42 + 80),
+            xaxis=dict(gridcolor=chart_grid),
+            yaxis=dict(gridcolor=chart_grid, autorange="reversed"),
+        )
         st.plotly_chart(fig_gantt, use_container_width=True)
 
+    # ══ LISTE ════════════════════════════════════════════════════════════════
     elif view_mode == "📋 Liste":
-        filtre_statut = st.multiselect("Filtrer par statut", ["En cours", "En retard", "Terminé"], default=["En cours", "En retard"], key="list_filter")
+        filtre_statut = st.multiselect(
+            "Filtrer par statut",
+            ["En cours", "En retard", "Terminé"],
+            default=["En cours", "En retard"],
+            key="list_filter",
+        )
         code_map = {"En cours": "en-cours", "En retard": "retard", "Terminé": "termine"}
         df_list = df_plan[df_plan["_statut_code"].isin([code_map[f] for f in filtre_statut])].sort_values("_start").copy()
 
@@ -2259,32 +2315,91 @@ elif page == "📅 Planning":
         else:
             df_list["_mois_str"] = df_list["_start"].dt.strftime("%B %Y").str.capitalize()
             df_list["_mois_ord"] = df_list["_start"].dt.to_period("M")
-            color_map  = {"en-cours": "#4f8ef7", "retard": "#ff5c7a", "termine": "#00d68f"}
-            bg_map     = {"en-cours": "rgba(79,142,247,0.08)", "retard": "rgba(255,92,122,0.08)", "termine": "rgba(0,214,143,0.08)"}
-            label_map  = {"en-cours": "En cours", "retard": "En retard", "termine": "Terminé"}
-            border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)", "termine": "rgba(0,214,143,0.3)"}
+            color_map  = {"en-cours": "#4f8ef7",              "retard": "#ff5c7a",              "termine": "#00d68f"}
+            bg_map     = {"en-cours": "rgba(79,142,247,0.08)", "retard": "rgba(255,92,122,0.08)","termine": "rgba(0,214,143,0.08)"}
+            label_map  = {"en-cours": "En cours",             "retard": "En retard",             "termine": "Terminé"}
+            border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)",  "termine": "rgba(0,214,143,0.3)"}
 
             for period, group in df_list.groupby("_mois_ord", sort=True):
-                st.markdown(f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">📅 {group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;'
+                    f'text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">'
+                    f'📅 {group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>',
+                    unsafe_allow_html=True,
+                )
                 for _, row in group.iterrows():
-                    client = str(row[COL_CLIENT]) if COL_CLIENT else ""
+                    client   = str(row[COL_CLIENT])  if COL_CLIENT  else ""
                     chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
-                    adresse = str(row[COL_ADRESSE]) if COL_ADRESSE else ""
-                    montant = fmt(row["_montant"])
-                    debut = row["_start"].strftime("%d/%m/%Y")
-                    fin = row["_end"].strftime("%d/%m/%Y")
-                    duree = (row["_end"] - row["_start"]).days + 1
-                    statut = row["_statut_code"]
-                    st.markdown(f"""<div style="background:{bg_map[statut]};border:1px solid {border_map[statut]};border-left:3px solid {color_map[statut]};border-radius:10px;padding:14px 18px;margin-bottom:8px;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-                            <div style="flex:1;"><div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
-                            <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{"  •  📍 " + adresse if adresse and adresse != "nan" else ""}</div>
-                            <div style="margin-top:8px;"><span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;background:rgba(255,255,255,0.05);color:{color_map[statut]};border:1px solid {border_map[statut]};">{label_map[statut]}</span>
-                            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span></div></div>
-                            <div style="text-align:right;flex-shrink:0;"><div style="font-weight:700;color:{color_map[statut]};font-size:1rem;">{montant}</div>
-                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
-                            <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div></div>
-                        </div></div>""", unsafe_allow_html=True)
+                    adresse  = str(row[COL_ADRESSE])  if COL_ADRESSE  else ""
+                    montant  = fmt(row["_montant"])
+                    debut    = row["_start"].strftime("%d/%m/%Y")
+                    fin      = row["_end"].strftime("%d/%m/%Y")
+                    duree    = (row["_end"] - row["_start"]).days + 1
+                    statut   = row["_statut_code"]
+
+                    # Salarié & heures depuis df_plan
+                    salarie     = str(row.get("_salarie",   "")).strip()
+                    heure_deb   = str(row.get("_heure_deb", "")).strip()
+                    heure_fin_v = str(row.get("_heure_fin", "")).strip()
+                    salarie     = "" if salarie     == "nan" else salarie
+                    heure_deb   = "" if heure_deb   == "nan" else heure_deb
+                    heure_fin_v = "" if heure_fin_v == "nan" else heure_fin_v
+
+                    # Badges
+                    salarie_html = (
+                        f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
+                        f'border-radius:99px;font-size:0.72rem;font-weight:600;'
+                        f'background:rgba(79,142,247,0.12);color:#4f8ef7;'
+                        f'border:1px solid rgba(79,142,247,0.25);margin-right:4px;">👷 {salarie}</span>'
+                    ) if salarie else ""
+
+                    if heure_deb and heure_fin_v:
+                        horaire_html = (
+                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
+                            f'border-radius:99px;font-size:0.72rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.12);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.25);">🕐 {heure_deb} → {heure_fin_v}</span>'
+                        )
+                    elif heure_deb:
+                        horaire_html = (
+                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
+                            f'border-radius:99px;font-size:0.72rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.12);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.25);">🕐 Début : {heure_deb}</span>'
+                        )
+                    else:
+                        horaire_html = ""
+
+                    badges_html = (
+                        f'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">'
+                        f'{salarie_html}{horaire_html}</div>'
+                    ) if (salarie_html or horaire_html) else ""
+
+                    adresse_str = f"  •  📍 {adresse}" if adresse and adresse != "nan" else ""
+
+                    st.markdown(f"""
+                    <div style="background:{bg_map[statut]};border:1px solid {border_map[statut]};
+                        border-left:3px solid {color_map[statut]};border-radius:10px;
+                        padding:14px 18px;margin-bottom:8px;">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div style="flex:1;">
+                          <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
+                          <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{adresse_str}</div>
+                          <div style="margin-top:6px;">
+                            <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;
+                                font-weight:700;background:rgba(255,255,255,0.05);
+                                color:{color_map[statut]};border:1px solid {border_map[statut]};">{label_map[statut]}</span>
+                            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span>
+                          </div>
+                          {badges_html}
+                        </div>
+                        <div style="text-align:right;flex-shrink:0;">
+                          <div style="font-weight:700;color:{color_map[statut]};font-size:1rem;">{montant}</div>
+                          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
+                          <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div>
+                        </div>
+                      </div>
+                    </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
