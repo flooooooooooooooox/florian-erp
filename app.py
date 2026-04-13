@@ -2144,13 +2144,15 @@ elif page == "📅 Planning":
         st.warning("⚠️ Colonnes de dates non détectées.")
         st.stop()
  
-    today = datetime.now()
-    df_plan = df.copy()
-    df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
-    df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
+    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+    df_plan = df[cols_planning].copy()
+    df_plan["_start"] = pd.to_datetime(df[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
+    df_plan["_end"]   = pd.to_datetime(df[COL_DATE_FIN],   dayfirst=True, errors="coerce")
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
-    df_plan = df_plan[df_plan["_signe"] == True]
+    df_plan["_montant"]      = df.loc[df_plan.index, COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
+    df_plan["_pv"]           = df.loc[df_plan.index, COL_PV].apply(is_checked) if COL_PV else False
+    df_plan["_statut_code"]  = df_plan.apply(get_statut_code, axis=1)
  
     if df_plan.empty:
         st.info("ℹ️ Aucune date d'intervention valide dans vos dossiers.")
