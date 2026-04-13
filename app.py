@@ -2167,11 +2167,9 @@ elif page == "📅 Planning":
 
     today = datetime.now()
 
-    # ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
-    cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
-    df_plan = df[cols_utiles].copy()
 
-  cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+# ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
+    cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
     df_plan = df[cols_utiles].copy()
     df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
     df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
