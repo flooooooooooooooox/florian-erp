@@ -2173,7 +2173,7 @@ elif page == "📅 Planning":
         if row["_end"].date() < today.date(): return "retard"
         return "en-cours"
 
-    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_ADRESSE, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
     df_plan = df[
         df[COL_DATE_DEBUT].replace("", pd.NA).notna() &
         df[COL_DATE_FIN].replace("", pd.NA).notna()
