@@ -2309,7 +2309,7 @@ elif page == "📅 Planning":
         )
         code_map = {"En cours": "en-cours", "En retard": "retard", "Terminé": "termine"}
         df_list = df_plan[df_plan["_statut_code"].isin([code_map[f] for f in filtre_statut])].sort_values("_start").copy()
-
+ 
         if df_list.empty:
             st.info("Aucun chantier correspondant.")
         else:
@@ -2319,85 +2319,100 @@ elif page == "📅 Planning":
             bg_map     = {"en-cours": "rgba(79,142,247,0.08)", "retard": "rgba(255,92,122,0.08)","termine": "rgba(0,214,143,0.08)"}
             label_map  = {"en-cours": "En cours",             "retard": "En retard",             "termine": "Terminé"}
             border_map = {"en-cours": "rgba(79,142,247,0.3)", "retard": "rgba(255,92,122,0.3)",  "termine": "rgba(0,214,143,0.3)"}
-
+ 
             for period, group in df_list.groupby("_mois_ord", sort=True):
                 st.markdown(
-                    f'<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;'
-                    f'text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px;">'
+                    f'<div style="font-size:0.85rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;'
+                    f'text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:10px;">'
                     f'📅 {group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>',
                     unsafe_allow_html=True,
                 )
                 for _, row in group.iterrows():
-                    client   = str(row[COL_CLIENT])  if COL_CLIENT  else ""
-                    chantier = str(row[COL_CHANTIER]) if COL_CHANTIER else client
-                    adresse  = str(row[COL_ADRESSE])  if COL_ADRESSE  else ""
+                    client   = str(row[COL_CLIENT])   if COL_CLIENT   else ""
+                    chantier = str(row[COL_CHANTIER])  if COL_CHANTIER else client
+                    adresse  = str(row[COL_ADRESSE])   if COL_ADRESSE  else ""
                     montant  = fmt(row["_montant"])
                     debut    = row["_start"].strftime("%d/%m/%Y")
                     fin      = row["_end"].strftime("%d/%m/%Y")
                     duree    = (row["_end"] - row["_start"]).days + 1
                     statut   = row["_statut_code"]
-
-                    # Salarié & heures depuis df_plan
+ 
+                    # Salarié & heures
                     salarie     = str(row.get("_salarie",   "")).strip()
                     heure_deb   = str(row.get("_heure_deb", "")).strip()
                     heure_fin_v = str(row.get("_heure_fin", "")).strip()
                     salarie     = "" if salarie     == "nan" else salarie
                     heure_deb   = "" if heure_deb   == "nan" else heure_deb
                     heure_fin_v = "" if heure_fin_v == "nan" else heure_fin_v
-
-                    # Badges
+ 
+                    # Badge salarié
                     salarie_html = (
-                        f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
-                        f'border-radius:99px;font-size:0.72rem;font-weight:600;'
-                        f'background:rgba(79,142,247,0.12);color:#4f8ef7;'
-                        f'border:1px solid rgba(79,142,247,0.25);margin-right:4px;">👷 {salarie}</span>'
+                        f'<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;'
+                        f'border-radius:8px;font-size:0.82rem;font-weight:600;'
+                        f'background:rgba(79,142,247,0.15);color:#4f8ef7;'
+                        f'border:1px solid rgba(79,142,247,0.3);margin-right:6px;">👷 {salarie}</span>'
                     ) if salarie else ""
-
+ 
+                    # Badge horaires avec mention "chaque jour" si chantier multi-jours
                     if heure_deb and heure_fin_v:
+                        note_multi = " &nbsp;·&nbsp; <em style='font-size:0.72rem;opacity:0.75;'>chaque jour</em>" if duree > 1 else ""
                         horaire_html = (
-                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
-                            f'border-radius:99px;font-size:0.72rem;font-weight:600;'
-                            f'background:rgba(255,184,77,0.12);color:#ffb84d;'
-                            f'border:1px solid rgba(255,184,77,0.25);">🕐 {heure_deb} → {heure_fin_v}</span>'
+                            f'<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;'
+                            f'border-radius:8px;font-size:0.82rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.15);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.3);">'
+                            f'🕐 <strong>{heure_deb}</strong>&nbsp;→&nbsp;<strong>{heure_fin_v}</strong>{note_multi}</span>'
                         )
                     elif heure_deb:
                         horaire_html = (
-                            f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;'
-                            f'border-radius:99px;font-size:0.72rem;font-weight:600;'
-                            f'background:rgba(255,184,77,0.12);color:#ffb84d;'
-                            f'border:1px solid rgba(255,184,77,0.25);">🕐 Début : {heure_deb}</span>'
+                            f'<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;'
+                            f'border-radius:8px;font-size:0.82rem;font-weight:600;'
+                            f'background:rgba(255,184,77,0.15);color:#ffb84d;'
+                            f'border:1px solid rgba(255,184,77,0.3);">'
+                            f'🕐 Début : <strong>{heure_deb}</strong></span>'
                         )
                     else:
                         horaire_html = ""
-
+ 
                     badges_html = (
-                        f'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">'
+                        f'<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">'
                         f'{salarie_html}{horaire_html}</div>'
                     ) if (salarie_html or horaire_html) else ""
-
+ 
                     adresse_str = f"  •  📍 {adresse}" if adresse and adresse != "nan" else ""
-
+ 
                     st.markdown(f"""
                     <div style="background:{bg_map[statut]};border:1px solid {border_map[statut]};
-                        border-left:3px solid {color_map[statut]};border-radius:10px;
-                        padding:14px 18px;margin-bottom:8px;">
-                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        border-left:4px solid {color_map[statut]};border-radius:12px;
+                        padding:16px 20px;margin-bottom:10px;">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+ 
+                        <!-- COLONNE GAUCHE -->
                         <div style="flex:1;">
-                          <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:3px;">{chantier}</div>
-                          <div style="font-size:0.8rem;color:var(--text-muted);">👤 {client}{adresse_str}</div>
-                          <div style="margin-top:6px;">
-                            <span style="display:inline-block;padding:2px 10px;border-radius:99px;font-size:0.72rem;
-                                font-weight:700;background:rgba(255,255,255,0.05);
+                          <div style="font-weight:700;font-size:1.05rem;color:var(--text-main);margin-bottom:4px;">{chantier}</div>
+                          <div style="font-size:0.85rem;color:var(--text-muted);">👤 {client}{adresse_str}</div>
+                          <div style="margin-top:8px;">
+                            <span style="display:inline-block;padding:3px 12px;border-radius:99px;font-size:0.78rem;
+                                font-weight:700;background:rgba(255,255,255,0.07);
                                 color:{color_map[statut]};border:1px solid {border_map[statut]};">{label_map[statut]}</span>
-                            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:8px;">{duree} jour(s)</span>
                           </div>
                           {badges_html}
                         </div>
-                        <div style="text-align:right;flex-shrink:0;">
-                          <div style="font-weight:700;color:{color_map[statut]};font-size:1rem;">{montant}</div>
-                          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">📅 {debut}</div>
-                          <div style="font-size:0.78rem;color:var(--text-muted);">→ {fin}</div>
+ 
+                        <!-- COLONNE DROITE -->
+                        <div style="text-align:right;flex-shrink:0;min-width:110px;">
+                          <div style="font-weight:800;color:{color_map[statut]};font-size:1.1rem;margin-bottom:8px;">{montant}</div>
+                          <div style="margin-bottom:4px;">
+                            <span style="background:rgba(79,142,247,0.12);padding:3px 10px;border-radius:6px;
+                                font-size:0.8rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span>
+                          </div>
+                          <div style="margin-bottom:6px;">
+                            <span style="background:rgba(255,92,122,0.12);padding:3px 10px;border-radius:6px;
+                                font-size:0.8rem;font-weight:600;color:#ff5c7a;">🏁 {fin}</span>
+                          </div>
+                          <div style="font-size:0.75rem;color:var(--text-dim);">{duree} jour(s)</div>
                         </div>
+ 
                       </div>
                     </div>""", unsafe_allow_html=True)
 
