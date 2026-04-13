@@ -1119,44 +1119,43 @@ elif page == "🔔 Notifications":
                             st.error(f"Erreur : {ex}")
                 with col_send:
                     if st.button("📤 Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
-                    if salarie_sel == "— Choisir —":
-                        st.error("❌ Sélectionne un(e) salarié(e)")
-                    else:
-                        payload_notif = {
-                            "numero_devis":       numero,
-                            "nom_client":         client,
-                            "objet":              objet,
-                            "montant":            montant,
-                            "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
-                            "heure_intervention": heure_intervention.strftime("%H:%M"),
-                            "heure_fin":          heure_fin.strftime("%H:%M"),
-                            "salarie":            salarie_sel,
-                            "planifie_par":       user,
-                            "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        }
-                        try:
-                            resp = requests.post(
-                                WEBHOOK_REPONSE,
-                                json=payload_notif,
-                                timeout=30,
-                                headers={"Content-Type": "application/json"}
-                            )
-                            if resp.status_code in (200, 201):
-                                ws_n, _ = get_worksheet(user, "notifications")
-                                if ws_n:
-                                    sheet_row = row_idx + 2
-                                    statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
-                                    if statut_col:
-                                        ws_n.update_cell(sheet_row, statut_col, "planifie")
-                                _load_notifications.clear()
-                                st.success(f"✅ Planification envoyée à n8n pour {client} !")
-                                st.balloons()
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Erreur n8n : {resp.status_code}")
-                        except Exception as ex:
-                            st.error(f"Erreur : {ex}")
-
+                        if salarie_sel == "— Choisir —":
+                            st.error("❌ Sélectionne un(e) salarié(e)")
+                        else:
+                            payload_notif = {
+                                "numero_devis":       numero,
+                                "nom_client":         client,
+                                "objet":              objet,
+                                "montant":            montant,
+                                "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
+                                "heure_intervention": heure_intervention.strftime("%H:%M"),
+                                "heure_fin":          heure_fin.strftime("%H:%M"),
+                                "salarie":            salarie_sel,
+                                "planifie_par":       user,
+                                "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            }
+                            try:
+                                resp = requests.post(
+                                    WEBHOOK_REPONSE,
+                                    json=payload_notif,
+                                    timeout=30,
+                                    headers={"Content-Type": "application/json"}
+                                )
+                                if resp.status_code in (200, 201):
+                                    ws_n, _ = get_worksheet(user, "notifications")
+                                    if ws_n:
+                                        sheet_row = row_idx + 2
+                                        statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
+                                        if statut_col:
+                                            ws_n.update_cell(sheet_row, statut_col, "planifie")
+                                    _load_notifications.clear()
+                                    st.success(f"✅ Planification envoyée à n8n pour {client} !")
+                                    st.balloons()
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Erreur n8n : {resp.status_code}")
+                            except Exception as ex:
+                                st.error(f"Erreur : {ex}")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
