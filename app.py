@@ -2171,13 +2171,20 @@ elif page == "📅 Planning":
     cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
     df_plan = df[cols_utiles].copy()
 
-    st.write("Colonnes détectées :")
-    st.write(f"COL_DATE_DEBUT = {COL_DATE_DEBUT}")
-    st.write(f"COL_DATE_FIN = {COL_DATE_FIN}")
-    st.write(f"COL_SALARIE_P = {COL_SALARIE_P}")
-    st.write(f"Nombre de lignes dans df_plan : {len(df_plan)}")
-    st.write(df_plan.columns.tolist())
-    st.write(df_plan.head(10))
+  cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+  df_plan = df[cols_utiles].copy()
+  df_plan["_start"] = pd.to_datetime(df_plan[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
+  df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
+  df_plan = df_plan.dropna(subset=["_start", "_end"])
+  df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
+
+  if COL_SALARIE_P:
+      df_plan["_salarie"] = df_plan[COL_SALARIE_P].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
+  else:
+      df_plan["_salarie"] = ""
+
+  df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB_P].apply(clean_time_val) if COL_HEURE_DEB_P else ""
+  df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN_P].apply(clean_time_val) if COL_HEURE_FIN_P else ""
     
     df_plan["_start"] = pd.to_datetime(df[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
     df_plan["_end"]   = pd.to_datetime(df[COL_DATE_FIN],   dayfirst=True, errors="coerce")
