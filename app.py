@@ -2139,67 +2139,53 @@ elif page == "🏗️ Chantiers":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📅 Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
- 
+
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
         st.warning("⚠️ Colonnes de dates non détectées.")
         st.stop()
- 
-    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
-    df_plan = df[cols_planning].copy()
-    df_plan["_start"] = pd.to_datetime(df[COL_DATE_DEBUT], dayfirst=True, errors="coerce")
-    df_plan["_end"]   = pd.to_datetime(df[COL_DATE_FIN],   dayfirst=True, errors="coerce")
-    df_plan = df_plan.dropna(subset=["_start", "_end"])
-    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
-    df_plan["_montant"]      = df.loc[df_plan.index, COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
-    df_plan["_pv"]           = df.loc[df_plan.index, COL_PV].apply(is_checked) if COL_PV else False
-    df_plan["_statut_code"]  = df_plan.apply(get_statut_code, axis=1)
- 
-    if df_plan.empty:
-        st.info("ℹ️ Aucune date d'intervention valide dans vos dossiers.")
-        st.stop()
- 
+
+    today = datetime.now()
+
+    # ── Détection colonnes salarié / heures ── DOIT ÊTRE ICI EN PREMIER
+    COL_SALARIE_P   = fcol(df, "salarié", "salarie", "salar", "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
+    COL_HEURE_DEB_P = fcol(df, "heure_debut", "heure debut", "heure_deb", "hdebut", "debut_h", "h_debut")
+    COL_HEURE_FIN_P = fcol(df, "heure_fin", "heure fin", "heure_fin", "hfin", "fin_h", "h_fin")
+
+    def clean_time_val(val):
+        if val is None: return ""
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""): return ""
+        if " " in s and ":" in s:
+            time_part = s.split(" ")[-1]
+            parts = time_part.split(":")
+            if len(parts) >= 2:
+                try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                except: pass
+        if ":" in s:
+            parts = s.split(":")
+            if len(parts) >= 2:
+                try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                except: pass
+        return s
+
     def get_statut_code(row):
         if row["_pv"]: return "termine"
         if row["_end"].date() < today.date(): return "retard"
         return "en-cours"
- 
+
+    cols_planning = [c for c in [COL_NUM, COL_CLIENT, COL_CHANTIER, COL_DATE, COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+    df_plan = df[
+        df[COL_DATE_DEBUT].replace("", pd.NA).notna() &
+        df[COL_DATE_FIN].replace("", pd.NA).notna()
+    ][cols_planning].copy()
+    df_plan["_start"] = pd.to_datetime(df.loc[df_plan.index, COL_DATE_DEBUT], dayfirst=True, errors="coerce")
+    df_plan["_end"]   = pd.to_datetime(df.loc[df_plan.index, COL_DATE_FIN],   dayfirst=True, errors="coerce")
+    df_plan = df_plan.dropna(subset=["_start", "_end"])
+    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
+    df_plan["_montant"] = df.loc[df_plan.index, COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
+    df_plan["_pv"]      = df.loc[df_plan.index, COL_PV].apply(is_checked) if COL_PV else False
     df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
  
-    # ── Détection colonnes salarié / heures ──────────────────────────────────
-    # On cherche dans toutes les colonnes du df avec des variantes larges
-    COL_SALARIE_P   = fcol(df, "salarié", "salarie", "salar", "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
-    COL_HEURE_DEB_P = fcol(df, "heure_debut", "heure debut", "heure_deb", "hdebut", "debut_h", "h_debut")
-    COL_HEURE_FIN_P = fcol(df, "heure_fin", "heure fin", "heure_fin", "hfin", "fin_h", "h_fin")
- 
-    def clean_time_val(val):
-        """Nettoie une valeur heure : gère HH:MM, datetime complet type '31/12/1899 14:00:00', etc."""
-        if val is None:
-            return ""
-        s = str(val).strip()
-        if not s or s.lower() in ("nan", "none", ""):
-            return ""
-        # Format datetime complet ex: "31/12/1899 14:00:00" ou "2026-04-01 08:15:00"
-        if " " in s and ":" in s:
-            time_part = s.split(" ")[-1]  # prend la partie après l'espace
-            parts = time_part.split(":")
-            if len(parts) >= 2:
-                try:
-                    h = int(parts[0])
-                    m = int(parts[1])
-                    return f"{h:02d}:{m:02d}"
-                except Exception:
-                    pass
-        # Format HH:MM direct
-        if ":" in s:
-            parts = s.split(":")
-            if len(parts) >= 2:
-                try:
-                    h = int(parts[0])
-                    m = int(parts[1])
-                    return f"{h:02d}:{m:02d}"
-                except Exception:
-                    pass
-        return s
  
     if COL_SALARIE_P:
         df_plan["_salarie"] = df_plan[COL_SALARIE_P].fillna("").apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
