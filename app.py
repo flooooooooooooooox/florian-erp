@@ -1804,7 +1804,7 @@ COL_ACOMPTE1  = fcol(df, "acompte 1")
 COL_ACOMPTE2  = fcol(df, "acompte 2")
 COL_RESERVE   = fcol(df, "réserve", "reserve", "avec reserve", "sans reserve")
 COL_ADRESSE   = fcol(df, "address", "adresse")
-COL_DATE_DEBUT = fcol(df, "début des travaux", "debut des travaux", "date début", "date debut")
+COL_DATE_DEBUT = fcol(df, "début des travaux", "debut des travaux", "date début", "date debut", "colonne 21")
 COL_DATE_FIN   = fcol(df, "fin des travaux", "date fin", "date de fin")
 COL_EQUIPE     = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
 
@@ -2145,7 +2145,7 @@ elif page == "📅 Planning":
     COL_HEURE_FIN_P = fcol(df, "heure_fin", "heure fin", "heure_fin")
 
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
-        st.warning("⚠️ Colonnes de dates non détectées.")
+        st.warning(f"⚠️ Colonnes de dates non détectées. COL_DATE_DEBUT={COL_DATE_DEBUT}, COL_DATE_FIN={COL_DATE_FIN}")
         st.stop()
 
     def clean_time_val(val):
