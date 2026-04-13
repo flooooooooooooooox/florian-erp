@@ -1459,7 +1459,6 @@ elif page == "📄 Créer un devis":
     def _validate():
         errs = []
         if not client_nom.strip():       errs.append("Nom client manquant")
-        if not adresse_chantier.strip(): errs.append("Adresse chantier manquante")
         if not objet_travaux.strip():    errs.append("Objet des travaux manquant")
         if not any(l["article"].strip() for l in lignes):
             errs.append("Au moins une prestation est requise")
