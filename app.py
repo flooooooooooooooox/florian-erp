@@ -2185,6 +2185,8 @@ elif page == "📅 Planning":
     df_plan["_montant"] = df.loc[df_plan.index, COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
     df_plan["_pv"]      = df.loc[df_plan.index, COL_PV].apply(is_checked) if COL_PV else False
     df_plan = df_plan[df.loc[df_plan.index, COL_SIGN].apply(is_checked)]
+    st.write(f"DEBUG COL_SIGN = {COL_SIGN}")
+    st.write(f"DEBUG nb lignes après filtre = {len(df_plan)}")
     df_plan["_statut_code"] = df_plan.apply(get_statut_code, axis=1)
  
  
