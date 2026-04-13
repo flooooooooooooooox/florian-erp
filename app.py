@@ -2150,6 +2150,7 @@ elif page == "📅 Planning":
     df_plan["_end"]   = pd.to_datetime(df_plan[COL_DATE_FIN],   dayfirst=True, errors="coerce")
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]]
+    df_plan = df_plan[df_plan["_signe"] == True]
  
     if df_plan.empty:
         st.info("ℹ️ Aucune date d'intervention valide dans vos dossiers.")
