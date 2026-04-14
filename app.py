@@ -2145,7 +2145,7 @@ elif page == "📅 Planning":
     COL_HEURE_FIN_P = fcol(df, "heure_fin", "heure fin", "heure_fin")
 
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
-        st.warning(f"⚠️ Colonnes de dates non détectées. COL_DATE_DEBUT={COL_DATE_DEBUT}, COL_DATE_FIN={COL_DATE_FIN}")
+        st.warning("⚠️ Colonnes de dates non détectées.")
         st.stop()
 
     def clean_time_val(val):
