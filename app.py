@@ -1283,7 +1283,7 @@ elif page == "📄 Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
+        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=0.0, value=1.0, step=0.5, key="dv_duree")
 
     pct_acompte   = 30
     pct_solde     = 70
@@ -1502,7 +1502,7 @@ elif page == "📄 Créer un devis":
             "objet":               objet_travaux.strip(),
             "adresse_chantier":    adresse_chantier.strip(),
             "categorie_operation": categorie_operation,
-            "duree_jours":         int(duree_jours),
+            "duree_jours":         duree_jours,
             "date_debut":          datetime.today().strftime("%Y-%m-%d"),
             "modalite_paiement":   modalite_paie,
             "phrase_modalite":     phrase_modalite,
