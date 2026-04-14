@@ -2167,8 +2167,8 @@ elif page == "📅 Planning":
 
     today = datetime.now()
 
-    # ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
-    cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
+    # ── Chargement colonnes utiles ─────────────────────────────────────────
+    cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P, COL_NUM, COL_CLIENT, COL_CHANTIER, COL_ADRESSE, COL_MONTANT] if c]
     df_plan = df[cols_utiles].copy()
 
     def parse_date_flex(val):
@@ -2184,6 +2184,7 @@ elif page == "📅 Planning":
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
+
     if COL_SALARIE_P:
         df_plan["_salarie"] = df_plan[COL_SALARIE_P].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
     else:
@@ -2252,13 +2253,15 @@ elif page == "📅 Planning":
 
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
+            st.markdown(f"### 📋 Chantiers du {sd.strftime('%d/%m/%Y')}")
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
+
             if day_events.empty:
                 st.info("Aucun chantier prévu ce jour.")
             else:
                 salaries_jour = sorted([s for s in day_events["_salarie"].unique() if s], key=str.lower)
                 if salaries_jour:
-                    st.markdown(f"<div style='margin-bottom:10px;font-size:0.85rem;color:var(--text-muted);'>👷 Intervenants ce jour : <strong>{', '.join(salaries_jour)}</strong></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='margin-bottom:12px;font-size:0.85rem;color:var(--text-muted);'>👷 Intervenants ce jour : <strong>{', '.join(salaries_jour)}</strong></div>", unsafe_allow_html=True)
 
                 for _, row in day_events.iterrows():
                     sal   = row["_salarie"]
@@ -2270,6 +2273,17 @@ elif page == "📅 Planning":
                     termine = row["_end"].date() < today.date()
                     color = "#00d68f" if termine else "#4f8ef7"
 
+                    def _get(col):
+                        if not col or col not in row.index: return ""
+                        v = str(row[col]).strip()
+                        return "" if v.lower() in ("nan","none","") else v
+
+                    num     = _get(COL_NUM)
+                    client  = _get(COL_CLIENT)
+                    chant   = _get(COL_CHANTIER)
+                    adresse = _get(COL_ADRESSE)
+                    montant = _get(COL_MONTANT)
+
                     horaire = ""
                     if hdeb and hfin:
                         note = " · <em style='font-size:0.72rem;opacity:0.7;'>chaque jour</em>" if duree > 1 else ""
@@ -2277,18 +2291,26 @@ elif page == "📅 Planning":
                     elif hdeb:
                         horaire = f"🕐 Début : <strong>{hdeb}</strong>"
 
+                    num_badge     = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">{num}</span>' if num else ""
+                    montant_badge = f'<span style="color:#00d68f;font-weight:700;font-size:1rem;">{montant} €</span>' if montant else ""
+
                     st.markdown(f"""
-                    <div style="border-left:4px solid {color};padding:14px 16px;background:var(--bg-surface);
-                        border-radius:8px;margin-bottom:10px;border:1px solid var(--border);">
-                      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                        <div>
-                          {"<div style='font-weight:600;font-size:0.9rem;color:var(--text-main);margin-bottom:4px;'>👷 " + sal + "</div>" if sal else ""}
+                    <div style="border-left:4px solid {color};padding:16px 18px;background:var(--bg-surface);
+                        border-radius:10px;margin-bottom:12px;border:1px solid var(--border);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                        <div style="flex:1;">
+                          {"<div style='margin-bottom:6px;'>" + num_badge + "</div>" if num_badge else ""}
+                          {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>👤 " + client + "</div>" if client else ""}
+                          {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>🏗️ " + chant + "</div>" if chant else ""}
+                          {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>📍 " + adresse + "</div>" if adresse else ""}
+                          {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>👷 " + sal + "</div>" if sal else ""}
                           {"<div style='font-size:0.85rem;color:#ffb84d;'>" + horaire + "</div>" if horaire else ""}
                         </div>
                         <div style="text-align:right;flex-shrink:0;">
+                          <div style="margin-bottom:8px;">{montant_badge}</div>
                           <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
-                          <div><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
-                          <div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">{duree} jour(s)</div>
+                          <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
+                          <div style="font-size:0.72rem;color:var(--text-dim);">{duree} jour(s)</div>
                         </div>
                       </div>
                     </div>""", unsafe_allow_html=True)
@@ -2312,6 +2334,17 @@ elif page == "📅 Planning":
                 color     = "#00d68f" if termine else "#4f8ef7"
                 label_st  = "Terminé" if termine else "En cours / À venir"
 
+                def _get2(col):
+                    if not col or col not in row.index: return ""
+                    v = str(row[col]).strip()
+                    return "" if v.lower() in ("nan","none","") else v
+
+                num     = _get2(COL_NUM)
+                client  = _get2(COL_CLIENT)
+                chant   = _get2(COL_CHANTIER)
+                adresse = _get2(COL_ADRESSE)
+                montant = _get2(COL_MONTANT)
+
                 if hdeb and hfin_v:
                     note = " · <em style='font-size:0.72rem;opacity:0.75;'>chaque jour</em>" if duree > 1 else ""
                     horaire_html = f"🕐 <strong>{hdeb}</strong> → <strong>{hfin_v}</strong>{note}"
@@ -2320,16 +2353,24 @@ elif page == "📅 Planning":
                 else:
                     horaire_html = ""
 
+                num_badge     = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">{num}</span>' if num else ""
+                montant_badge = f'<span style="color:#00d68f;font-weight:700;font-size:1rem;">{montant} €</span>' if montant else ""
+
                 st.markdown(f"""
-                <div style="border-left:4px solid {color};padding:14px 18px;background:var(--bg-surface);
+                <div style="border-left:4px solid {color};padding:16px 18px;background:var(--bg-surface);
                     border-radius:10px;margin-bottom:8px;border:1px solid var(--border);">
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
-                    <div>
-                      {"<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:4px;'>👷 " + sal + "</div>" if sal else "<div style='color:var(--text-muted);font-size:0.85rem;'>Intervenant non renseigné</div>"}
-                      {"<div style='font-size:0.85rem;color:#ffb84d;margin-top:4px;'>" + horaire_html + "</div>" if horaire_html else ""}
-                      <div style="margin-top:6px;"><span style="padding:2px 10px;border-radius:99px;font-size:0.75rem;font-weight:700;color:{color};border:1px solid {color};background:rgba(0,0,0,0.04);">{label_st}</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                    <div style="flex:1;">
+                      {"<div style='margin-bottom:6px;'>" + num_badge + "</div>" if num_badge else ""}
+                      {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>👤 " + client + "</div>" if client else ""}
+                      {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>🏗️ " + chant + "</div>" if chant else ""}
+                      {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>📍 " + adresse + "</div>" if adresse else ""}
+                      {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>👷 " + sal + "</div>" if sal else "<div style='color:var(--text-muted);font-size:0.85rem;margin-bottom:4px;'>Intervenant non renseigné</div>"}
+                      {"<div style='font-size:0.85rem;color:#ffb84d;margin-top:2px;'>" + horaire_html + "</div>" if horaire_html else ""}
+                      <div style="margin-top:8px;"><span style="padding:2px 10px;border-radius:99px;font-size:0.75rem;font-weight:700;color:{color};border:1px solid {color};background:rgba(0,0,0,0.04);">{label_st}</span></div>
                     </div>
                     <div style="text-align:right;flex-shrink:0;">
+                      <div style="margin-bottom:8px;">{montant_badge}</div>
                       <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
                       <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
                       <div style="font-size:0.75rem;color:var(--text-dim);">{duree} jour(s)</div>
