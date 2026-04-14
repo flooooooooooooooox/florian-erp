@@ -13,6 +13,21 @@ import requests
 from auth import check_login, logout, admin_panel, get_user_credentials
 import streamlit.components.v1 as components
 
+# Bloc à insérer pour enregistrer l'application sur le téléphone
+components.html(
+    """
+    <link rel="manifest" href="/manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/service-worker.js');
+        });
+      }
+    </script>
+    """,
+    height=0,
+)
+
 st.set_page_config(
     page_title="Floxia – ERP",
     page_icon="⚡",
