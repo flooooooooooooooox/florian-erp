@@ -2171,6 +2171,7 @@ elif page == "📅 Planning":
 # ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
     cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
     df_plan = df[cols_utiles].copy()
+
     def parse_date_flex(val):
         s = str(val).strip()
         if not s or s.lower() in ("nan", "none", ""): return pd.NaT
@@ -2180,8 +2181,16 @@ elif page == "📅 Planning":
         try: return pd.to_datetime(s, dayfirst=True)
         except: return pd.NaT
 
-df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
-df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
+    df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
+    df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
+    df_plan = df_plan.dropna(subset=["_start", "_end"])
+    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
+    if COL_SALARIE_P:
+        df_plan["_salarie"] = df_plan[COL_SALARIE_P].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
+    else:
+        df_plan["_salarie"] = ""
+    df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB_P].apply(clean_time_val) if COL_HEURE_DEB_P else ""
+    df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN_P].apply(clean_time_val) if COL_HEURE_FIN_P else ""
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
     if COL_SALARIE_P:
