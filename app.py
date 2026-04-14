@@ -14,7 +14,7 @@ from auth import check_login, logout, admin_panel, get_user_credentials
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="Florian AI Bâtiment – ERP",
+    page_title="Floxia – ERP",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -2224,32 +2224,39 @@ elif page == "📅 Planning":
 
         num_badge     = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">{num}</span>' if num else ""
         montant_badge = f'<span style="color:#00d68f;font-weight:700;font-size:1rem;">{montant} €</span>' if montant else ""
-        status_badge  = ""
+
+        status_badge = ""
         if show_status:
             label_st = "Terminé" if termine else "En cours / À venir"
             status_badge = f'<div style="margin-top:8px;"><span style="padding:2px 10px;border-radius:99px;font-size:0.75rem;font-weight:700;color:{color};border:1px solid {color};background:rgba(0,0,0,0.04);">{label_st}</span></div>'
 
-        return f"""
-        <div style="border-left:4px solid {color};padding:16px 18px;background:var(--bg-surface);
-            border-radius:10px;margin-bottom:10px;border:1px solid var(--border);">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-            <div style="flex:1;">
-              {"<div style='margin-bottom:6px;'>" + num_badge + "</div>" if num_badge else ""}
-              {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>👤 " + client + "</div>" if client else ""}
-              {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>🏗️ " + chant + "</div>" if chant else ""}
-              {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>📍 " + adresse + "</div>" if adresse else ""}
-              {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>👷 " + sal + "</div>" if sal else ""}
-              {"<div style='font-size:0.85rem;color:#ffb84d;'>" + horaire + "</div>" if horaire else ""}
-              {status_badge}
-            </div>
-            <div style="text-align:right;flex-shrink:0;">
-              <div style="margin-bottom:8px;">{montant_badge}</div>
-              <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
-              <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
-              <div style="font-size:0.72rem;color:var(--text-dim);">{duree} jour(s)</div>
-            </div>
-          </div>
-        </div>"""
+        left_parts = ""
+        if num_badge:
+            left_parts += f'<div style="margin-bottom:6px;">{num_badge}</div>'
+        if client:
+            left_parts += f'<div style="font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;">👤 {client}</div>'
+        if chant:
+            left_parts += f'<div style="font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;">🏗️ {chant}</div>'
+        if adresse:
+            left_parts += f'<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;">📍 {adresse}</div>'
+        if sal:
+            left_parts += f'<div style="font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;">👷 {sal}</div>'
+        if horaire:
+            left_parts += f'<div style="font-size:0.85rem;color:#ffb84d;">{horaire}</div>'
+        if status_badge:
+            left_parts += status_badge
+
+        return f"""<div style="border-left:4px solid {color};padding:16px 18px;background:var(--bg-surface);border-radius:10px;margin-bottom:10px;border:1px solid var(--border);">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div style="flex:1;">{left_parts}</div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="margin-bottom:8px;">{montant_badge}</div>
+      <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
+      <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
+      <div style="font-size:0.72rem;color:var(--text-dim);">{duree} jour(s)</div>
+    </div>
+  </div>
+</div>"""
 
     # ── KPIs ───────────────────────────────────────────────────────────────
     k1, k2, k3 = st.columns(3)
