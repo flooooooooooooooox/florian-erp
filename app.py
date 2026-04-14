@@ -2167,8 +2167,7 @@ elif page == "📅 Planning":
 
     today = datetime.now()
 
-
-# ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
+    # ── Chargement : UNIQUEMENT les 5 colonnes utiles ──────────────────────
     cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P] if c]
     df_plan = df[cols_utiles].copy()
 
@@ -2183,14 +2182,6 @@ elif page == "📅 Planning":
 
     df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
-    df_plan = df_plan.dropna(subset=["_start", "_end"])
-    df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
-    if COL_SALARIE_P:
-        df_plan["_salarie"] = df_plan[COL_SALARIE_P].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
-    else:
-        df_plan["_salarie"] = ""
-    df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB_P].apply(clean_time_val) if COL_HEURE_DEB_P else ""
-    df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN_P].apply(clean_time_val) if COL_HEURE_FIN_P else ""
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
     if COL_SALARIE_P:
@@ -2261,11 +2252,7 @@ elif page == "📅 Planning":
 
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
-            st.write(f"Date sélectionnée : {sd.date()}")
-            st.write(f"Lignes dans df_plan : {len(df_plan)}")
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
-            st.write(f"Nombre chantiers trouvés : {len(day_events)}")
-            st.write(day_events[["_start", "_end", "_salarie"]].to_string())
             if day_events.empty:
                 st.info("Aucun chantier prévu ce jour.")
             else:
