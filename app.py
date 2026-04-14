@@ -435,6 +435,7 @@ with st.sidebar:
         "💶 Factures & Paiements",
         "🏗️ Chantiers",
         "📅 Planning",
+        "👷 Salariés",
         "🔔 Notifications",
         "🗂️ Espace Clients",
         "📁 Tous les dossiers",
@@ -2408,6 +2409,283 @@ elif page == "📅 Planning":
                 termine = row["_end"].date() < today.date()
                 color   = "#00d68f" if termine else "#4f8ef7"
                 st.markdown(render_card(row, color, show_status=True), unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : SALARIÉS — VUE SEMAINE
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "👷 Salariés":
+    page_header("👷 Salariés", "Vue semaine — chantiers, heures et disponibilités")
+
+    # ── Navigation semaine ─────────────────────────────────────────────────
+    if "sal_week_offset" not in st.session_state:
+        st.session_state["sal_week_offset"] = 0
+
+    offset     = st.session_state["sal_week_offset"]
+    today_s    = datetime.now().date()
+    lundi      = today_s - timedelta(days=today_s.weekday()) + timedelta(weeks=offset)
+    dimanche   = lundi + timedelta(days=6)
+    jours_sem  = [lundi + timedelta(days=i) for i in range(7)]
+    jours_noms = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+
+    nav1, nav2, nav3 = st.columns([1, 2, 1])
+    with nav1:
+        if st.button("◀ Semaine précédente", use_container_width=True):
+            st.session_state["sal_week_offset"] -= 1
+            st.rerun()
+    with nav2:
+        label_sem = f"Semaine du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}"
+        st.markdown(f"<h3 style='text-align:center;margin:0;color:var(--text-main);font-size:1rem;'>{label_sem}</h3>", unsafe_allow_html=True)
+        if offset != 0:
+            if st.button("📅 Revenir à cette semaine", use_container_width=True):
+                st.session_state["sal_week_offset"] = 0
+                st.rerun()
+    with nav3:
+        if st.button("Semaine suivante ▶", use_container_width=True):
+            st.session_state["sal_week_offset"] += 1
+            st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Récupération des données ───────────────────────────────────────────
+    COL_SAL_S    = fcol(df, "salarié", "salarie", "salar")
+    COL_HDeb_S   = fcol(df, "heure_debut", "heure debut", "heure_deb")
+    COL_HFin_S   = fcol(df, "heure_fin", "heure fin")
+
+    if not COL_SAL_S:
+        st.warning("⚠️ Colonne 'salarié' non détectée dans l'onglet 'suivie'.")
+        st.stop()
+
+    if not COL_DATE_DEBUT or not COL_DATE_FIN:
+        st.warning("⚠️ Colonnes de dates de chantier non détectées.")
+        st.stop()
+
+    def parse_date_s(val):
+        s = str(val).strip()
+        if not s or s.lower() in ("nan","none",""): return pd.NaT
+        for fmt in ["%Y-%m-%d","%d/%m/%Y","%d-%m-%Y"]:
+            try: return pd.to_datetime(s, format=fmt).date()
+            except: pass
+        try: return pd.to_datetime(s, dayfirst=True).date()
+        except: return None
+
+    def parse_time_s(val):
+        """Retourne float heures depuis une valeur texte/datetime."""
+        if val is None: return 0.0
+        s = str(val).strip()
+        if not s or s.lower() in ("nan","none",""): return 0.0
+        # cas datetime complet : "2026-04-01 08:15:00"
+        if " " in s and ":" in s:
+            s = s.split(" ")[-1]
+        parts = s.split(":")
+        if len(parts) >= 2:
+            try: return int(parts[0]) + int(parts[1]) / 60
+            except: pass
+        try: return float(s)
+        except: return 0.0
+
+    def fmt_time(val):
+        s = str(val).strip()
+        if not s or s.lower() in ("nan","none",""): return ""
+        if " " in s and ":" in s:
+            s = s.split(" ")[-1]
+        parts = s.split(":")
+        if len(parts) >= 2:
+            try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            except: pass
+        return s
+
+    # Construire df de travail
+    df_s = df.copy()
+    df_s["_start_d"] = df_s[COL_DATE_DEBUT].apply(parse_date_s)
+    df_s["_end_d"]   = df_s[COL_DATE_FIN].apply(parse_date_s)
+    df_s = df_s[df_s["_start_d"].notna() & df_s["_end_d"].notna()]
+    df_s["_sal"]     = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
+    df_s["_hdeb"]    = df_s[COL_HDeb_S].apply(fmt_time) if COL_HDeb_S else ""
+    df_s["_hfin"]    = df_s[COL_HFin_S].apply(fmt_time) if COL_HFin_S else ""
+    df_s["_hdeb_f"]  = df_s[COL_HDeb_S].apply(parse_time_s) if COL_HDeb_S else 0.0
+    df_s["_hfin_f"]  = df_s[COL_HFin_S].apply(parse_time_s) if COL_HFin_S else 0.0
+    df_s["_duree_h"] = (df_s["_hfin_f"] - df_s["_hdeb_f"]).clip(lower=0)
+
+    # Chantiers actifs cette semaine
+    df_sem = df_s[
+        (df_s["_start_d"] <= dimanche) &
+        (df_s["_end_d"]   >= lundi) &
+        (df_s["_sal"] != "")
+    ].copy()
+
+    # Liste salariés présents cette semaine + tous salariés connus
+    salaries_sem    = sorted(df_sem["_sal"].unique(), key=str.lower)
+    salaries_connus = sorted([s for s in df_s["_sal"].unique() if s], key=str.lower)
+
+    # ── KPIs semaine ──────────────────────────────────────────────────────
+    nb_sal_actifs = len(salaries_sem)
+    nb_chantiers_sem = len(df_sem)
+
+    # calcul surcharges : salariés avec >1 chantier le même jour
+    surcharges = 0
+    for sal in salaries_sem:
+        for jour in jours_sem:
+            nb = len(df_sem[(df_sem["_sal"]==sal) & (df_sem["_start_d"]<=jour) & (df_sem["_end_d"]>=jour)])
+            if nb > 1:
+                surcharges += 1
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("👷 Salariés actifs cette semaine", nb_sal_actifs)
+    k2.metric("🏗️ Chantiers planifiés", nb_chantiers_sem)
+    k3.metric("⚠️ Jours en surcharge", surcharges)
+    k4.metric("😴 Sans mission", len([s for s in salaries_connus if s not in salaries_sem]))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Grille semaine par salarié ────────────────────────────────────────
+    if not salaries_sem and not salaries_connus:
+        st.info("Aucun salarié détecté dans les données.")
+        st.stop()
+
+    all_salaries = salaries_connus if salaries_connus else salaries_sem
+
+    for sal in all_salaries:
+        chantiers_sal_sem = df_sem[df_sem["_sal"] == sal]
+        actif_cette_sem   = len(chantiers_sal_sem) > 0
+
+        # Calcul heures semaine
+        heures_total = 0.0
+        for jour in jours_sem:
+            rows_jour = chantiers_sal_sem[
+                (chantiers_sal_sem["_start_d"] <= jour) &
+                (chantiers_sal_sem["_end_d"]   >= jour)
+            ]
+            if not rows_jour.empty:
+                heures_total += rows_jour["_duree_h"].sum()
+
+        # Header salarié
+        status_color = "#00d68f" if actif_cette_sem else "#6b84a3"
+        status_label = f"{len(chantiers_sal_sem)} chantier(s)" if actif_cette_sem else "Disponible"
+        heures_str   = f"{heures_total:.1f}h" if heures_total > 0 else "—"
+
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;
+            background:var(--bg-card);border:1px solid var(--border);
+            border-left:4px solid {status_color};border-radius:12px;margin-bottom:8px;">
+          <div style="width:40px;height:40px;border-radius:50%;
+              background:linear-gradient(135deg,#132238,#1e3a5f);
+              display:flex;align-items:center;justify-content:center;
+              font-weight:800;font-size:1rem;color:#fff;flex-shrink:0;">
+            {sal[0].upper()}
+          </div>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:1rem;color:var(--text-main);">{sal}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);">
+              <span style="color:{status_color};font-weight:600;">{status_label}</span>
+              {"&nbsp;·&nbsp;⏱️ " + heures_str + " cette semaine" if heures_total > 0 else ""}
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if actif_cette_sem:
+            with st.expander(f"📅 Voir le détail de la semaine", expanded=False):
+
+                # ── Grille 7 jours ──────────────────────────────────────
+                cols_j = st.columns(7)
+                for i, (jour, nom) in enumerate(zip(jours_sem, jours_noms)):
+                    rows_jour = chantiers_sal_sem[
+                        (chantiers_sal_sem["_start_d"] <= jour) &
+                        (chantiers_sal_sem["_end_d"]   >= jour)
+                    ]
+                    is_today  = (jour == today_s)
+                    is_weekend = i >= 5
+                    nb_j      = len(rows_jour)
+
+                    if nb_j == 0:
+                        bg      = "rgba(0,214,143,0.06)" if not is_weekend else "rgba(0,0,0,0.02)"
+                        txt     = "😴 Libre" if not is_weekend else "—"
+                        border  = "rgba(0,214,143,0.3)" if not is_weekend else "var(--border)"
+                        txt_col = "#00d68f" if not is_weekend else "var(--text-dim)"
+                    elif nb_j == 1:
+                        bg      = "rgba(79,142,247,0.08)"
+                        txt     = "✅ 1 chantier"
+                        border  = "rgba(79,142,247,0.3)"
+                        txt_col = "#4f8ef7"
+                    else:
+                        bg      = "rgba(255,92,122,0.1)"
+                        txt     = f"⚠️ {nb_j} chantiers"
+                        border  = "rgba(255,92,122,0.4)"
+                        txt_col = "#ff5c7a"
+
+                    today_ring = f"box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
+
+                    heures_j = rows_jour["_duree_h"].sum() if nb_j > 0 else 0
+                    heures_j_str = f"<div style='font-size:0.7rem;color:var(--text-dim);margin-top:2px;'>⏱️ {heures_j:.1f}h</div>" if heures_j > 0 else ""
+
+                    with cols_j[i]:
+                        st.markdown(f"""
+                        <div style="background:{bg};border:1px solid {border};border-radius:8px;
+                            padding:8px 6px;text-align:center;{today_ring}">
+                          <div style="font-weight:700;font-size:0.78rem;color:var(--text-muted);">{nom}</div>
+                          <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px;">{jour.strftime('%d/%m')}</div>
+                          <div style="font-size:0.75rem;font-weight:600;color:{txt_col};">{txt}</div>
+                          {heures_j_str}
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Détail des chantiers ────────────────────────────────
+                st.markdown(f"<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;'>Chantiers de la semaine</div>", unsafe_allow_html=True)
+
+                for _, row in chantiers_sal_sem.sort_values("_start_d").iterrows():
+                    num_c    = str(row[COL_NUM]).strip()    if COL_NUM     and str(row[COL_NUM]).strip()    not in ("nan","") else ""
+                    client_c = str(row[COL_CLIENT]).strip() if COL_CLIENT  and str(row[COL_CLIENT]).strip() not in ("nan","") else ""
+                    chant_c  = str(row[COL_CHANTIER]).strip() if COL_CHANTIER and str(row[COL_CHANTIER]).strip() not in ("nan","") else ""
+                    adr_c    = str(row[COL_ADRESSE]).strip()  if COL_ADRESSE  and str(row[COL_ADRESSE]).strip()  not in ("nan","") else ""
+                    mont_c   = str(row[COL_MONTANT]).strip()  if COL_MONTANT  and str(row[COL_MONTANT]).strip()  not in ("nan","") else ""
+                    hdeb_c   = row["_hdeb"]
+                    hfin_c   = row["_hfin"]
+                    start_c  = row["_start_d"].strftime("%d/%m/%Y")
+                    end_c    = row["_end_d"].strftime("%d/%m/%Y")
+                    dur_c    = (row["_end_d"] - row["_start_d"]).days + 1
+                    duree_h_c = row["_duree_h"]
+
+                    horaire_c = ""
+                    if hdeb_c and hfin_c:
+                        horaire_c = f"🕐 {hdeb_c} → {hfin_c}"
+                        if duree_h_c > 0:
+                            horaire_c += f" ({duree_h_c:.1f}h/j)"
+                    elif hdeb_c:
+                        horaire_c = f"🕐 Début {hdeb_c}"
+
+                    parts = ""
+                    if num_c:   parts += f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 7px;border-radius:5px;font-size:0.75rem;font-weight:600;margin-right:6px;">{num_c}</span>'
+                    if client_c: parts += f'<strong style="color:var(--text-main);">👤 {client_c}</strong>'
+
+                    st.markdown(f"""
+                    <div style="padding:12px 14px;background:var(--bg-surface);border:1px solid var(--border);
+                        border-radius:8px;margin-bottom:6px;">
+                      <div style="margin-bottom:6px;">{parts}</div>
+                      {"<div style='font-size:0.85rem;color:var(--text-muted);margin-bottom:2px;'>🏗️ " + chant_c + "</div>" if chant_c else ""}
+                      {"<div style='font-size:0.8rem;color:var(--text-muted);margin-bottom:2px;'>📍 " + adr_c + "</div>" if adr_c else ""}
+                      {"<div style='font-size:0.82rem;color:#ffb84d;margin-bottom:2px;'>" + horaire_c + "</div>" if horaire_c else ""}
+                      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                        <span style="background:rgba(79,142,247,0.1);color:#4f8ef7;padding:2px 8px;border-radius:5px;font-size:0.75rem;">📅 {start_c}</span>
+                        <span style="background:rgba(255,92,122,0.1);color:#ff5c7a;padding:2px 8px;border-radius:5px;font-size:0.75rem;">🏁 {end_c}</span>
+                        <span style="background:rgba(0,0,0,0.05);color:var(--text-muted);padding:2px 8px;border-radius:5px;font-size:0.75rem;">{dur_c} jour(s)</span>
+                        {"<span style='background:rgba(0,214,143,0.1);color:#00d68f;padding:2px 8px;border-radius:5px;font-size:0.75rem;font-weight:600;'>" + mont_c + " €</span>" if mont_c else ""}
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        else:
+            # Salarié disponible toute la semaine
+            st.markdown(f"""
+            <div style="padding:10px 18px;background:rgba(0,214,143,0.05);border:1px solid rgba(0,214,143,0.2);
+                border-radius:8px;margin-bottom:16px;font-size:0.85rem;color:#00d68f;">
+              😴 Aucun chantier planifié cette semaine — disponible
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
