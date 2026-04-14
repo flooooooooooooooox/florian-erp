@@ -2563,25 +2563,15 @@ elif page == "👷 Salariés":
         status_label = f"{len(chantiers_sal_sem)} chantier(s)" if actif_cette_sem else "Disponible"
         heures_str   = f"{heures_total:.1f}h" if heures_total > 0 else "—"
 
-        st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;
-            background:var(--bg-card);border:1px solid var(--border);
-            border-left:4px solid {status_color};border-radius:12px;margin-bottom:8px;">
-          <div style="width:40px;height:40px;border-radius:50%;
-              background:linear-gradient(135deg,#132238,#1e3a5f);
-              display:flex;align-items:center;justify-content:center;
-              font-weight:800;font-size:1rem;color:#fff;flex-shrink:0;">
-            {sal[0].upper()}
-          </div>
-          <div style="flex:1;">
-            <div style="font-weight:700;font-size:1rem;color:var(--text-main);">{sal}</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);">
-              <span style="color:{status_color};font-weight:600;">{status_label}</span>
-              {"&nbsp;·&nbsp;⏱️ " + heures_str + " cette semaine" if heures_total > 0 else ""}
-            </div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
+        heures_info = f" · ⏱️ {heures_str} cette semaine" if heures_total > 0 else ""
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--bg-card);border:1px solid var(--border);border-left:4px solid {status_color};border-radius:12px;margin-bottom:8px;">'
+            f'<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#132238,#1e3a5f);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:#fff;flex-shrink:0;">{sal[0].upper()}</div>'
+            f'<div style="flex:1;"><div style="font-weight:700;font-size:1rem;color:var(--text-main);">{sal}</div>'
+            f'<div style="font-size:0.8rem;color:var(--text-muted);"><span style="color:{status_color};font-weight:600;">{status_label}</span>{heures_info}</div>'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
 
         if actif_cette_sem:
             with st.expander(f"📅 Voir le détail de la semaine", expanded=False):
