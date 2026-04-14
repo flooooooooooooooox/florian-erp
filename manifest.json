@@ -1,0 +1,21 @@
+{
+  "name": "Floxia ERP ",
+  "short_name": "Floxia",
+  "description": "Gestion de chantier intelligente pour artisans",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080f1a",
+  "theme_color": "#4f8ef7",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
