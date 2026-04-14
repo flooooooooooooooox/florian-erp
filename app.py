@@ -2504,7 +2504,8 @@ elif page == "👷 Salariés":
     df_s["_hfin"]    = df_s[COL_HFin_S].apply(fmt_time) if COL_HFin_S else ""
     df_s["_hdeb_f"]  = df_s[COL_HDeb_S].apply(parse_time_s) if COL_HDeb_S else 0.0
     df_s["_hfin_f"]  = df_s[COL_HFin_S].apply(parse_time_s) if COL_HFin_S else 0.0
-    df_s["_duree_h"] = (df_s["_hfin_f"] - df_s["_hdeb_f"]).clip(lower=0)
+    PAUSE_H = 1.0  # 1 heure de pause déduite par jour
+    df_s["_duree_h"] = (df_s["_hfin_f"] - df_s["_hdeb_f"] - PAUSE_H).clip(lower=0)
 
     # Chantiers actifs cette semaine
     df_sem = df_s[
