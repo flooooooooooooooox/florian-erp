@@ -2243,9 +2243,11 @@ elif page == "📅 Planning":
 
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
-            st.markdown(f"### 📋 Chantiers du {sd.strftime('%d/%m/%Y')}")
+            st.write(f"Date sélectionnée : {sd.date()}")
+            st.write(f"Lignes dans df_plan : {len(df_plan)}")
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
-
+            st.write(f"Nombre chantiers trouvés : {len(day_events)}")
+            st.write(day_events[["_start", "_end", "_salarie"]].to_string())
             if day_events.empty:
                 st.info("Aucun chantier prévu ce jour.")
             else:
