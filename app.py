@@ -2677,12 +2677,7 @@ elif page == "👷 Salariés":
 
         else:
             # Salarié disponible toute la semaine
-            st.markdown(f"""
-            <div style="padding:10px 18px;background:rgba(0,214,143,0.05);border:1px solid rgba(0,214,143,0.2);
-                border-radius:8px;margin-bottom:16px;font-size:0.85rem;color:#00d68f;">
-              😴 Aucun chantier planifié cette semaine — disponible
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption("😴 Aucun chantier planifié cette semaine — disponible")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
