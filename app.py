@@ -2165,25 +2165,22 @@ elif page == "📅 Planning":
         st.stop()
 
     def clean_time_val(val):
-        import re
-        if val is None:
-            return ""
-        s = str(val).strip()
-        if not s or s.lower() in ("nan", "none", ""):
-            return ""
-        # Supprimer les espaces autour du séparateur : "08 : 00" → "08:00"
-        s = re.sub(r"\s*:\s*", ":", s)
-        # Si l'heure est dans une datetime "2026-04-15 08:00:00" → prend la partie heure
-        if re.match(r"\d{4}-\d{2}-\d{2}", s):
-            parts = s.split(" ")
-            if len(parts) >= 2:
-                s = parts[1]
-        # Format HH:MM ou HH:MM:SS
-        m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
-        if m:
-            h, mn = int(m.group(1)), int(m.group(2))
-            if 0 <= h <= 23 and 0 <= mn <= 59:
-                return f"{h:02d}:{mn:02d}"
+    import re
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return ""
+    s = re.sub(r"\s*:\s*", ":", s)
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        parts = s.split(" ")
+        if len(parts) >= 2:
+            s = parts[1]
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+    if m:
+        h, mn = int(m.group(1)), int(m.group(2))
+        if 0 <= h <= 23 and 0 <= mn <= 59:
+            return f"{h:02d}:{mn:02d}"
     # Format entier seul "8" → "08:00"
     try:
         h = int(float(s))
