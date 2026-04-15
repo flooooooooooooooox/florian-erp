@@ -10,7 +10,7 @@ import json
 import os
 import calendar
 import requests
-from auth import check_login, logout, admin_panel, get_user_credentials-
+from auth import check_login, logout, admin_panel, get_user_credentials
 import streamlit.components.v1 as components
 
 st.set_page_config(
