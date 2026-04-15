@@ -10,7 +10,7 @@ import json
 import os
 import calendar
 import requests
-from auth import check_login, logout, admin_panel, get_user_credentials
+from auth import check_login, logout, admin_panel, get_user_credentials-
 import streamlit.components.v1 as components
 
 st.set_page_config(
@@ -532,7 +532,199 @@ with st.sidebar:
 if page == "Utilisateurs":
     admin_panel()
     st.stop()
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : DÉPENSES
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "Dépenses":
+    page_header("Dépenses", "Suivi des charges et TVA récupérable")
 
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_depenses(u):
+        ws, err = get_worksheet(u, "Depenses")
+        if err:
+            return err, pd.DataFrame()
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return None, pd.DataFrame()
+            headers = _dedup_headers(vals[0])
+            rows = vals[1:]
+            n = len(headers)
+            padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+            df_dep = pd.DataFrame(padded, columns=headers)
+            df_dep = df_dep.replace("", pd.NA).dropna(how="all").fillna("")
+            return None, df_dep
+        except Exception as e:
+            return str(e), pd.DataFrame()
+
+    err_dep, df_dep = _load_depenses(user)
+
+    if err_dep:
+        st.error(f"Onglet 'Depenses' introuvable : {err_dep}")
+        st.info("Crée un onglet 'Depenses' dans ton Google Sheet.")
+        st.stop()
+
+    if st.button("Actualiser", key="btn_refresh_dep"):
+        _load_depenses.clear()
+        st.rerun()
+
+    # ── Détection colonnes dépenses ────────────────────────────────────────
+    def dcol(df_d, *kws):
+        for kw in kws:
+            for c in df_d.columns:
+                if kw.lower() in str(c).strip().lower():
+                    return c
+        return None
+
+    DC_DATE      = dcol(df_dep, "transaction_date", "date")
+    DC_TTC       = dcol(df_dep, "total_ttc")
+    DC_HT        = dcol(df_dep, "subtotal_ht")
+    DC_TVA       = dcol(df_dep, "tva_recuperable")
+    DC_COMPANY   = dcol(df_dep, "company_name")
+    DC_ITEM      = dcol(df_dep, "item_name")
+    DC_CAT       = dcol(df_dep, "item_category")
+    DC_PAYMENT   = dcol(df_dep, "payment_method")
+    DC_TICKET    = dcol(df_dep, "ticket_number")
+
+    # ── Nettoyage montants ─────────────────────────────────────────────────
+    for col in [DC_TTC, DC_HT, DC_TVA]:
+        if col:
+            df_dep[col] = df_dep[col].apply(clean_amount)
+
+    # ── Sélecteur de dates optionnel ───────────────────────────────────────
+    df_dep_filtered = df_dep.copy()
+    periode_dep = False
+
+    with st.expander("📅 Filtrer par période", expanded=False):
+        col_dep1, col_dep2, col_dep3 = st.columns([2, 2, 1])
+        with col_dep1:
+            dep_date_debut = st.date_input("Du", value=None, key="dep_date_debut")
+        with col_dep2:
+            dep_date_fin = st.date_input("Au", value=None, key="dep_date_fin")
+        with col_dep3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Réinitialiser", key="dep_reset_dates", use_container_width=True):
+                st.session_state.pop("dep_date_debut", None)
+                st.session_state.pop("dep_date_fin", None)
+                st.rerun()
+
+    if DC_DATE and (dep_date_debut or dep_date_fin):
+        df_dep_filtered["_date_dep"] = pd.to_datetime(df_dep_filtered[DC_DATE], errors="coerce")
+        if dep_date_debut:
+            df_dep_filtered = df_dep_filtered[df_dep_filtered["_date_dep"].dt.date >= dep_date_debut]
+        if dep_date_fin:
+            df_dep_filtered = df_dep_filtered[df_dep_filtered["_date_dep"].dt.date <= dep_date_fin]
+        periode_dep = True
+        label_dep = ""
+        if dep_date_debut and dep_date_fin:
+            label_dep = f"{dep_date_debut.strftime('%d/%m/%Y')} → {dep_date_fin.strftime('%d/%m/%Y')}"
+        elif dep_date_debut:
+            label_dep = f"Depuis le {dep_date_debut.strftime('%d/%m/%Y')}"
+        else:
+            label_dep = f"Jusqu'au {dep_date_fin.strftime('%d/%m/%Y')}"
+        st.info(f"📅 Période active : **{label_dep}** — {len(df_dep_filtered)} ticket(s)")
+
+    # ── Calculs KPIs ───────────────────────────────────────────────────────
+    total_dep_ttc  = df_dep_filtered[DC_TTC].sum() if DC_TTC else 0.0
+    total_dep_ht   = df_dep_filtered[DC_HT].sum()  if DC_HT  else 0.0
+    total_tva_rec  = df_dep_filtered[DC_TVA].sum()  if DC_TVA else 0.0
+
+    # CA sécurisé — même filtre de date si période active
+    ca_ref = df.copy()
+    if periode_dep and COL_DATE and (dep_date_debut or dep_date_fin):
+        ca_ref["_date_parsed"] = pd.to_datetime(ca_ref[COL_DATE], dayfirst=True, errors="coerce")
+        if dep_date_debut:
+            ca_ref = ca_ref[ca_ref["_date_parsed"].dt.date >= dep_date_debut]
+        if dep_date_fin:
+            ca_ref = ca_ref[ca_ref["_date_parsed"].dt.date <= dep_date_fin]
+    ca_securise_dep = ca_ref[ca_ref["_signe"]]["_montant"].sum()
+    resultat_net    = ca_securise_dep - total_dep_ttc
+
+    # ── KPIs ───────────────────────────────────────────────────────────────
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Dépenses TTC", fmt(total_dep_ttc), f"{len(df_dep_filtered)} tickets")
+    k2.metric("Total HT", fmt(total_dep_ht))
+    k3.metric("CA Sécurisé", fmt(ca_securise_dep), "période sélectionnée" if periode_dep else "total")
+    k4.metric("Résultat Net Estimé", fmt(resultat_net), delta_color="normal")
+
+    # ── TVA récupérable bien visible ───────────────────────────────────────
+    st.markdown(f"""
+    <div style="margin:20px 0;padding:18px 24px;background:linear-gradient(135deg,rgba(0,214,143,0.12),rgba(0,214,143,0.04));
+        border:1px solid rgba(0,214,143,0.35);border-left:5px solid #00d68f;border-radius:var(--radius);">
+        <div style="font-size:0.78rem;font-weight:700;color:#00d68f;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">
+            TVA Récupérable — À mettre de côté
+        </div>
+        <div style="font-size:2rem;font-weight:800;color:#00d68f;letter-spacing:-0.02em;">{fmt(total_tva_rec)}</div>
+        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">
+            Montant de TVA à déduire sur votre prochaine déclaration
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Résumé financier ───────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_res1, col_res2 = st.columns(2)
+
+    with col_res1:
+        with st.container(border=True):
+            st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:14px;'>Résumé financier</div>", unsafe_allow_html=True)
+            for label, val, color in [
+                ("CA Sécurisé",          fmt(ca_securise_dep),  "#00d68f"),
+                ("Total Dépenses TTC",   fmt(total_dep_ttc),    "#ff5c7a"),
+                ("Total Dépenses HT",    fmt(total_dep_ht),     "#ffb84d"),
+                ("TVA Récupérable",      fmt(total_tva_rec),    "#00d68f"),
+                ("Résultat Net Estimé",  fmt(resultat_net),     "#4f8ef7" if resultat_net >= 0 else "#ff5c7a"),
+            ]:
+                st.markdown(
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;"
+                    f"padding:8px 0;border-bottom:1px solid var(--border);'>"
+                    f"<span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span>"
+                    f"<span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+    with col_res2:
+        with st.container(border=True):
+            if DC_CAT and not df_dep_filtered.empty:
+                cat_totals = df_dep_filtered.groupby(DC_CAT)[DC_TTC].sum().reset_index().sort_values(DC_TTC, ascending=False) if DC_TTC else pd.DataFrame()
+                if not cat_totals.empty:
+                    fig_dep = px.bar(
+                        cat_totals, x=DC_CAT, y=DC_TTC,
+                        title="Dépenses TTC par catégorie",
+                        color_discrete_sequence=["#4f8ef7"],
+                        labels={DC_TTC: "TTC (€)", DC_CAT: "Catégorie"},
+                    )
+                    fig_dep.update_layout(
+                        paper_bgcolor=chart_bg, plot_bgcolor=chart_bg,
+                        font=dict(color=chart_font, family="Inter"),
+                        xaxis=dict(showgrid=False, tickangle=-30),
+                        yaxis=dict(gridcolor=chart_grid, tickformat=",.0f"),
+                        margin=dict(t=40, b=40, l=10, r=10),
+                        title_font_color=chart_font,
+                    )
+                    st.plotly_chart(fig_dep, use_container_width=True)
+            else:
+                st.info("Colonne 'item_category' non détectée pour le graphique.")
+
+    # ── Tableau des tickets ────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### Tickets de caisse")
+
+    search_dep = st.text_input("🔍 Rechercher", placeholder="Entreprise, article, catégorie...", key="search_dep")
+    df_dep_show = df_dep_filtered.copy()
+    if search_dep:
+        mask_dep = pd.Series([False] * len(df_dep_show), index=df_dep_show.index)
+        for c in df_dep_show.columns:
+            mask_dep |= df_dep_show[c].astype(str).str.contains(search_dep, case=False, na=False)
+        df_dep_show = df_dep_show[mask_dep]
+
+    cols_dep_display = [c for c in [DC_DATE, DC_COMPANY, DC_TICKET, DC_ITEM, DC_CAT, DC_HT, DC_TTC, DC_TVA, DC_PAYMENT] if c]
+    drop_internal = ["_date_dep"]
+    df_dep_show_clean = df_dep_show.drop(columns=[c for c in drop_internal if c in df_dep_show.columns], errors="ignore")
+    show_table(
+        (df_dep_show_clean[cols_dep_display] if cols_dep_display else df_dep_show_clean).reset_index(drop=True),
+        "dep_table"
+    )
 elif page == "Coordonnées & RGPD":
     page_header("Coordonnées & RGPD", "Informations légales et contact")
     st.markdown(f"""
