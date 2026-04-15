@@ -2165,30 +2165,29 @@ elif page == "📅 Planning":
         st.stop()
 
     def clean_time_val(val):
-    import re
-    if val is None:
-        return ""
-    s = str(val).strip()
-    if not s or s.lower() in ("nan", "none", ""):
-        return ""
-    s = re.sub(r"\s*:\s*", ":", s)
-    if re.match(r"\d{4}-\d{2}-\d{2}", s):
-        parts = s.split(" ")
-        if len(parts) >= 2:
-            s = parts[1]
-    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
-    if m:
-        h, mn = int(m.group(1)), int(m.group(2))
-        if 0 <= h <= 23 and 0 <= mn <= 59:
-            return f"{h:02d}:{mn:02d}"
-    # Format entier seul "8" → "08:00"
-    try:
-        h = int(float(s))
-        if 0 <= h <= 23:
-            return f"{h:02d}:00"
-    except:
-        pass
-    return s
+        import re
+        if val is None:
+            return ""
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return ""
+        s = re.sub(r"\s*:\s*", ":", s)
+        if re.match(r"\d{4}-\d{2}-\d{2}", s):
+            parts = s.split(" ")
+            if len(parts) >= 2:
+                s = parts[1]
+        m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+        if m:
+            h, mn = int(m.group(1)), int(m.group(2))
+            if 0 <= h <= 23 and 0 <= mn <= 59:
+                return f"{h:02d}:{mn:02d}"
+        try:
+            h = int(float(s))
+            if 0 <= h <= 23:
+                return f"{h:02d}:00"
+        except:
+            pass
+        return s
 
     today = datetime.now()
 
