@@ -3056,7 +3056,30 @@ elif page == "Salariés":
         df_s["_start_d"] = df_s[COL_DATE_DEBUT].apply(parse_date_s)
         df_s["_end_d"]   = df_s[COL_DATE_FIN].apply(parse_date_s)
         df_s = df_s[df_s["_start_d"].notna() & df_s["_end_d"].notna()]
-        df_s["_sal"]    = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip())
+        df_s["_sal"] = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip())
+
+# Normalisation : unifie les variantes de noms (casse, espaces, fautes légères)
+        def normalize_name(n):
+            return str(n).strip().lower()
+
+        sal_canonical = {}
+        for nom in jours_salaries.keys():
+            sal_canonical[normalize_name(nom)] = nom
+
+        def canonicalize(v):
+            if not v:
+                return v
+            norm = normalize_name(v)
+    #         Correspondance exacte
+            if norm in sal_canonical:
+                return sal_canonical[norm]
+    # Correspondance partielle (ex: "florian gagnebie" → "Florian Gagnebien")
+            for key, canonical in sal_canonical.items():
+                if norm in key or key in norm:
+                    return canonical
+            return v
+
+        df_s["_sal"] = df_s["_sal"].apply(canonicalize)
         df_s["_hdeb"]   = df_s[COL_HDeb_S].apply(fmt_time_s) if COL_HDeb_S else ""
         df_s["_hfin"]   = df_s[COL_HFin_S].apply(fmt_time_s) if COL_HFin_S else ""
         df_s["_hdeb_f"] = df_s[COL_HDeb_S].apply(parse_time_s) if COL_HDeb_S else 0.0
