@@ -630,9 +630,16 @@ elif page == "Dépenses":
     total_tva_rec  = df_dep_filtered[DC_TVA].sum()  if DC_TVA else 0.0
 
     # CA sécurisé — même filtre de date si période active
-    ca_ref = df.copy()
-    if periode_dep and COL_DATE and (dep_date_debut or dep_date_fin):
-        ca_ref["_date_parsed"] = pd.to_datetime(ca_ref[COL_DATE], dayfirst=True, errors="coerce")
+    # Chargement df si pas encore fait
+    df_ref_raw, _ = get_sheet_data(user)
+    ca_ref = df_ref_raw.copy()
+    col_date_ref  = fcol(ca_ref, "date creation", "date créa", "date devis", "date creat")
+    col_sign_ref  = fcol(ca_ref, "devis signé", "signé")
+    col_mont_ref  = fcol(ca_ref, "montant")
+    ca_ref["_montant"] = ca_ref[col_mont_ref].apply(clean_amount) if col_mont_ref else 0.0
+    ca_ref["_signe"]   = ca_ref[col_sign_ref].apply(is_checked)  if col_sign_ref else False
+    if periode_dep and col_date_ref and (dep_date_debut or dep_date_fin):
+        ca_ref["_date_parsed"] = pd.to_datetime(ca_ref[col_date_ref], dayfirst=True, errors="coerce")
         if dep_date_debut:
             ca_ref = ca_ref[ca_ref["_date_parsed"].dt.date >= dep_date_debut]
         if dep_date_fin:
