@@ -1484,13 +1484,35 @@ elif page == "📄 Créer un devis":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    def _validate():
-        errs = []
-        if not client_nom.strip():       errs.append("Nom client manquant")
-        if not objet_travaux.strip():    errs.append("Objet des travaux manquant")
-        if not any(l["article"].strip() for l in lignes):
-            errs.append("Au moins une prestation est requise")
-        return errs
+    # [Modification dans la section "📄 Créer un devis"]
+
+# Mise à jour du chargement pour récupérer la quantité du sheet
+    def _load_prestations_devis(u):
+    # ... (code existant)
+        for r in vals[1:]:
+        # ... 
+            qte_sheet = row_d.get("quantité", row_d.get("qte", "1")).strip()
+            items.append({
+                "label": label, 
+                "article": article, 
+                "description": desc,
+                "prix_ht": prix, 
+                "categorie": cat, 
+                "qte": qte_sheet, # Ajout de la qte du sheet
+                "source": "prestations"
+        })
+    return items
+
+# Mise à jour de la validation pour l'email obligatoire
+def _validate():
+    errs = []
+    if not client_nom.strip(): errs.append("Nom client manquant")
+    if not client_email.strip(): errs.append("Email client obligatoire pour l'envoi") # Modifié
+    if "@" not in client_email: errs.append("Format d'email invalide") # Ajout sécurité
+    if not objet_travaux.strip(): errs.append("Objet des travaux manquant")
+    if not any(l["article"].strip() for l in lignes):
+        errs.append("Au moins une prestation est requise")
+    return errs
 
     def _build_payload():
         return {
