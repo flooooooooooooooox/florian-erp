@@ -15,7 +15,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Florian AI Bâtiment – ERP",
-    page_icon="⚡",
+    page_icon="F",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -388,6 +388,26 @@ def show_table(dataframe, key_suffix=""):
                 st.session_state[f"show_all_{key_suffix}"] = False
                 st.rerun()
 
+@st.cache_data(ttl=20, show_spinner=False)
+def get_pending_notifications_count(username: str) -> int:
+    ws, err = get_worksheet(username, "notifications")
+    if err or not ws:
+        return 0
+    try:
+        vals = ws.get_all_values()
+        if not vals or len(vals) < 2:
+            return 0
+        headers = [h.strip().lower() for h in vals[0]]
+        if "statut" not in headers:
+            return 0
+        idx_statut = headers.index("statut")
+        return sum(
+            1 for r in vals[1:]
+            if len(r) > idx_statut and r[idx_statut].strip().lower() == "en_attente"
+        )
+    except Exception:
+        return 0
+
 def page_header(title, subtitle=""):
     st.markdown(f"""
     <div class="page-header">
@@ -420,7 +440,7 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.button("🌓 Basculer Thème", on_click=toggle_theme, use_container_width=True)
+    st.button("Basculer thème", on_click=toggle_theme, use_container_width=True)
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
     user = st.session_state.get("username", "")
@@ -428,21 +448,26 @@ with st.sidebar:
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
 
+    notif_label = "Notifications"
+    pending_badge = get_pending_notifications_count(user) if user else 0
+    if pending_badge > 0:
+        notif_label = f"🔴 Notifications ({pending_badge})"
+
     pages = [
-        "📊 Vue Générale",
-        "📄 Créer un devis",
-        "📋 Devis",
-        "💶 Factures & Paiements",
-        "🏗️ Chantiers",
-        "📅 Planning",
-        "🔔 Notifications",
-        "🗂️ Espace Clients",
-        "📁 Tous les dossiers",
-        "📝 Éditeur Google Sheet",
-        "📞 Coordonnées & RGPD"
+        "Vue Générale",
+        "Créer un devis",
+        "Devis",
+        "Factures & Paiements",
+        "Chantiers",
+        "Planning",
+        notif_label,
+        "Espace Clients",
+        "Tous les dossiers",
+        "Éditeur Google Sheet",
+        "Coordonnées & RGPD"
     ]
     if role == "admin":
-        pages.append("👥 Utilisateurs")
+        pages.append("Utilisateurs")
 
     if "nav_override" in st.session_state:
         _override = st.session_state.pop("nav_override")
@@ -492,7 +517,7 @@ with st.sidebar:
 
     col_r, col_l = st.columns(2)
     with col_r:
-        if st.button("🔄", use_container_width=True, help="Actualiser"):
+        if st.button("Actualiser", use_container_width=True, help="Actualiser"):
             st.cache_data.clear()
             st.rerun()
     with col_l:
@@ -502,15 +527,15 @@ with st.sidebar:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
-if page == "👥 Utilisateurs":
+if page == "Utilisateurs":
     admin_panel()
     st.stop()
 
-elif page == "📞 Coordonnées & RGPD":
-    page_header("📞 Coordonnées & RGPD", "Informations légales et contact")
+elif page == "Coordonnées & RGPD":
+    page_header("Coordonnées & RGPD", "Informations légales et contact")
     st.markdown(f"""
     <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:20px;">
-        <h3 style="color:var(--primary); margin-top:0;">👤 Contact Développeur</h3>
+        <h3 style="color:var(--primary); margin-top:0;">Contact Développeur</h3>
         <p style="font-size:1.1rem; color:var(--text-main);"><strong>Email :</strong> <a href="mailto:flogagnebien611@gmail.com" style="color:var(--primary);">flogagnebien611@gmail.com</a></p>
         <p style="font-size:1.1rem; color:var(--text-main);"><strong>Téléphone :</strong> 06 33 79 05 42</p>
     </div>
@@ -531,8 +556,8 @@ elif page == "📞 Coordonnées & RGPD":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : ESPACE CLIENTS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "🗂️ Espace Clients":
-    page_header("🗂️ Espace Clients", "Documents et dossiers synchronisés avec Google Drive")
+elif page == "Espace Clients":
+    page_header("Espace Clients", "Documents et dossiers synchronisés avec Google Drive")
 
     prefill_client = st.session_state.pop("_prefill_client_search", "")
 
@@ -564,7 +589,7 @@ elif page == "🗂️ Espace Clients":
         main_folders = res_main.get('files', [])
 
         if not main_folders:
-            st.warning("⚠️ Dossier principal 'espace clients' introuvable sur le Google Drive.")
+            st.warning("Dossier principal 'espace clients' introuvable sur le Google Drive.")
         else:
             main_folder_id = main_folders[0]['id']
             query_clients = f"'{main_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -583,7 +608,7 @@ elif page == "🗂️ Espace Clients":
                 if not filtered_client_names:
                     st.warning("Aucun client ne correspond à votre recherche.")
                 else:
-                    selected_client_name = st.selectbox("👤 Sélectionnez un client :", filtered_client_names)
+                    selected_client_name = st.selectbox("Sélectionnez un client :", filtered_client_names)
                     selected_client_id = next(f['id'] for f in client_folders if f['name'] == selected_client_name)
 
                     st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
@@ -595,12 +620,12 @@ elif page == "🗂️ Espace Clients":
 
                     def display_file(f_dict):
                         mime = f_dict.get('mimeType', '').lower()
-                        icon = "📄"
-                        if "folder" in mime: icon = "📁"
+                        icon = "Fichier"
+                        if "folder" in mime: icon = "Dossier"
                         elif "pdf" in mime: icon = "📕"
                         elif "image" in mime: icon = "🖼️"
-                        elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "📊"
-                        elif "document" in mime or "word" in mime: icon = "📝"
+                        elif "spreadsheet" in mime or "sheet" in mime or "excel" in mime: icon = "Tableur"
+                        elif "document" in mime or "word" in mime: icon = "Document"
                         st.markdown(f"""
                         <a href="{f_dict.get('webViewLink', '#')}" target="_blank" style="text-decoration:none;">
                             <div style="display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
@@ -617,7 +642,7 @@ elif page == "🗂️ Espace Clients":
                         for file in files:
                             mime_type = file.get('mimeType', '')
                             if mime_type == 'application/vnd.google-apps.folder':
-                                with st.expander(f"📁 **{file.get('name')}**"):
+                                with st.expander(f"Dossier : **{file.get('name')}**"):
                                     sub_query = f"'{file.get('id')}' in parents and trashed = false"
                                     sub_res = drive_service.files().list(q=sub_query, fields="files(id, name, mimeType, webViewLink)", orderBy="folder, name", pageSize=1000).execute()
                                     sub_files = sub_res.get('files', [])
@@ -632,7 +657,7 @@ elif page == "🗂️ Espace Clients":
                                                 if content:
                                                     st.markdown(f"""
                                                     <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px;">
-                                                        <div style="font-weight:700; color:var(--primary); margin-bottom:8px;">📝 {sub_file.get('name')}</div>
+                                                        <div style="font-weight:700; color:var(--primary); margin-bottom:8px;">{sub_file.get('name')}</div>
                                                         <div style="white-space: pre-wrap; font-size:0.9rem; color:var(--text-main);">{content}</div>
                                                     </div>
                                                     """, unsafe_allow_html=True)
@@ -652,8 +677,8 @@ elif page == "🗂️ Espace Clients":
 # ══════════════════════════════════════════════════════════════════════════════
 # ÉDITEUR GOOGLE SHEET
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📝 Éditeur Google Sheet":
-    page_header("📝 Éditeur Google Sheet", "Gérez votre base de données en temps réel")
+elif page == "Éditeur Google Sheet":
+    page_header("Éditeur Google Sheet", "Gérez votre base de données en temps réel")
 
     CATEGORIES = ["Salle de bain","Cuisine","Chambre","Salon","WC / Toilettes","Entrée / Couloir",
                   "Garage","Cave / Sous-sol","Combles / Grenier","Buanderie","Bureau / Bibliothèque",
@@ -667,10 +692,11 @@ elif page == "📝 Éditeur Google Sheet":
                    "Serrurerie / Métallerie","Terrassement / VRD","Maçonnerie","Enduit / Ravalement",
                    "Étanchéité / Hydrofuge","Nettoyage / Évacuation","Autre"]
 
-    tab_presta, tab_catalogue = st.tabs(["📋 Feuille Prestations", "🗂️ Catalogue"])
+    tab_presta, tab_catalogue = st.tabs(["Feuille Prestations", "Catalogue"])
 
     with tab_presta:
-        PRESTA_COLS = ["categorie","Type de poste","Sous-prestation","Description","Prix MO HT","Prix Fourn. HT","Marge (%)","Quantité","Total HT"]
+        PRESTA_COLS = ["categorie", "Type de poste", "Sous-prestation", "Description", "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"]
+        st.caption("Colonnes Feuille 1 attendues : categorie | Type de poste | Sous-prestation | Description | Prix MO HT | Prix Fourn. HT | Marge (%) | Quantité | Total HT")
 
         @st.cache_data(ttl=10, show_spinner=False)
         def load_presta(u):
@@ -695,12 +721,12 @@ elif page == "📝 Éditeur Google Sheet":
         err_p, df_p = load_presta(user)
 
         if err_p:
-            st.error(f"❌ {err_p}")
-            if st.button("🔄 Retenter"):
+            st.error(f"{err_p}")
+            if st.button("Retenter"):
                 load_presta.clear()
                 st.rerun()
         else:
-            sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["👁️ Voir","➕ Ajouter","✏️ Modifier","🗑️ Supprimer"])
+            sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["Voir","Ajouter","Modifier","Supprimer"])
 
             with sub_p_view:
                 st.caption(f"{len(df_p)} lignes dans la base")
@@ -714,13 +740,23 @@ elif page == "📝 Éditeur Google Sheet":
                 show_table(df_show.reset_index(drop=True), "presta_view")
 
             with sub_p_add:
-                c_mo, c_fourn, c_marge, c_qte = st.columns(4)
-                with c_mo: val_mo = st.number_input("Prix MO HT", min_value=0.0, value=0.0, step=10.0, key="add_mo")
+                c_t1, c_t2, c_t3 = st.columns(3)
+                with c_t1:
+                    add_temps_trajet = st.number_input("Temps de trajet (h)", min_value=0.0, value=0.0, step=0.5, key="add_temps_trajet")
+                with c_t2:
+                    add_temps_chantier = st.number_input("Temps de chantier (h)", min_value=0.0, value=0.0, step=0.5, key="add_temps_chantier")
+                with c_t3:
+                    add_taux_horaire = st.number_input("Taux horaire (€)", min_value=0.0, value=50.0, step=5.0, key="add_taux_horaire")
+
+                val_mo = (add_temps_trajet + add_temps_chantier) * add_taux_horaire
+                st.text_input("Prix MO HT (calculé)", value=f"{val_mo:.2f}", disabled=True, key="add_mo_calc")
+
+                c_fourn, c_marge, c_qte = st.columns(3)
                 with c_fourn: val_fourn = st.number_input("Prix Fourn. HT", min_value=0.0, value=0.0, step=10.0, key="add_fourn")
                 with c_marge: val_marge = st.number_input("Marge (%)", min_value=0.0, value=30.0, step=5.0, key="add_marge")
                 with c_qte: val_qte = st.number_input("Quantité", min_value=1.0, value=1.0, step=1.0, key="add_qte")
                 calcul_total = (val_mo + (val_fourn * (1 + (val_marge / 100)))) * val_qte
-                st.success(f"💶 Total HT calculé : **{calcul_total:.2f} €**")
+                st.success(f"Total HT calculé : **{calcul_total:.2f} €**")
                 with st.form("form_add_presta"):
                     headers_p = list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS
                     inputs_p = {}
@@ -736,7 +772,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 inputs_p[h] = st.selectbox(h, TYPES_POSTE, key=f"add_p_{h}")
                             else:
                                 inputs_p[h] = st.text_input(h, key=f"add_p_{h}")
-                    submit_add_p = st.form_submit_button("✅ Ajouter", use_container_width=True)
+                    submit_add_p = st.form_submit_button("Ajouter", use_container_width=True)
                 if submit_add_p:
                     for h in (list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS):
                         hl = h.lower()
@@ -752,7 +788,7 @@ elif page == "📝 Éditeur Google Sheet":
                             new_row = [inputs_p.get(h, "") for h in (list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS)]
                             ws_p2.insert_row(new_row, index=len(df_p)+2, value_input_option="USER_ENTERED")
                             st.cache_data.clear()
-                            st.success("✅ Ligne ajoutée !")
+                            st.success("Ligne ajoutée.")
                             st.rerun()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
@@ -778,13 +814,25 @@ elif page == "📝 Éditeur Google Sheet":
                         elif "fourn" in hl: cur_fourn = clean_amount(val)
                         elif "marge" in hl: cur_marge = clean_amount(val)
                         elif "quantit" in hl: cur_qte = clean_amount(val)
-                    c_mo_m, c_fourn_m, c_marge_m, c_qte_m = st.columns(4)
-                    with c_mo_m: mod_mo = st.number_input("Prix MO HT", min_value=0.0, value=float(cur_mo), step=10.0, key="mod_mo")
+                    c_mt1, c_mt2, c_mt3 = st.columns(3)
+                    default_taux_edit = 50.0
+                    default_chantier_edit = (float(cur_mo) / default_taux_edit) if default_taux_edit > 0 else 0.0
+                    with c_mt1:
+                        mod_temps_trajet = st.number_input("Temps de trajet (h)", min_value=0.0, value=0.0, step=0.5, key="mod_temps_trajet")
+                    with c_mt2:
+                        mod_temps_chantier = st.number_input("Temps de chantier (h)", min_value=0.0, value=float(default_chantier_edit), step=0.5, key="mod_temps_chantier")
+                    with c_mt3:
+                        mod_taux_horaire = st.number_input("Taux horaire (€)", min_value=0.0, value=default_taux_edit, step=5.0, key="mod_taux_horaire")
+
+                    mod_mo = (mod_temps_trajet + mod_temps_chantier) * mod_taux_horaire
+                    st.text_input("Prix MO HT (calculé)", value=f"{mod_mo:.2f}", disabled=True, key="mod_mo_calc")
+
+                    c_fourn_m, c_marge_m, c_qte_m = st.columns(3)
                     with c_fourn_m: mod_fourn = st.number_input("Prix Fourn. HT", min_value=0.0, value=float(cur_fourn), step=10.0, key="mod_fourn")
                     with c_marge_m: mod_marge = st.number_input("Marge (%)", min_value=0.0, value=float(cur_marge), step=5.0, key="mod_marge")
                     with c_qte_m: mod_qte = st.number_input("Quantité", min_value=1.0, value=max(float(cur_qte),1.0), step=1.0, key="mod_qte")
                     mod_total = (mod_mo + (mod_fourn * (1 + (mod_marge/100)))) * mod_qte
-                    st.success(f"💶 Nouveau Total HT : **{mod_total:.2f} €**")
+                    st.success(f"Nouveau Total HT : **{mod_total:.2f} €**")
                     with st.form("form_mod_presta"):
                         mod_inputs = {}; cols2 = st.columns(3)
                         for i, h in enumerate(headers_p2):
@@ -814,7 +862,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 for col_idx, h in enumerate(headers_p2, start=1):
                                     ws_p3.update_cell(sel_idx+2, col_idx, mod_inputs.get(h,""))
                                 st.cache_data.clear()
-                                st.success("✅ Modifié !")
+                                st.success("Modification enregistrée.")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
@@ -833,15 +881,15 @@ elif page == "📝 Éditeur Google Sheet":
                         return f"Ligne {i+2} — {df_p.iloc[i,0]} / {df_p.iloc[i,1] if len(headers_p3)>1 else ''}"
                     row_labels2 = [_get_presta_label2(i) for i in range(len(df_p))]
                     del_idx = st.selectbox("Ligne à supprimer", range(len(df_p)), format_func=lambda i: row_labels2[i], key="sel_del_presta")
-                    st.warning(f"⚠️ Suppression irréversible : **{row_labels2[del_idx]}**")
-                    if st.button("🗑️ Confirmer la suppression", key="btn_del_presta"):
+                    st.warning(f"Suppression irréversible : **{row_labels2[del_idx]}**")
+                    if st.button("Confirmer la suppression", key="btn_del_presta"):
                         try:
                             ws_p4, err4 = get_worksheet(user, "Feuille 1")
                             if err4: st.error(err4)
                             else:
                                 ws_p4.delete_rows(del_idx+2)
                                 st.cache_data.clear()
-                                st.success("✅ Supprimé !")
+                                st.success("Ligne supprimée.")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
@@ -868,12 +916,12 @@ elif page == "📝 Éditeur Google Sheet":
 
         err_c, df_c = load_catalogue(user)
         if err_c:
-            st.error(f"❌ {err_c}")
-            if st.button("🔄 Retenter", key="btn_retry_cata"):
+            st.error(f"{err_c}")
+            if st.button("Retenter", key="btn_retry_cata"):
                 load_catalogue.clear()
                 st.rerun()
         else:
-            sub_c_view, sub_c_add, sub_c_edit, sub_c_del = st.tabs(["👁️ Voir","➕ Ajouter","✏️ Modifier","🗑️ Supprimer"])
+            sub_c_view, sub_c_add, sub_c_edit, sub_c_del = st.tabs(["Voir","Ajouter","Modifier","Supprimer"])
 
             with sub_c_view:
                 st.caption(f"{len(df_c)} articles")
@@ -891,7 +939,7 @@ elif page == "📝 Éditeur Google Sheet":
                 with c_achat: val_achat = st.number_input("Prix Achat HT", min_value=0.0, value=0.0, step=10.0, key="add_c_achat")
                 with c_marge_c: val_marge_c = st.number_input("% Marge", min_value=0.0, value=30.0, step=5.0, key="add_c_marge")
                 calcul_vente = val_achat * (1 + (val_marge_c / 100))
-                st.success(f"💶 Prix Vente HT : **{calcul_vente:.2f} €**")
+                st.success(f"Prix Vente HT : **{calcul_vente:.2f} €**")
                 with st.form("form_add_cata"):
                     headers_c = list(df_c.columns) if len(df_c) > 0 else CATA_COLS
                     inputs_c = {}; cols3 = st.columns(3)
@@ -903,7 +951,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 inputs_c[h] = st.selectbox(h, CATEGORIES, key=f"add_c_{h}")
                             else:
                                 inputs_c[h] = st.text_input(h, key=f"add_c_{h}")
-                    submit_add_c = st.form_submit_button("✅ Ajouter", use_container_width=True)
+                    submit_add_c = st.form_submit_button("Ajouter", use_container_width=True)
                 if submit_add_c:
                     for h in headers_c:
                         hl = h.lower()
@@ -916,7 +964,7 @@ elif page == "📝 Éditeur Google Sheet":
                         else:
                             ws_c2.insert_row([inputs_c.get(h,"") for h in headers_c], index=len(df_c)+2, value_input_option="USER_ENTERED")
                             st.cache_data.clear()
-                            st.success("✅ Ajouté !")
+                            st.success("Article ajouté.")
                             st.rerun()
                     except Exception as e:
                         st.error(f"Erreur : {e}")
@@ -937,7 +985,7 @@ elif page == "📝 Éditeur Google Sheet":
                     with c_achat_m: mod_achat = st.number_input("Prix Achat HT", min_value=0.0, value=float(cur_achat), step=10.0, key="mod_c_achat")
                     with c_marge_m: mod_marge_c = st.number_input("% Marge", min_value=0.0, value=float(cur_marge_c2), step=5.0, key="mod_c_marge")
                     mod_vente = mod_achat * (1 + (mod_marge_c / 100))
-                    st.success(f"💶 Prix Vente HT : **{mod_vente:.2f} €**")
+                    st.success(f"Prix Vente HT : **{mod_vente:.2f} €**")
                     with st.form("form_mod_cata"):
                         mod_inputs_c = {}; cols4 = st.columns(3)
                         for i, h in enumerate(headers_c2):
@@ -963,7 +1011,7 @@ elif page == "📝 Éditeur Google Sheet":
                                 for col_idx, h in enumerate(headers_c2, start=1):
                                     ws_c3.update_cell(sel_idx_c+2, col_idx, mod_inputs_c.get(h,""))
                                 st.cache_data.clear()
-                                st.success("✅ Modifié !")
+                                st.success("Modification enregistrée.")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
@@ -975,15 +1023,15 @@ elif page == "📝 Éditeur Google Sheet":
                     headers_c3 = list(df_c.columns)
                     art_labels2 = [f"Ligne {i+2} — {df_c.iloc[i,0]} / {df_c.iloc[i,1] if len(headers_c3)>1 else ''}" for i in range(len(df_c))]
                     del_idx_c = st.selectbox("Article à supprimer", range(len(df_c)), format_func=lambda i: art_labels2[i], key="sel_del_cata")
-                    st.warning(f"⚠️ Suppression irréversible : **{art_labels2[del_idx_c]}**")
-                    if st.button("🗑️ Confirmer", key="btn_del_cata"):
+                    st.warning(f"Suppression irréversible : **{art_labels2[del_idx_c]}**")
+                    if st.button("Confirmer", key="btn_del_cata"):
                         try:
                             ws_c4, err_c4 = get_worksheet(user, "catalogue")
                             if err_c4: st.error(err_c4)
                             else:
                                 ws_c4.delete_rows(del_idx_c+2)
                                 st.cache_data.clear()
-                                st.success("✅ Supprimé !")
+                                st.success("Article supprimé.")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
@@ -993,8 +1041,8 @@ elif page == "📝 Éditeur Google Sheet":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : NOTIFICATIONS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "🔔 Notifications":
-    page_header("🔔 Notifications", "Devis signés en attente de planification")
+elif page.startswith("Notifications"):
+    page_header("Notifications", "Devis signés en attente de planification")
 
     WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user}"
 
@@ -1035,11 +1083,91 @@ elif page == "🔔 Notifications":
         except Exception as e:
             return str(e), pd.DataFrame()
 
+    def _ensure_col(headers, row_vals, candidates):
+        idx = None
+        headers_l = [h.strip().lower() for h in headers]
+        for cand in candidates:
+            if cand in headers_l:
+                idx = headers_l.index(cand)
+                break
+        if idx is None:
+            headers.append(candidates[0])
+            row_vals.append("")
+            idx = len(headers) - 1
+        return idx
+
+    def _upsert_planning_liste(
+        u,
+        numero_devis,
+        nom_client,
+        objet,
+        salarie,
+        date_debut,
+        date_fin,
+        heure_debut,
+        heure_fin,
+        tranches_personnalisees,
+    ):
+        ws_liste, err_liste = get_worksheet(u, "liste")
+        if err_liste or not ws_liste:
+            return False, f"Impossible d'ouvrir l'onglet liste : {err_liste or 'inconnu'}"
+
+        def _col_to_a1(col_number):
+            out = ""
+            n = int(col_number)
+            while n > 0:
+                n, rem = divmod(n - 1, 26)
+                out = chr(65 + rem) + out
+            return out
+
+        all_vals = ws_liste.get_all_values()
+        if not all_vals:
+            headers = ["numero_devis", "nom_client", "objet", "salarie", "date_debut", "date_fin", "heure_debut", "heure_fin", "tranches_horaires"]
+            ws_liste.append_row(headers, value_input_option="USER_ENTERED")
+            all_vals = [headers]
+        headers = all_vals[0]
+        row_template = [""] * len(headers)
+        idx_num = _ensure_col(headers, row_template, ["numero_devis", "n_devis", "numero"])
+        idx_client = _ensure_col(headers, row_template, ["nom_client", "client"])
+        idx_objet = _ensure_col(headers, row_template, ["objet", "chantier"])
+        idx_sal = _ensure_col(headers, row_template, ["salarie", "salarié"])
+        idx_dd = _ensure_col(headers, row_template, ["date_debut", "date début"])
+        idx_df = _ensure_col(headers, row_template, ["date_fin", "date fin"])
+        idx_hd = _ensure_col(headers, row_template, ["heure_debut", "heure début"])
+        idx_hf = _ensure_col(headers, row_template, ["heure_fin", "heure fin"])
+        idx_slots = _ensure_col(headers, row_template, ["tranches_horaires", "tranches_horaires_personnalisees"])
+
+        row_template[idx_num] = numero_devis
+        row_template[idx_client] = nom_client
+        row_template[idx_objet] = objet
+        row_template[idx_sal] = salarie
+        row_template[idx_dd] = date_debut
+        row_template[idx_df] = date_fin
+        row_template[idx_hd] = heure_debut
+        row_template[idx_hf] = heure_fin
+        row_template[idx_slots] = tranches_personnalisees
+
+        if headers != all_vals[0]:
+            ws_liste.update("1:1", [headers], value_input_option="USER_ENTERED")
+
+        target_row_idx = None
+        for i, row_vals in enumerate(all_vals[1:], start=2):
+            num_val = row_vals[idx_num].strip() if len(row_vals) > idx_num else ""
+            if num_val and num_val == numero_devis:
+                target_row_idx = i
+                break
+        if target_row_idx:
+            last_col = _col_to_a1(len(headers))
+            ws_liste.update(f"A{target_row_idx}:{last_col}{target_row_idx}", [row_template], value_input_option="USER_ENTERED")
+        else:
+            ws_liste.append_row(row_template, value_input_option="USER_ENTERED")
+        return True, None
+
     salaries = _load_salaries(user)
     err_n, df_notif = _load_notifications(user)
 
     if err_n:
-        st.error(f"❌ Onglet 'notifications' introuvable : {err_n}")
+        st.error(f"Onglet 'notifications' introuvable : {err_n}")
         st.info("Crée un onglet 'notifications' dans ton Google Sheet avec les colonnes : date_reception, numero_devis, nom_client, objet, montant, statut")
         st.stop()
 
@@ -1047,17 +1175,17 @@ elif page == "🔔 Notifications":
     nb_attente_notif = len(df_attente)
 
     col_n1, col_n2 = st.columns(2)
-    col_n1.metric("🔔 En attente de planification", nb_attente_notif)
-    col_n2.metric("✅ Planifiés", len(df_notif) - nb_attente_notif)
+    col_n1.metric("En attente de planification", nb_attente_notif)
+    col_n2.metric("Planifiés", len(df_notif) - nb_attente_notif)
 
-    if st.button("🔄 Actualiser", key="btn_refresh_notif"):
+    if st.button("Actualiser", key="btn_refresh_notif"):
         _load_notifications.clear()
         st.rerun()
 
     st.markdown("---")
 
     if nb_attente_notif == 0:
-        st.success("✅ Aucune notification en attente !")
+        st.success("Aucune notification en attente.")
     else:
         for idx, (row_idx, row) in enumerate(df_attente.iterrows()):
             numero  = str(row.get("numero_devis", "")).strip()
@@ -1075,20 +1203,20 @@ elif page == "🔔 Notifications":
                   </div>
                   <div style="font-size:0.8rem;color:#64748b;">{date_r}</div>
                 </div>
-                <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">🏗️ {objet}</div>
-                <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">💶 {montant} €</div>
+                <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">{objet}</div>
+                <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">{montant} €</div>
                 """, unsafe_allow_html=True)
 
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     date_debut_notif = st.date_input(
-                        "📅 Date début travaux",
+                        "Date début travaux",
                         value=datetime.today(),
                         key=f"notif_date_{idx}"
                     )
                 with c2:
                     heure_intervention = st.time_input(
-                        "🕐 Heure de début",
+                        "Heure de début",
                         value=datetime.strptime("08:00", "%H:%M").time(),
                         key=f"notif_heure_{idx}"
                     )
@@ -1100,36 +1228,86 @@ elif page == "🔔 Notifications":
                     )
                 with c4:
                     salarie_sel = st.selectbox(
-                        "👷 Salarié(e)",
+                        "Salarié(e)",
                         ["— Choisir —"] + salaries,
                         key=f"notif_sal_{idx}"
                     )
 
+                c_week1, c_week2 = st.columns(2)
+                with c_week1:
+                    duree_semaines = st.number_input(
+                        "Durée (semaines)",
+                        min_value=1,
+                        value=1,
+                        step=1,
+                        key=f"notif_semaines_{idx}",
+                    )
+                with c_week2:
+                    date_fin_notif = date_debut_notif + timedelta(days=(int(duree_semaines) * 7) - 1)
+                    st.text_input(
+                        "Date de fin",
+                        value=date_fin_notif.strftime("%d/%m/%Y"),
+                        disabled=True,
+                        key=f"notif_date_fin_txt_{idx}",
+                    )
+
+                st.markdown("Tranches horaires personnalisées par jour")
+                weekday_defs = [
+                    ("lundi", "Lundi"),
+                    ("mardi", "Mardi"),
+                    ("mercredi", "Mercredi"),
+                    ("jeudi", "Jeudi"),
+                    ("vendredi", "Vendredi"),
+                    ("samedi", "Samedi"),
+                    ("dimanche", "Dimanche"),
+                ]
+                custom_slots = []
+                for day_key, day_label in weekday_defs:
+                    c_day, c_start, c_end = st.columns([2, 2, 2])
+                    with c_day:
+                        use_day = st.checkbox(day_label, value=day_key in ["lundi", "mardi", "mercredi", "jeudi", "vendredi"], key=f"notif_use_{idx}_{day_key}")
+                    with c_start:
+                        start_day = st.time_input("Début", value=heure_intervention, key=f"notif_start_{idx}_{day_key}")
+                    with c_end:
+                        end_day = st.time_input("Fin", value=heure_fin, key=f"notif_end_{idx}_{day_key}")
+                    if use_day:
+                        custom_slots.append({
+                            "jour": day_key,
+                            "debut": start_day.strftime("%H:%M"),
+                            "fin": end_day.strftime("%H:%M"),
+                        })
+
                 col_send, col_del_notif = st.columns([4, 1])
                 with col_del_notif:
-                    if st.button("🗑️ Supprimer", key=f"notif_del_{idx}", use_container_width=True):
+                    if st.button("Supprimer", key=f"notif_del_{idx}", use_container_width=True):
                         try:
                             ws_del, _ = get_worksheet(user, "notifications")
                             if ws_del:
                                 ws_del.delete_rows(row_idx + 2)
                                 _load_notifications.clear()
-                                st.success("✅ Notification supprimée !")
+                                st.success("Notification supprimée.")
                                 st.rerun()
                         except Exception as ex:
                             st.error(f"Erreur : {ex}")
                 with col_send:
-                    if st.button("📤 Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
+                    if st.button("Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
                         if salarie_sel == "— Choisir —":
-                            st.error("❌ Sélectionne un(e) salarié(e)")
+                            st.error("Sélectionne un(e) salarié(e).")
+                        elif len(custom_slots) == 0:
+                            st.error("Ajoute au moins une tranche horaire personnalisée.")
                         else:
+                            tranches_json = json.dumps(custom_slots, ensure_ascii=False)
                             payload_notif = {
                                 "numero_devis":       numero,
                                 "nom_client":         client,
                                 "objet":              objet,
                                 "montant":            montant,
                                 "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
+                                "date_fin_travaux":   date_fin_notif.strftime("%Y-%m-%d"),
+                                "duree_semaines":     int(duree_semaines),
                                 "heure_intervention": heure_intervention.strftime("%H:%M"),
                                 "heure_fin":          heure_fin.strftime("%H:%M"),
+                                "tranches_horaires":  custom_slots,
                                 "salarie":            salarie_sel,
                                 "planifie_par":       user,
                                 "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1142,6 +1320,20 @@ elif page == "🔔 Notifications":
                                     headers={"Content-Type": "application/json"}
                                 )
                                 if resp.status_code in (200, 201):
+                                    ok_liste, err_liste = _upsert_planning_liste(
+                                        user,
+                                        numero_devis=numero,
+                                        nom_client=client,
+                                        objet=objet,
+                                        salarie=salarie_sel,
+                                        date_debut=date_debut_notif.strftime("%Y-%m-%d"),
+                                        date_fin=date_fin_notif.strftime("%Y-%m-%d"),
+                                        heure_debut=heure_intervention.strftime("%H:%M"),
+                                        heure_fin=heure_fin.strftime("%H:%M"),
+                                        tranches_personnalisees=tranches_json,
+                                    )
+                                    if not ok_liste:
+                                        st.warning(f"Planification envoyée, mais écriture dans liste impossible : {err_liste}")
                                     ws_n, _ = get_worksheet(user, "notifications")
                                     if ws_n:
                                         sheet_row = row_idx + 2
@@ -1149,19 +1341,18 @@ elif page == "🔔 Notifications":
                                         if statut_col:
                                             ws_n.update_cell(sheet_row, statut_col, "planifie")
                                     _load_notifications.clear()
-                                    st.success(f"✅ Planification envoyée à n8n pour {client} !")
-                                    st.balloons()
+                                    st.success(f"Planification envoyée à n8n pour {client}.")
                                     st.rerun()
                                 else:
-                                    st.error(f"❌ Erreur n8n : {resp.status_code}")
+                                    st.error(f"Erreur n8n : {resp.status_code}")
                             except Exception as ex:
                                 st.error(f"Erreur : {ex}")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📄 Créer un devis":
+elif page == "Créer un devis":
     import streamlit.components.v1 as components
-    page_header("📄 Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
+    page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
     WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
 
@@ -1215,9 +1406,15 @@ elif page == "📄 Créer un devis":
                 desc = row_d.get("description","").strip()
                 cat  = (row_d.get("categorie","") or row_d.get("catégorie","") or
                         row_d.get("type de poste","")).strip()
+                qte_val = (
+                    row_d.get("quantité","") or row_d.get("quantite","") or
+                    row_d.get("qte","") or row_d.get("qté","")
+                )
+                qte = _parse_prix(qte_val) if str(qte_val).strip() else 1.0
+                qte = qte if qte > 0 else 1.0
                 label = article + (f"  –  {prix} € HT" if prix else "")
                 items.append({"label": label, "article": article, "description": desc,
-                               "prix_ht": prix, "categorie": cat, "source": "prestations"})
+                               "prix_ht": prix, "categorie": cat, "qte": qte, "source": "prestations"})
             return items
         except Exception:
             return []
@@ -1240,7 +1437,7 @@ elif page == "📄 Créer un devis":
     if "devis_preview" not in st.session_state:
         st.session_state.devis_preview = False
 
-    st.markdown("#### 👤 Informations client")
+    st.markdown("#### Informations client")
     c1, c2 = st.columns(2)
     with c1:
         client_nom   = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
@@ -1250,7 +1447,7 @@ elif page == "📄 Créer un devis":
         client_adresse = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
 
     st.markdown("---")
-    st.markdown("#### 🏗️ Chantier")
+    st.markdown("#### Chantier")
     c3, c4 = st.columns(2)
     with c3:
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
@@ -1298,7 +1495,7 @@ elif page == "📄 Créer un devis":
         with ce3:
             st.metric("À la réception (%)", f"{pct_fin} %")
         if pct_fin < 0:
-            st.error("❌ Le total dépasse 100% — ajuste les pourcentages.")
+            st.error("Le total dépasse 100% — ajuste les pourcentages.")
         segments = [
             {"etape": "À la commande",        "percent": pct_cmd},
             {"etape": "En cours de chantier", "percent": pct_enc},
@@ -1314,7 +1511,7 @@ elif page == "📄 Créer un devis":
         segments = [{"etape": "À la réception", "percent": 100}]
 
     st.markdown("---")
-    st.markdown("#### 🧾 TVA")
+    st.markdown("#### TVA")
     c_tva1, c_tva2 = st.columns([2, 2])
     with c_tva1:
         tva_option = st.radio("Taux TVA applicable", [
@@ -1333,7 +1530,7 @@ elif page == "📄 Créer un devis":
     tva_pct_str     = "5,5" if tva_taux == 0.055 else str(int(tva_taux * 100))
 
     st.markdown("---")
-    st.markdown("#### 🛠️ Prestations")
+    st.markdown("#### Prestations")
 
     lignes = st.session_state.devis_lignes
     to_del = []
@@ -1345,7 +1542,7 @@ elif page == "📄 Créer un devis":
                 src_idx = {"catalogue": 0, "prestations": 1}.get(ligne.get("source", "libre"), 2)
                 src = st.radio(
                     f"src_{i}",
-                    ["🗂️ Divers", "🔧 Prestations", "✏️ Saisie libre"],
+                    ["Divers", "Prestations", "Saisie libre"],
                     horizontal=True,
                     key=f"src_{i}",
                     index=src_idx,
@@ -1360,10 +1557,10 @@ elif page == "📄 Créer un devis":
                 ligne["qte"] = 1.0
                 st.rerun()
             with col_del:
-                if len(lignes) > 1 and st.button("🗑️", key=f"del_{i}"):
+                if len(lignes) > 1 and st.button("Supprimer", key=f"del_{i}"):
                     to_del.append(i)
 
-            if src == "🗂️ Divers":
+            if src == "Divers":
                 ligne["source"] = "catalogue"
                 sel = st.selectbox("Article", cat_labels, key=f"cat_{i}", label_visibility="collapsed")
                 if sel != cat_labels[0]:
@@ -1378,7 +1575,7 @@ elif page == "📄 Créer un devis":
                 ligne["qte"] = new_qte
                 if ligne.get("article"):
                     st.caption(f"Prix HT : **{ligne['prix_ht']:,.2f} €** — Total HT : **{ligne['qte'] * ligne['prix_ht']:,.2f} €**")
-            elif src == "🔧 Prestations":
+            elif src == "Prestations":
                 ligne["source"] = "prestations"
                 sel = st.selectbox("Prestation", prest_labels, key=f"prest_{i}", label_visibility="collapsed")
                 if sel != prest_labels[0]:
@@ -1389,9 +1586,9 @@ elif page == "📄 Créer un devis":
                         ligne["categorie"]   = found["categorie"]
                         ligne["_prev_sel"]   = sel
                         ligne["prix_ht"]     = _parse_prix(found["prix_ht"])
-                        ligne["qte"]         = 1.0
+                        ligne["qte"]         = float(found.get("qte", 1.0))
                         st.session_state[f"pht2_{i}"] = float(ligne["prix_ht"])
-                        st.session_state[f"qte2_{i}"] = 1.0
+                        st.session_state[f"qte2_{i}"] = float(ligne["qte"])
                         st.rerun()
                 cq2, cp2 = st.columns(2)
                 new_qte2 = cq2.number_input("Quantité", min_value=0.1, value=float(ligne["qte"]), step=1.0, key=f"qte2_{i}")
@@ -1413,7 +1610,7 @@ elif page == "📄 Créer un devis":
     if to_del:
         st.rerun()
 
-    if st.button("➕ Ajouter une ligne", key="add_ligne"):
+    if st.button("Ajouter une ligne", key="add_ligne"):
         st.session_state.devis_lignes.append(
             {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
         )
@@ -1464,7 +1661,7 @@ elif page == "📄 Créer un devis":
     """, unsafe_allow_html=True)
 
     if phrase_modalite:
-        st.info(f"💬 **{phrase_modalite}**")
+        st.info(f"**{phrase_modalite}**")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1514,10 +1711,10 @@ elif page == "📄 Créer un devis":
             "source":   "streamlit_erp",
         }
 
-    if st.button("👁️ Prévisualiser le devis", use_container_width=True, key="btn_preview"):
+    if st.button("Prévisualiser le devis", use_container_width=True, key="btn_preview"):
         errs = _validate()
         if errs:
-            for e in errs: st.error(f"❌ {e}")
+            for e in errs: st.error(f"{e}")
         else:
             st.session_state.devis_preview = True
 
@@ -1649,7 +1846,7 @@ elif page == "📄 Créer un devis":
   <div class="column">
     <div class="section-title">Objet des travaux</div>
     <p><strong>{objet_travaux}</strong></p>
-    <p>📍 {adresse_chantier}</p>
+    <p>{adresse_chantier}</p>
     <p>Categorie : {categorie_operation}</p>
     <p>Duree : {duree_jours} jour(s) ouvre(s)</p>
     <p>Fin estimee : {date_fin_str}</p>
@@ -1731,40 +1928,41 @@ elif page == "📄 Créer un devis":
         st.markdown("<br>", unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns(3)
         with col_a:
-            if st.button("✏️ Modifier le devis", key="btn_close_preview", use_container_width=True):
+            if st.button("Modifier le devis", key="btn_close_preview", use_container_width=True):
                 st.session_state.devis_preview = False
                 st.rerun()
         with col_b:
-            if st.button("🖨️ Imprimer / PDF", key="btn_imprimer", use_container_width=True):
+            if st.button("Imprimer / PDF", key="btn_imprimer", use_container_width=True):
                 payload = _build_payload()
                 payload["action"] = "imprimer"
                 try:
                     resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
                     if resp.status_code in (200, 201):
-                        st.success("✅ Envoyé à n8n pour impression !")
-                        st.balloons()
+                        st.success("Envoyé à n8n pour impression.")
                     else:
-                        st.error(f"❌ Erreur {resp.status_code}")
+                        st.error(f"Erreur {resp.status_code}")
                 except Exception as ex:
                     st.error(f"Erreur : {ex}")
         with col_c:
-            if st.button("📤 Envoyer au client", key="btn_envoyer_client", use_container_width=True, type="primary"):
-                payload = _build_payload()
-                payload["action"] = "envoyer"
-                try:
-                    resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
-                    if resp.status_code in (200, 201):
-                        st.success("✅ Devis envoyé au client !")
-                        st.balloons()
-                        st.session_state.devis_lignes = [
-                            {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
-                        ]
-                        st.session_state.devis_preview = False
-                        st.cache_data.clear()
-                    else:
-                        st.error(f"❌ Erreur {resp.status_code}")
-                except Exception as ex:
-                    st.error(f"Erreur : {ex}")
+            if st.button("Envoyer au client", key="btn_envoyer_client", use_container_width=True, type="primary"):
+                if not client_email.strip():
+                    st.error("L'email client est obligatoire pour envoyer le devis.")
+                else:
+                    payload = _build_payload()
+                    payload["action"] = "envoyer"
+                    try:
+                        resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
+                        if resp.status_code in (200, 201):
+                            st.success("Devis envoyé au client.")
+                            st.session_state.devis_lignes = [
+                                {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
+                            ]
+                            st.session_state.devis_preview = False
+                            st.cache_data.clear()
+                        else:
+                            st.error(f"Erreur {resp.status_code}")
+                    except Exception as ex:
+                        st.error(f"Erreur : {ex}")
 
     st.stop()
 
@@ -1773,9 +1971,9 @@ df_raw, error = get_sheet_data(user)
 
 if error:
     get_sheet_data.clear()
-    st.error("❌ Impossible de se connecter à Google Sheets.")
+    st.error("Impossible de se connecter à Google Sheets.")
     st.info(f"Détail : {error}")
-    if st.button("🔄 Réessayer"):
+    if st.button("Réessayer"):
         st.rerun()
     st.stop()
 
@@ -1830,14 +2028,14 @@ reste_encaissement  = df[(df["_signe"]) & (~df["_fact_fin"])]["_reste"].sum()
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
 # ══════════════════════════════════════════════════════════════════════════════
-if page == "📊 Vue Générale":
+if page == "Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
+    c1.metric("CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
     c2.metric("⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
     c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric("💸 Reste à Encaisser", fmt(reste_encaissement))
+    c4.metric("Reste à Encaisser", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1850,7 +2048,7 @@ if page == "📊 Vue Générale":
                 d2 = d2.dropna(subset=["_date"])
 
                 if not d2.empty:
-                    st.markdown("<div style='font-weight:700;font-size:0.9rem;color:var(--text-muted);margin-bottom:10px;'>📅 Période</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-weight:700;font-size:0.9rem;color:var(--text-muted);margin-bottom:10px;'>Période</div>", unsafe_allow_html=True)
                     col_dt1, col_dt2 = st.columns(2)
                     min_dt = d2["_date"].min().date()
                     max_dt = d2["_date"].max().date()
@@ -1864,7 +2062,7 @@ if page == "📊 Vue Générale":
                     if d2.empty:
                         st.info("Aucune donnée sur cette période.")
                     else:
-                        _chart_opts = ["📊 Barres empilées", "📈 Courbes"]
+                        _chart_opts = ["Barres empilées", "Courbes"]
                         chart_mode = st.radio(
                             "Type de graphique",
                             _chart_opts,
@@ -1896,9 +2094,9 @@ if page == "📊 Vue Générale":
                         x_labels = merged["_mois_label"].tolist()
                         fig = go.Figure()
 
-                        if chart_mode == "📊 Barres empilées":
+                        if chart_mode == "Barres empilées":
                             fig.add_trace(go.Bar(x=x_labels, y=merged["CA En attente"], name="En attente ⏳", marker_color="#1e3a5f", marker_line_width=0))
-                            fig.add_trace(go.Bar(x=x_labels, y=merged["CA Signé"], name="Signé ✅", marker_color="#00d68f", marker_line_width=0))
+                            fig.add_trace(go.Bar(x=x_labels, y=merged["CA Signé"], name="Signé", marker_color="#00d68f", marker_line_width=0))
                             fig.update_layout(barmode="stack", bargap=0.3)
                         else:
                             fig.add_trace(go.Scatter(x=x_labels, y=merged["CA Total"], name="CA Total", mode="lines+markers", line=dict(color="#4f8ef7", width=2.5, shape="spline"), marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)), fill="tozeroy", fillcolor="rgba(79,142,247,0.07)"))
@@ -1940,7 +2138,7 @@ if page == "📊 Vue Générale":
                     with card_col:
                         st.markdown(f"""
                         <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:4px;">
-                            <div style="font-size:1.1rem; flex-shrink:0;">📄</div>
+                            <div style="font-size:1.1rem; flex-shrink:0;">Dossier</div>
                             <div style="flex:1; min-width:0;">
                                 <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{client}</div>
                                 <div style="font-size:0.78rem; color:var(--text-muted);">{montant}</div>
@@ -1950,8 +2148,8 @@ if page == "📊 Vue Générale":
                     with btn_col:
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
-                            st.session_state["_page_index"] = pages.index("🗂️ Espace Clients")
-                            st.session_state["nav_radio"] = "🗂️ Espace Clients"
+                            st.session_state["_page_index"] = pages.index("Espace Clients")
+                            st.session_state["nav_radio"] = "Espace Clients"
                             st.rerun()
 
                 if nb_attente > ALERT_PREVIEW:
@@ -1965,7 +2163,7 @@ if page == "📊 Vue Générale":
                             st.session_state["alertes_show_all"] = False
                             st.rerun()
             else:
-                st.success("✅ Aucun devis en attente !")
+                st.success("Aucun devis en attente.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     col_d1, col_d2 = st.columns(2)
@@ -1977,14 +2175,14 @@ if page == "📊 Vue Générale":
             st.plotly_chart(fig_donut, use_container_width=True)
     with col_d2:
         with st.container(border=True):
-            st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:16px;'>📊 Résumé financier</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:16px;'>Résumé financier</div>", unsafe_allow_html=True)
             for label, val, color in [("CA Total émis", fmt(total_ca), "#4f8ef7"), ("CA Sécurisé", fmt(ca_signe), "#00d68f"), ("CA En attente", fmt(ca_non_s), "#ffb84d"), ("Reste à encaisser", fmt(reste_encaissement), "#ff5c7a"), ("Chantiers terminés (PV)", f"{int(df['_pv'].sum())}", "#00d68f")]:
                 st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📋 Devis":
+elif page == "Devis":
     page_header("Gestion des Devis", f"{nb_devis} devis au total")
 
     c1, c2, c3 = st.columns(3)
@@ -2003,7 +2201,7 @@ elif page == "📋 Devis":
             if col: mask |= df_d[col].astype(str).str.contains(search, case=False, na=False)
         df_d = df_d[mask]
 
-    _DEVIS_OPTS = ["⏳ En attente de signature", "✅ Devis signés"]
+    _DEVIS_OPTS = ["En attente de signature", "Devis signés"]
     if "devis_tab" not in st.session_state:
         st.session_state["devis_tab"] = _DEVIS_OPTS[0]
 
@@ -2016,7 +2214,7 @@ elif page == "📋 Devis":
         on_change=_on_devis_tab,
     )
     st.markdown("---")
-    if tab_devis_choice == "⏳ En attente de signature":
+    if tab_devis_choice == "En attente de signature":
         d = df_d[~df_d["_signe"]]
         st.caption(f"{len(d)} devis — CA potentiel : {fmt(d['_montant'].sum())}")
         show_table(d[cols].reset_index(drop=True) if cols else d, "devis_attente")
@@ -2028,14 +2226,14 @@ elif page == "📋 Devis":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : FACTURES & PAIEMENTS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "💶 Factures & Paiements":
+elif page == "Factures & Paiements":
     page_header("Factures & Paiements", "Suivi des encaissements")
 
     df_imp = df[df["_signe"] & ~df["_fact_fin"]]
     c1, c2, c3 = st.columns(3)
-    c1.metric("✅ Factures finales émises", nb_fact_ok)
-    c2.metric("⚠️ Sans facture finale", len(df_imp))
-    c3.metric("💸 CA restant à facturer", fmt(reste_encaissement))
+    c1.metric("Factures finales émises", nb_fact_ok)
+    c2.metric("Sans facture finale", len(df_imp))
+    c3.metric("CA restant à facturer", fmt(reste_encaissement))
 
     st.markdown("<br>", unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
@@ -2048,7 +2246,7 @@ elif page == "💶 Factures & Paiements":
             if col: mask |= df_f[col].astype(str).str.contains(search_f, case=False, na=False)
         df_f = df_f[mask]
 
-    _FACT_OPTS = ["⚠️ À facturer", "✅ Factures émises"]
+    _FACT_OPTS = ["À facturer", "Factures émises"]
     if "fact_tab" not in st.session_state:
         st.session_state["fact_tab"] = _FACT_OPTS[0]
 
@@ -2061,7 +2259,7 @@ elif page == "💶 Factures & Paiements":
         on_change=_on_fact_tab,
     )
     st.markdown("---")
-    if tab_fact_choice == "⚠️ À facturer":
+    if tab_fact_choice == "À facturer":
         d = df_f[df_f["_signe"] & ~df_f["_fact_fin"]]
         show_table(d[cols].reset_index(drop=True) if cols else d, "fact_attente")
     else:
@@ -2071,15 +2269,15 @@ elif page == "💶 Factures & Paiements":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CHANTIERS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "🏗️ Chantiers":
+elif page == "Chantiers":
     page_header("Suivi des Chantiers", "Vue d'ensemble des travaux")
 
-    df["_statut_ch"] = df["_pv"].apply(lambda x: "✅ Terminé" if x else "🟡 En cours")
+    df["_statut_ch"] = df["_pv"].apply(lambda x: "Terminé" if x else "En cours")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🏗️ En cours", int((~df["_pv"]).sum()))
-    c2.metric("💰 Tréso. en cours", fmt(df[~df["_pv"]]["_montant"].sum()))
-    c3.metric("✅ Terminés (PV signé)", int(df["_pv"].sum()))
-    c4.metric("💰 CA réalisé", fmt(df[df["_pv"]]["_montant"].sum()))
+    c1.metric("En cours", int((~df["_pv"]).sum()))
+    c2.metric("Tréso. en cours", fmt(df[~df["_pv"]]["_montant"].sum()))
+    c3.metric("Terminés (PV signé)", int(df["_pv"].sum()))
+    c4.metric("CA réalisé", fmt(df[df["_pv"]]["_montant"].sum()))
 
     st.markdown("<br>", unsafe_allow_html=True)
     search_ch = st.text_input("🔍 Filtrer", placeholder="Client, lieu...", key="search_ch")
@@ -2101,7 +2299,7 @@ elif page == "🏗️ Chantiers":
 
     df_ch["_has_reserve"] = df_ch[COL_RESERVE].apply(has_reserve) if COL_RESERVE else False
     nb_reserves = int(df_ch["_has_reserve"].sum())
-    ch_tab_opts = ["🟡 En cours", "✅ Livrés (PV signé)", f"🔒 Avec réserves ({nb_reserves})"]
+    ch_tab_opts = ["En cours", "Livrés (PV signé)", f"Avec réserves ({nb_reserves})"]
 
     if "chantier_tab" not in st.session_state:
         st.session_state["chantier_tab"] = ch_tab_opts[0]
@@ -2115,29 +2313,29 @@ elif page == "🏗️ Chantiers":
         on_change=_on_chantier_tab,
     )
     st.markdown("---")
-    if tab_ch_choice == "🟡 En cours":
+    if tab_ch_choice == "En cours":
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
         show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_cours")
-    elif tab_ch_choice == "✅ Livrés (PV signé)":
+    elif tab_ch_choice == "Livrés (PV signé)":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
         show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_termines")
     else:
         d = df_ch[df_ch["_has_reserve"]]
         if d.empty:
-            st.success("✅ Aucun chantier avec réserves détecté.")
+            st.success("Aucun chantier avec réserves détecté.")
         else:
             r1, r2, r3 = st.columns(3)
-            r1.metric("🔒 Avec réserves", len(d))
-            r2.metric("💰 CA concerné", fmt(d['_montant'].sum()))
-            r3.metric("🟡 Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
+            r1.metric("Avec réserves", len(d))
+            r2.metric("CA concerné", fmt(d['_montant'].sum()))
+            r3.metric("Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
             show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_reserves")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📅 Planning":
+elif page == "Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
 
     COL_SALARIE_P   = fcol(df, "salarié", "salarie", "salar")
@@ -2145,7 +2343,7 @@ elif page == "📅 Planning":
     COL_HEURE_FIN_P = fcol(df, "heure_fin", "heure fin", "heure_fin")
 
     if not COL_DATE_DEBUT or not COL_DATE_FIN:
-        st.warning("⚠️ Colonnes de dates non détectées.")
+        st.warning("Colonnes de dates non détectées.")
         st.stop()
 
     def clean_time_val(val):
@@ -2194,18 +2392,18 @@ elif page == "📅 Planning":
 
     # ── KPIs ───────────────────────────────────────────────────────────────
     k1, k2, k3 = st.columns(3)
-    k1.metric("📅 Total planifiés", len(df_plan))
-    k2.metric("▶️ En cours / à venir", int((df_plan["_end"].dt.date >= today.date()).sum()))
-    k3.metric("✅ Terminés", int((df_plan["_end"].dt.date < today.date()).sum()))
+    k1.metric("Total planifiés", len(df_plan))
+    k2.metric("En cours / à venir", int((df_plan["_end"].dt.date >= today.date()).sum()))
+    k3.metric("Terminés", int((df_plan["_end"].dt.date < today.date()).sum()))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    _plan_opts = ["📅 Calendrier mensuel", "📋 Liste"]
+    _plan_opts = ["Calendrier mensuel", "Liste"]
     view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio", label_visibility="collapsed")
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ══ CALENDRIER MENSUEL ════════════════════════════════════════════════
-    if view_mode == "📅 Calendrier mensuel":
+    if view_mode == "Calendrier mensuel":
         if "plan_year"  not in st.session_state: st.session_state["plan_year"]  = today.year
         if "plan_month" not in st.session_state: st.session_state["plan_month"] = today.month
 
@@ -2253,7 +2451,7 @@ elif page == "📅 Planning":
 
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
-            st.markdown(f"### 📋 Chantiers du {sd.strftime('%d/%m/%Y')}")
+            st.markdown(f"### Chantiers du {sd.strftime('%d/%m/%Y')}")
             day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
 
             if day_events.empty:
@@ -2261,7 +2459,7 @@ elif page == "📅 Planning":
             else:
                 salaries_jour = sorted([s for s in day_events["_salarie"].unique() if s], key=str.lower)
                 if salaries_jour:
-                    st.markdown(f"<div style='margin-bottom:12px;font-size:0.85rem;color:var(--text-muted);'>👷 Intervenants ce jour : <strong>{', '.join(salaries_jour)}</strong></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='margin-bottom:12px;font-size:0.85rem;color:var(--text-muted);'>Intervenants ce jour : <strong>{', '.join(salaries_jour)}</strong></div>", unsafe_allow_html=True)
 
                 for _, row in day_events.iterrows():
                     sal   = row["_salarie"]
@@ -2287,9 +2485,9 @@ elif page == "📅 Planning":
                     horaire = ""
                     if hdeb and hfin:
                         note = " · <em style='font-size:0.72rem;opacity:0.7;'>chaque jour</em>" if duree > 1 else ""
-                        horaire = f"🕐 <strong>{hdeb}</strong> → <strong>{hfin}</strong>{note}"
+                        horaire = f"<strong>{hdeb}</strong> → <strong>{hfin}</strong>{note}"
                     elif hdeb:
-                        horaire = f"🕐 Début : <strong>{hdeb}</strong>"
+                        horaire = f"Début : <strong>{hdeb}</strong>"
 
                     num_badge     = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">{num}</span>' if num else ""
                     montant_badge = f'<span style="color:#00d68f;font-weight:700;font-size:1rem;">{montant} €</span>' if montant else ""
@@ -2300,29 +2498,29 @@ elif page == "📅 Planning":
                       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
                         <div style="flex:1;">
                           {"<div style='margin-bottom:6px;'>" + num_badge + "</div>" if num_badge else ""}
-                          {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>👤 " + client + "</div>" if client else ""}
-                          {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>🏗️ " + chant + "</div>" if chant else ""}
-                          {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>📍 " + adresse + "</div>" if adresse else ""}
-                          {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>👷 " + sal + "</div>" if sal else ""}
+                          {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>" + client + "</div>" if client else ""}
+                          {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>" + chant + "</div>" if chant else ""}
+                          {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>" + adresse + "</div>" if adresse else ""}
+                          {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>" + sal + "</div>" if sal else ""}
                           {"<div style='font-size:0.85rem;color:#ffb84d;'>" + horaire + "</div>" if horaire else ""}
                         </div>
                         <div style="text-align:right;flex-shrink:0;">
                           <div style="margin-bottom:8px;">{montant_badge}</div>
-                          <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
-                          <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
+                          <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#4f8ef7;">Début {debut}</span></div>
+                          <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:2px 8px;border-radius:6px;font-size:0.78rem;font-weight:600;color:#ff5c7a;">Fin {fin_}</span></div>
                           <div style="font-size:0.72rem;color:var(--text-dim);">{duree} jour(s)</div>
                         </div>
                       </div>
                     </div>""", unsafe_allow_html=True)
 
     # ══ LISTE ════════════════════════════════════════════════════════════
-    elif view_mode == "📋 Liste":
+    elif view_mode == "Liste":
         df_list = df_plan.sort_values("_start").copy()
         df_list["_mois_str"] = df_list["_start"].dt.strftime("%B %Y").str.capitalize()
         df_list["_mois_ord"] = df_list["_start"].dt.to_period("M")
 
         for period, group in df_list.groupby("_mois_ord", sort=True):
-            st.markdown(f'<div style="font-size:0.85rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:10px;">📅 {group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:0.85rem;font-weight:700;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:10px;">{group["_mois_str"].iloc[0]} — {len(group)} chantier(s)</div>', unsafe_allow_html=True)
             for _, row in group.iterrows():
                 sal       = row["_salarie"]
                 hdeb      = row["_heure_deb"]
@@ -2347,9 +2545,9 @@ elif page == "📅 Planning":
 
                 if hdeb and hfin_v:
                     note = " · <em style='font-size:0.72rem;opacity:0.75;'>chaque jour</em>" if duree > 1 else ""
-                    horaire_html = f"🕐 <strong>{hdeb}</strong> → <strong>{hfin_v}</strong>{note}"
+                    horaire_html = f"<strong>{hdeb}</strong> → <strong>{hfin_v}</strong>{note}"
                 elif hdeb:
-                    horaire_html = f"🕐 Début : <strong>{hdeb}</strong>"
+                    horaire_html = f"Début : <strong>{hdeb}</strong>"
                 else:
                     horaire_html = ""
 
@@ -2362,17 +2560,17 @@ elif page == "📅 Planning":
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
                     <div style="flex:1;">
                       {"<div style='margin-bottom:6px;'>" + num_badge + "</div>" if num_badge else ""}
-                      {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>👤 " + client + "</div>" if client else ""}
-                      {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>🏗️ " + chant + "</div>" if chant else ""}
-                      {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>📍 " + adresse + "</div>" if adresse else ""}
-                      {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>👷 " + sal + "</div>" if sal else "<div style='color:var(--text-muted);font-size:0.85rem;margin-bottom:4px;'>Intervenant non renseigné</div>"}
+                      {"<div style='font-weight:700;font-size:1rem;color:var(--text-main);margin-bottom:3px;'>" + client + "</div>" if client else ""}
+                      {"<div style='font-size:0.88rem;color:var(--text-muted);margin-bottom:3px;'>" + chant + "</div>" if chant else ""}
+                      {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>" + adresse + "</div>" if adresse else ""}
+                      {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>" + sal + "</div>" if sal else "<div style='color:var(--text-muted);font-size:0.85rem;margin-bottom:4px;'>Intervenant non renseigné</div>"}
                       {"<div style='font-size:0.85rem;color:#ffb84d;margin-top:2px;'>" + horaire_html + "</div>" if horaire_html else ""}
                       <div style="margin-top:8px;"><span style="padding:2px 10px;border-radius:99px;font-size:0.75rem;font-weight:700;color:{color};border:1px solid {color};background:rgba(0,0,0,0.04);">{label_st}</span></div>
                     </div>
                     <div style="text-align:right;flex-shrink:0;">
                       <div style="margin-bottom:8px;">{montant_badge}</div>
-                      <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#4f8ef7;">📅 {debut}</span></div>
-                      <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#ff5c7a;">🏁 {fin_}</span></div>
+                      <div style="margin-bottom:4px;"><span style="background:rgba(79,142,247,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#4f8ef7;">Début {debut}</span></div>
+                      <div style="margin-bottom:4px;"><span style="background:rgba(255,92,122,0.12);padding:3px 10px;border-radius:6px;font-size:0.8rem;font-weight:600;color:#ff5c7a;">Fin {fin_}</span></div>
                       <div style="font-size:0.75rem;color:var(--text-dim);">{duree} jour(s)</div>
                     </div>
                   </div>
@@ -2380,7 +2578,7 @@ elif page == "📅 Planning":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📁 Tous les dossiers":
+elif page == "Tous les dossiers":
     page_header("Tous les dossiers", f"{len(df)} dossiers au total")
 
     search = st.text_input("🔍 Recherche globale", placeholder="Client, chantier, numéro...", key="search_all")
