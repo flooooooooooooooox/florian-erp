@@ -465,6 +465,7 @@ with st.sidebar:
         "Espace Clients",
         "Tous les dossiers",
         "Éditeur Google Sheet",
+        "Dépenses",
         "Coordonnées & RGPD"
     ]
     if role == "admin":
@@ -2030,11 +2031,58 @@ reste_encaissement  = df[(df["_signe"]) & (~df["_fact_fin"])]["_reste"].sum()
 if page == "Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
+    # ── Sélecteur de dates global ──────────────────────────────────────────
+    with st.expander("📅 Filtrer par période", expanded=False):
+        col_fd1, col_fd2, col_fd3 = st.columns([2, 2, 1])
+        with col_fd1:
+            date_debut_vg = st.date_input("Du", value=None, key="vg_date_debut")
+        with col_fd2:
+            date_fin_vg = st.date_input("Au", value=None, key="vg_date_fin")
+        with col_fd3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Réinitialiser", key="vg_reset_dates", use_container_width=True):
+                st.session_state.pop("vg_date_debut", None)
+                st.session_state.pop("vg_date_fin", None)
+                st.rerun()
+
+    # ── Filtrage selon période ─────────────────────────────────────────────
+    df_vg = df.copy()
+    periode_active = False
+
+    if COL_DATE and (date_debut_vg or date_fin_vg):
+        df_vg["_date_parsed"] = pd.to_datetime(df_vg[COL_DATE], dayfirst=True, errors="coerce")
+        if date_debut_vg:
+            df_vg = df_vg[df_vg["_date_parsed"].dt.date >= date_debut_vg]
+        if date_fin_vg:
+            df_vg = df_vg[df_vg["_date_parsed"].dt.date <= date_fin_vg]
+        periode_active = True
+
+    # ── Recalcul KPIs sur df_vg ───────────────────────────────────────────
+    vg_nb_devis    = len(df_vg)
+    vg_nb_signes   = int(df_vg["_signe"].sum())
+    vg_nb_attente  = vg_nb_devis - vg_nb_signes
+    vg_nb_fact_ok  = int(df_vg["_fact_fin"].sum())
+    vg_ca_signe    = df_vg[df_vg["_signe"]]["_montant"].sum()
+    vg_ca_non_s    = df_vg[~df_vg["_signe"]]["_montant"].sum()
+    vg_total_ca    = df_vg["_montant"].sum()
+    vg_taux_conv   = int((vg_nb_signes / vg_nb_devis) * 100) if vg_nb_devis > 0 else 0
+    vg_reste       = df_vg[(df_vg["_signe"]) & (~df_vg["_fact_fin"])]["_reste"].sum()
+
+    if periode_active:
+        label_periode = ""
+        if date_debut_vg and date_fin_vg:
+            label_periode = f"{date_debut_vg.strftime('%d/%m/%Y')} → {date_fin_vg.strftime('%d/%m/%Y')}"
+        elif date_debut_vg:
+            label_periode = f"Depuis le {date_debut_vg.strftime('%d/%m/%Y')}"
+        else:
+            label_periode = f"Jusqu'au {date_fin_vg.strftime('%d/%m/%Y')}"
+        st.info(f"📅 Période active : **{label_periode}** — {vg_nb_devis} dossier(s)")
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("CA Sécurisé", fmt(ca_signe), f"{nb_signes} devis signés")
-    c2.metric("⏳ CA En Négociation", fmt(ca_non_s), f"{nb_attente} en cours")
-    c3.metric("📈 Taux de Conversion", f"{taux_conv} %")
-    c4.metric("Reste à Encaisser", fmt(reste_encaissement))
+    c1.metric("CA Sécurisé", fmt(vg_ca_signe), f"{vg_nb_signes} devis signés")
+    c2.metric("⏳ CA En Négociation", fmt(vg_ca_non_s), f"{vg_nb_attente} en cours")
+    c3.metric("📈 Taux de Conversion", f"{vg_taux_conv} %")
+    c4.metric("Reste à Encaisser", fmt(vg_reste))
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2042,8 +2090,14 @@ if page == "Vue Générale":
     with cl:
         with st.container(border=True):
             if COL_DATE:
-                d2 = df.copy()
-                d2["_date"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
+                d2 = df.copy()  # graphique toujours sur toutes les données (ou filtré si période)
+                if periode_active:
+                    d2 = df_vg.copy()
+                    if "_date_parsed" not in d2.columns:
+                        d2["_date_parsed"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
+                    d2["_date"] = d2["_date_parsed"]
+                else:
+                    d2["_date"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
                 d2 = d2.dropna(subset=["_date"])
 
                 if not d2.empty:
@@ -2120,7 +2174,7 @@ if page == "Vue Générale":
         with st.container(border=True):
             st.markdown("<div style='font-weight:700;font-size:1rem;color:#ffb84d;margin-bottom:12px;'>🚨 Actions Requises</div>", unsafe_allow_html=True)
 
-            df_alertes_all = df[~df["_signe"]]
+            df_alertes_all = df_vg[~df_vg["_signe"]]
             ALERT_PREVIEW = 6
 
             if "alertes_show_all" not in st.session_state:
@@ -2151,9 +2205,9 @@ if page == "Vue Générale":
                             st.session_state["nav_radio"] = "Espace Clients"
                             st.rerun()
 
-                if nb_attente > ALERT_PREVIEW:
+                if vg_nb_attente > ALERT_PREVIEW:
                     if not st.session_state["alertes_show_all"]:
-                        remaining = nb_attente - ALERT_PREVIEW
+                        remaining = vg_nb_attente - ALERT_PREVIEW
                         if st.button(f"📂 Voir les {remaining} autres", use_container_width=True, key="btn_alertes_more"):
                             st.session_state["alertes_show_all"] = True
                             st.rerun()
@@ -2168,15 +2222,21 @@ if page == "Vue Générale":
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         with st.container(border=True):
-            fig_donut = go.Figure(data=[go.Pie(labels=["Signés","En attente"], values=[nb_signes, nb_attente], hole=0.72, marker_colors=["#00d68f","#1e3a5f"], textinfo="none")])
-            fig_donut.add_annotation(text=f"{taux_conv}%", x=0.5, y=0.5, font_size=28, font_color=chart_font, font_family="Inter", showarrow=False)
+            fig_donut = go.Figure(data=[go.Pie(labels=["Signés","En attente"], values=[vg_nb_signes, vg_nb_attente], hole=0.72, marker_colors=["#00d68f","#1e3a5f"], textinfo="none")])
+            fig_donut.add_annotation(text=f"{vg_taux_conv}%", x=0.5, y=0.5, font_size=28, font_color=chart_font, font_family="Inter", showarrow=False)
             fig_donut.update_layout(title="Taux de transformation", title_font_color=chart_font, paper_bgcolor="rgba(0,0,0,0)", showlegend=True, legend=dict(bgcolor="rgba(0,0,0,0)", font_color=chart_font), margin=dict(t=40, b=20, l=20, r=20), height=250)
             st.plotly_chart(fig_donut, use_container_width=True)
     with col_d2:
         with st.container(border=True):
             st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:16px;'>Résumé financier</div>", unsafe_allow_html=True)
-            for label, val, color in [("CA Total émis", fmt(total_ca), "#4f8ef7"), ("CA Sécurisé", fmt(ca_signe), "#00d68f"), ("CA En attente", fmt(ca_non_s), "#ffb84d"), ("Reste à encaisser", fmt(reste_encaissement), "#ff5c7a"), ("Chantiers terminés (PV)", f"{int(df['_pv'].sum())}", "#00d68f")]:
-                st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
+            for label, val, color in [
+                ("CA Total émis",        fmt(vg_total_ca),    "#4f8ef7"),
+                ("CA Sécurisé",          fmt(vg_ca_signe),    "#00d68f"),
+                ("CA En attente",        fmt(vg_ca_non_s),    "#ffb84d"),
+                ("Reste à encaisser",    fmt(vg_reste),       "#ff5c7a"),
+                ("Chantiers terminés (PV)", f"{int(df_vg['_pv'].sum())}", "#00d68f"),
+            ]:
+                st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)ace-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
