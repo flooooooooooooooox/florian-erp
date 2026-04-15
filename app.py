@@ -32,7 +32,7 @@ if st.session_state.themes == "light":
     --bg-app: #F8FAFC;
     --bg-surface: #F1F5F9;
     --bg-card: #FFFFFF;
-    --bg-sidebar: #E2E8F0;
+    --bg-sidebar: #F1F5F9;
     --text-main: #0F172A;
     --text-muted: #475569;
     --text-dim: #94A3B8;
@@ -47,7 +47,7 @@ else:
     --bg-app: #080f1a;
     --bg-surface: #0f1e30;
     --bg-card: #132238;
-    --bg-sidebar: #060d18;
+    --bg-sidebar: #0f1e30;
     --text-main: #e8f0fe;
     --text-muted: #6b84a3;
     --text-dim: #3d5473;
@@ -91,7 +91,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 
 [data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, var(--bg-sidebar) 0%, var(--bg-surface) 100%) !important;
+    background: var(--bg-surface) !important;
     border-right: 1px solid var(--border) !important;
 }}
 [data-testid="stSidebar"] > div {{ padding: 0 !important; }}
@@ -1356,6 +1356,12 @@ elif page == "Créer un devis":
 
     WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
 
+    def _parse_prix(val):
+        try:
+            return float(str(val).replace(",",".").replace(" ","").replace("\u202f","") or 0)
+        except Exception:
+            return 0.0
+
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_catalogue_devis(u):
         ws, err = get_worksheet(u, "catalogue")
@@ -1396,9 +1402,7 @@ elif page == "Créer un devis":
                 if not any(r):
                     continue
                 row_d = dict(zip(headers, r + [""] * max(0, len(headers) - len(r))))
-                article = (row_d.get("sous-prestation","") or row_d.get("sous prestation","") or
-                           row_d.get("designation","") or row_d.get("désignation","") or
-                           row_d.get("prestation","")).strip()
+                article = (row_d.get("sous-prestation","") or row_d.get("sous prestation","")).strip()
                 if not article:
                     continue
                 prix = (row_d.get("total ht","") or row_d.get("prix vente ht","") or
@@ -1423,12 +1427,6 @@ elif page == "Créer un devis":
     prestations_items = _load_prestations_devis(user)
     cat_labels        = ["— Choisir un article —"] + [it["article"] for it in catalogue_items]
     prest_labels      = ["— Choisir une prestation —"] + [it["label"] for it in prestations_items]
-
-    def _parse_prix(val):
-        try:
-            return float(str(val).replace(",",".").replace(" ","").replace("\u202f","") or 0)
-        except Exception:
-            return 0.0
 
     if "devis_lignes" not in st.session_state:
         st.session_state.devis_lignes = [
