@@ -3682,6 +3682,144 @@ elif page == "Salariés":
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : RETARDS & AVENANTS
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "Retards & Avenants":
+    page_header("Retards & Avenants", "Signalement de retard chantier — mise à jour automatique via n8n")
+
+    WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook-test/retard-{user}"
+
+    df_retard = df[df["_signe"] & ~df["_pv"]].copy()
+
+    if df_retard.empty:
+        st.info("Aucun chantier actif (devis signé, PV non signé).")
+        st.stop()
+
+    st.markdown("#### Sélectionner le chantier concerné")
+
+    def _label_chantier_r(row):
+        parts = []
+        if COL_NUM     and str(row.get(COL_NUM,     "")).strip() not in ("", "nan"): parts.append(str(row[COL_NUM]).strip())
+        if COL_CLIENT  and str(row.get(COL_CLIENT,  "")).strip() not in ("", "nan"): parts.append(str(row[COL_CLIENT]).strip())
+        if COL_CHANTIER and str(row.get(COL_CHANTIER,"")).strip() not in ("", "nan"): parts.append(str(row[COL_CHANTIER]).strip())
+        return " — ".join(parts) if parts else f"Ligne {row.name + 2}"
+
+    chantier_labels_r = [_label_chantier_r(row) for _, row in df_retard.iterrows()]
+    chantier_index_r  = {lbl: idx for lbl, idx in zip(chantier_labels_r, df_retard.index)}
+
+    sel_label_r = st.selectbox("Chantier", chantier_labels_r, key="retard_chantier_sel")
+    sel_row_r   = df_retard.loc[chantier_index_r[sel_label_r]]
+
+    def _safe_r(col):
+        if not col: return ""
+        v = str(sel_row_r.get(col, "")).strip()
+        return "" if v.lower() in ("nan", "none", "") else v
+
+    num_devis_r   = _safe_r(COL_NUM)
+    nom_client_r  = _safe_r(COL_CLIENT)
+    chantier_id_r = _safe_r(COL_CHANTIER)
+    montant_r     = _safe_r(COL_MONTANT)
+    adresse_r     = _safe_r(COL_ADRESSE) if COL_ADRESSE else ""
+
+    email_col_r      = fcol(df, "email", "mail", "courriel")
+    email_client_r   = _safe_r(email_col_r) if email_col_r else ""
+
+    # ── Récap chantier ────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.markdown("<div style='font-size:0.82rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;'>Chantier sélectionné</div>", unsafe_allow_html=True)
+        rc1, rc2, rc3 = st.columns(3)
+        rc1.markdown(f"**N° Devis**\n\n`{num_devis_r or '—'}`")
+        rc2.markdown(f"**Client**\n\n{nom_client_r or '—'}")
+        rc3.markdown(f"**Montant**\n\n{montant_r + ' €' if montant_r else '—'}")
+        if adresse_r:
+            st.markdown(f"📍 {adresse_r}")
+
+    st.markdown("---")
+    st.markdown("#### Signalement du retard")
+
+    col_f1_r, col_f2_r = st.columns(2)
+
+    with col_f1_r:
+        date_fin_cur_str = _safe_r(COL_DATE_FIN) if COL_DATE_FIN else ""
+        try:
+            date_fin_pre_r = pd.to_datetime(date_fin_cur_str, dayfirst=True).date() if date_fin_cur_str else datetime.today().date()
+        except Exception:
+            date_fin_pre_r = datetime.today().date()
+
+        ancienne_date_r = st.date_input("Date de fin initiale (ancienne)", value=date_fin_pre_r, key="retard_ancienne_date")
+        email_r         = st.text_input("Email client", value=email_client_r, placeholder="jean.dupont@email.com", key="retard_email")
+
+    with col_f2_r:
+        nouvelle_date_r = st.date_input("Nouvelle date de fin prévue", value=date_fin_pre_r + timedelta(days=14), key="retard_nouvelle_date")
+        motif_r         = st.selectbox("Motif du retard", [
+            "Rupture de stock matériaux",
+            "Conditions météorologiques",
+            "Modification des travaux par le client",
+            "Retard livraison fournisseur",
+            "Problème technique imprévu",
+            "Absence d'un intervenant",
+            "Attente validation client",
+            "Autre",
+        ], key="retard_motif")
+
+    details_r = st.text_area("Détails complémentaires *", placeholder="Ex : Le fournisseur annonce 15 jours de délai supplémentaire.", height=100, key="retard_details")
+
+    delta_r = (nouvelle_date_r - ancienne_date_r).days
+    if delta_r > 0:
+        st.info(f"⏱️ Décalage : **{delta_r} jour(s)** — du {ancienne_date_r.strftime('%d/%m/%Y')} au {nouvelle_date_r.strftime('%d/%m/%Y')}")
+    elif delta_r == 0:
+        st.warning("La nouvelle date est identique à l'ancienne.")
+    else:
+        st.error("La nouvelle date est antérieure à l'ancienne — vérifiez les dates.")
+
+    payload_retard = {
+        "num_devis":     num_devis_r,
+        "chantier_id":   chantier_id_r,
+        "nom_client":    nom_client_r,
+        "email_client":  email_r,
+        "ancienne_date": ancienne_date_r.strftime("%d/%m/%Y"),
+        "nouvelle_date": nouvelle_date_r.strftime("%d/%m/%Y"),
+        "motif":         motif_r,
+        "details":       details_r.strip(),
+        "entreprise":    "FLOXIA",
+    }
+
+    with st.expander("🔍 Aperçu JSON envoyé à n8n", expanded=False):
+        st.json(payload_retard)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_btn1_r, col_btn2_r = st.columns([1, 2])
+    with col_btn1_r:
+        st.caption(f"Webhook cible : `retard-{user}`")
+    with col_btn2_r:
+        if st.button("📤 Envoyer le signalement à n8n", use_container_width=True, type="primary", key="btn_send_retard"):
+            errors_r = []
+            if not num_devis_r:
+                errors_r.append("Numéro de devis introuvable — vérifiez la colonne dans Sheets.")
+            if not nom_client_r:
+                errors_r.append("Nom client manquant.")
+            if delta_r <= 0:
+                errors_r.append("La nouvelle date doit être postérieure à l'ancienne.")
+            if not details_r.strip():
+                errors_r.append("Les détails sont obligatoires.")
+
+            if errors_r:
+                for e in errors_r:
+                    st.error(e)
+            else:
+                try:
+                    resp = requests.post(WEBHOOK_RETARD, json=payload_retard, timeout=30, headers={"Content-Type": "application/json"})
+                    if resp.status_code in (200, 201):
+                        st.success(f"✅ Signalement envoyé pour **{nom_client_r}** — Devis `{num_devis_r}`. n8n va mettre à jour le Google Sheet et générer le PV de retard.")
+                    else:
+                        st.error(f"Erreur n8n : HTTP {resp.status_code}")
+                        st.caption(resp.text[:300])
+                except requests.exceptions.Timeout:
+                    st.error("Timeout — le webhook n8n ne répond pas. Vérifiez qu'il est actif.")
+                except Exception as ex:
+                    st.error(f"Erreur réseau : {ex}")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
