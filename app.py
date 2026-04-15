@@ -460,6 +460,7 @@ with st.sidebar:
         "Factures & Paiements",
         "Chantiers",
         "Planning",
+        "Salariés",
         notif_label,
         "Espace Clients",
         "Tous les dossiers",
@@ -2573,6 +2574,158 @@ elif page == "Planning":
                     </div>
                   </div>
                 </div>""", unsafe_allow_html=True)
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE : SALARIÉS
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "Salariés":
+    page_header("Salariés", "Vue semaine des interventions")
+
+    COL_SAL_S  = fcol(df, "salarié", "salarie", "salar")
+    COL_HDeb_S = fcol(df, "heure_debut", "heure debut", "heure_deb")
+    COL_HFin_S = fcol(df, "heure_fin", "heure fin")
+
+    if not COL_SAL_S:
+        st.warning("Colonne salarié non détectée.")
+        st.stop()
+    if not COL_DATE_DEBUT or not COL_DATE_FIN:
+        st.warning("Colonnes de dates non détectées.")
+        st.stop()
+
+    @st.cache_data(ttl=20, show_spinner=False)
+    def _load_jours_salaries(u):
+        ws, err = get_worksheet(u, "liste")
+        if err or not ws:
+            return {}
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return {}
+            headers = [h.strip().lower() for h in vals[0]]
+            sal_idx = next((i for i, h in enumerate(headers) if "salar" in h), None)
+            jour_idx = next((i for i, h in enumerate(headers) if "jour" in h), None)
+            if sal_idx is None:
+                return {}
+            out = {}
+            for r in vals[1:]:
+                if len(r) <= sal_idx:
+                    continue
+                nom = r[sal_idx].strip()
+                if not nom:
+                    continue
+                if jour_idx is not None and len(r) > jour_idx and r[jour_idx].strip():
+                    days = [d.strip() for d in r[jour_idx].replace(";", ",").split(",") if d.strip()]
+                else:
+                    days = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
+                out[nom] = days
+            return out
+        except Exception:
+            return {}
+
+    def _parse_date_emp(val):
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return None
+        for fmt_d in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"]:
+            try:
+                return pd.to_datetime(s, format=fmt_d).date()
+            except Exception:
+                pass
+        try:
+            return pd.to_datetime(s, dayfirst=True).date()
+        except Exception:
+            return None
+
+    def _parse_time_hours(val):
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return 0.0
+        if " " in s and ":" in s:
+            s = s.split(" ")[-1]
+        if ":" in s:
+            p = s.split(":")
+            try:
+                return int(p[0]) + int(p[1]) / 60
+            except Exception:
+                return 0.0
+        try:
+            return float(s)
+        except Exception:
+            return 0.0
+
+    JOURS_DICO = {"Lun": 0, "Mar": 1, "Mer": 2, "Jeu": 3, "Ven": 4, "Sam": 5, "Dim": 6}
+    jours_salaries = _load_jours_salaries(user)
+    pause_h = 1.0
+
+    if "sal_week_offset" not in st.session_state:
+        st.session_state["sal_week_offset"] = 0
+    off = st.session_state["sal_week_offset"]
+    today_s = datetime.now().date()
+    lundi = today_s - timedelta(days=today_s.weekday()) + timedelta(weeks=off)
+    dimanche = lundi + timedelta(days=6)
+
+    n1, n2, n3 = st.columns([1, 2, 1])
+    with n1:
+        if st.button("Semaine précédente", use_container_width=True):
+            st.session_state["sal_week_offset"] -= 1
+            st.rerun()
+    with n2:
+        st.markdown(f"<h3 style='text-align:center;margin:0;'>Semaine du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}</h3>", unsafe_allow_html=True)
+    with n3:
+        if st.button("Semaine suivante", use_container_width=True):
+            st.session_state["sal_week_offset"] += 1
+            st.rerun()
+
+    df_s = df.copy()
+    df_s["_start_d"] = df_s[COL_DATE_DEBUT].apply(_parse_date_emp)
+    df_s["_end_d"] = df_s[COL_DATE_FIN].apply(_parse_date_emp)
+    df_s = df_s[df_s["_start_d"].notna() & df_s["_end_d"].notna()]
+    df_s = df_s[df_s["_end_d"] >= df_s["_start_d"]]
+    df_s["_sal"] = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip())
+    df_s = df_s[df_s["_sal"] != ""]
+    df_s["_hdeb"] = df_s[COL_HDeb_S].apply(_parse_time_hours) if COL_HDeb_S else 0.0
+    df_s["_hfin"] = df_s[COL_HFin_S].apply(_parse_time_hours) if COL_HFin_S else 0.0
+    df_s["_duree_h"] = (df_s["_hfin"] - df_s["_hdeb"] - pause_h).clip(lower=0.0)
+
+    df_sem = df_s[(df_s["_start_d"] <= dimanche) & (df_s["_end_d"] >= lundi)].copy()
+    salaries = sorted(df_sem["_sal"].unique(), key=str.lower)
+
+    if len(salaries) == 0:
+        st.info("Aucun salarié planifié sur cette semaine.")
+        st.stop()
+
+    def _jours_reels(sal, d1, d2):
+        jours_fixes = jours_salaries.get(sal, ["Lun", "Mar", "Mer", "Jeu", "Ven"])
+        idx_ok = {JOURS_DICO[j] for j in jours_fixes if j in JOURS_DICO}
+        out = []
+        cur = d1
+        while cur <= d2:
+            if cur.weekday() in idx_ok:
+                out.append(cur)
+            cur += timedelta(days=1)
+        return out
+
+    for sal in salaries:
+        ch_sal = df_sem[df_sem["_sal"] == sal]
+        total_h = 0.0
+        for _, r in ch_sal.iterrows():
+            jours = [d for d in _jours_reels(sal, r["_start_d"], r["_end_d"]) if lundi <= d <= dimanche]
+            total_h += len(jours) * float(r["_duree_h"])
+        st.markdown(f"### {sal}")
+        st.caption(f"{len(ch_sal)} chantier(s) | {total_h:.1f}h estimées cette semaine")
+        rows = []
+        for _, r in ch_sal.sort_values("_start_d").iterrows():
+            client = str(r[COL_CLIENT]).strip() if COL_CLIENT else ""
+            chantier = str(r[COL_CHANTIER]).strip() if COL_CHANTIER else ""
+            rows.append({
+                "Client": client,
+                "Chantier": chantier,
+                "Début": r["_start_d"].strftime("%d/%m/%Y"),
+                "Fin": r["_end_d"].strftime("%d/%m/%Y"),
+                "Heures/jour": round(float(r["_duree_h"]), 2),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.markdown("---")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
