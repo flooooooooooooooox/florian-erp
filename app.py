@@ -1207,36 +1207,49 @@ elif page == "📄 Créer un devis":
             return []
 
     @st.cache_data(ttl=60, show_spinner=False)
-    def _load_prestations_devis(u):
-        ws, err = get_worksheet(u, "Feuille 1")
-        if err:
-            return []
-        try:
-            vals = ws.get_all_values()
-            if not vals or len(vals) < 2:
-                return []
-            headers = [h.strip().lower() for h in vals[0]]
-            items = []
-            for r in vals[1:]:
-                if not any(r):
-                    continue
-                row_d = dict(zip(headers, r + [""] * max(0, len(headers) - len(r))))
-                article = (row_d.get("sous-prestation","") or row_d.get("sous prestation","") or
-                           row_d.get("designation","") or row_d.get("désignation","") or
-                           row_d.get("prestation","")).strip()
-                if not article:
-                    continue
-                prix = (row_d.get("total ht","") or row_d.get("prix vente ht","") or
-                        row_d.get("prix mo ht","")).strip()
-                desc = row_d.get("description","").strip()
-                cat  = (row_d.get("categorie","") or row_d.get("catégorie","") or
-                        row_d.get("type de poste","")).strip()
-                label = article + (f"  –  {prix} € HT" if prix else "")
-                items.append({"label": label, "article": article, "description": desc,
-                               "prix_ht": prix, "categorie": cat, "source": "prestations"})
-            return items
-        except Exception:
-            return []
+def _load_prestations_devis(u):
+    ws, err = get_worksheet(u, "Feuille 1")
+    if err: 
+        return [] [cite: 225]
+    try:
+        vals = ws.get_all_values() [cite: 225]
+        if not vals or len(vals) < 2: 
+            return [] [cite: 225, 226]
+        
+        headers = [h.strip().lower() for h in vals[0]] [cite: 227]
+        items = []
+        for r in vals[1:]:
+            if not any(r): 
+                continue [cite: 227]
+            
+            row_d = dict(zip(headers, r + [""] * max(0, len(headers) - len(r)))) [cite: 227]
+            
+            # Extraction de l'article
+            article = (row_d.get("sous-prestation","") or row_d.get("designation","") or row_d.get("prestation","")).strip() [cite: 227]
+            if not article: 
+                continue [cite: 228]
+            
+            # --- MODIFICATION : RÉCUPÉRATION DE LA QUANTITÉ DU SHEET ---
+            qte_sheet = row_d.get("quantité", row_d.get("qte", "1")).strip()
+            
+            prix = (row_d.get("total ht","") or row_d.get("prix vente ht","")).strip() [cite: 228, 229]
+            desc = row_d.get("description","").strip() [cite: 229]
+            cat  = (row_d.get("categorie","") or row_d.get("catégorie","")).strip() [cite: 229]
+            
+            label = article + (f"  –  {prix} € HT" if prix else "") [cite: 229]
+            
+            items.append({
+                "label": label, 
+                "article": article, 
+                "description": desc,
+                "prix_ht": prix, 
+                "categorie": cat, 
+                "qte": qte_sheet,  # On stocke la qte trouvée
+                "source": "prestations"
+            }) [cite: 230]
+        return items # <--- Vérifiez que ce return est bien aligné avec le "try"
+    except Exception:
+        return [] [cite: 230]
 
     catalogue_items   = _load_catalogue_devis(user)
     prestations_items = _load_prestations_devis(user)
@@ -1506,13 +1519,20 @@ elif page == "📄 Créer un devis":
 # Mise à jour de la validation pour l'email obligatoire
 def _validate():
     errs = []
-    if not client_nom.strip(): errs.append("Nom client manquant")
-    if not client_email.strip(): errs.append("Email client obligatoire pour l'envoi") # Modifié
-    if "@" not in client_email: errs.append("Format d'email invalide") # Ajout sécurité
-    if not objet_travaux.strip(): errs.append("Objet des travaux manquant")
+    if not client_nom.strip(): 
+        errs.append("Nom client manquant") [cite: 264]
+    
+    # --- MODIFICATION : EMAIL OBLIGATOIRE ---
+    if not client_email.strip(): 
+        errs.append("L'email est obligatoire pour pouvoir envoyer le devis")
+    elif "@" not in client_email or "." not in client_email:
+        errs.append("Le format de l'email semble incorrect")
+        
+    if not objet_travaux.strip(): 
+        errs.append("Objet des travaux manquant") [cite: 264]
     if not any(l["article"].strip() for l in lignes):
-        errs.append("Au moins une prestation est requise")
-    return errs
+        errs.append("Au moins une prestation est requise") [cite: 264]
+    return errs [cite: 264]
 
     def _build_payload():
         return {
