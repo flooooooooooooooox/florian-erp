@@ -2873,6 +2873,88 @@ elif page == "Salariés":
         except Exception:
             return {}
 
+    # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
+    @st.cache_data(ttl=10, show_spinner=False)
+    def _load_planning_raw(u):
+        ws, err = get_worksheet(u, "planning")
+        if err:
+            return err, [], []
+        try:
+            vals = ws.get_all_values()
+            if not vals:
+                return None, [], []
+            return None, vals[0], vals[1:]
+        except Exception as e:
+            return str(e), [], []
+
+    @st.cache_data(ttl=10, show_spinner=False)
+    def _load_liste_raw(u):
+        ws, err = get_worksheet(u, "liste")
+        if err:
+            return err, [], []
+        try:
+            vals = ws.get_all_values()
+            if not vals:
+                return None, [], []
+            return None, vals[0], vals[1:]
+        except Exception as e:
+            return str(e), [], []
+
+    err_pl, headers_pl, rows_pl = _load_planning_raw(user)
+
+    def _get_planning_col(sal_nom):
+        for i, h in enumerate(headers_pl):
+            if h.strip().lower() == sal_nom.strip().lower():
+                return i
+        return None
+
+    def _get_overrides_for_sal(sal_nom):
+        col_idx = _get_planning_col(sal_nom)
+        if col_idx is None:
+            return {}
+        overrides = {}
+        for row in rows_pl:
+            if len(row) <= col_idx:
+                continue
+            cell = row[col_idx].strip()
+            if not cell:
+                continue
+            if ":" not in cell:
+                continue
+            try:
+                sem_part, horaires_part = cell.split(":", 1)
+                sem_num = int(sem_part.replace("semaine_", "").strip())
+                jours_overrides = {}
+                for bloc in horaires_part.split(","):
+                    bloc = bloc.strip()
+                    if "_" not in bloc or "-" not in bloc:
+                        continue
+                    jour_k, heures = bloc.split("_", 1)
+                    hd, hf = heures.split("-")
+                    jours_overrides[jour_k.strip()] = {"debut": hd.strip(), "fin": hf.strip()}
+                overrides[sem_num] = jours_overrides
+            except Exception:
+                continue
+        return overrides
+
+    def _get_horaires_pour_jour(sal_nom, jour_date, chantier_row, overrides_all):
+        """
+        Retourne (heure_debut_str, heure_fin_str) pour un salarié à une date donnée.
+        Priorité : override planning > horaires du chantier (suivie).
+        """
+        num_sem = jour_date.isocalendar()[1]
+        overrides_sem = overrides_all.get(num_sem, {})
+        JOURS_KEYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+        jour_key = JOURS_KEYS[jour_date.weekday()]
+        if jour_key in overrides_sem:
+            ov = overrides_sem[jour_key]
+            return ov["debut"], ov["fin"]
+        # Fallback : horaires du chantier (colonne suivie)
+        hdeb = chantier_row["_hdeb"] if "_hdeb" in chantier_row.index else ""
+        hfin = chantier_row["_hfin"] if "_hfin" in chantier_row.index else ""
+        return hdeb, hfin
+
+    # ──────────────────────────────────────────────────────────────────────
     jours_salaries = _load_jours_salaries(user)
 
     if "sal_week_offset" not in st.session_state:
@@ -2908,234 +2990,13 @@ elif page == "Salariés":
     st.markdown("<br>", unsafe_allow_html=True)
     tab_planning, tab_config = st.tabs(["📅 Planning semaine", "⚙️ Jours travaillés"])
 
-    with tab_config:
-        st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
-
-        @st.cache_data(ttl=10, show_spinner=False)
-        def _load_liste_raw(u):
-            ws, err = get_worksheet(u, "liste")
-            if err:
-                return err, [], []
-            try:
-                vals = ws.get_all_values()
-                if not vals:
-                    return None, [], []
-                return None, vals[0], vals[1:]
-            except Exception as e:
-                return str(e), [], []
-
-        @st.cache_data(ttl=10, show_spinner=False)
-        def _load_planning_raw(u):
-            ws, err = get_worksheet(u, "planning")
-            if err:
-                return err, [], []
-            try:
-                vals = ws.get_all_values()
-                if not vals:
-                    return None, [], []
-                return None, vals[0], vals[1:]
-            except Exception as e:
-                return str(e), [], []
-
-        err_l, headers_l, rows_l = _load_liste_raw(user)
-        err_pl, headers_pl, rows_pl = _load_planning_raw(user)
-
-        if err_l:
-            st.error(f"❌ Onglet 'liste' introuvable : {err_l}")
-            st.stop()
-
-        headers_low = [h.strip().lower() for h in headers_l]
-        sal_idx_l = next((i for i, h in enumerate(headers_low) if "salar" in h), None)
-        jour_idx_l = next((i for i, h in enumerate(headers_low) if "jour" in h), None)
-
-        if sal_idx_l is None:
-            st.warning("⚠️ Colonne 'salarié' introuvable dans l'onglet 'liste'.")
-            st.stop()
-
-        # ── Récupère la liste des salariés depuis liste ────────────────────
-        salaries_config = []
-        for r in rows_l:
-            if len(r) > sal_idx_l and r[sal_idx_l].strip():
-                nom = r[sal_idx_l].strip()
-                cur_jours = ""
-                if jour_idx_l is not None and len(r) > jour_idx_l:
-                    cur_jours = r[jour_idx_l].strip()
-                jours_cur = [j.strip() for j in cur_jours.replace(";", ",").split(",") if j.strip() in JOURS_DICO] if cur_jours else ["Lun", "Mar", "Mer", "Jeu", "Ven"]
-                salaries_config.append({"nom": nom, "jours": jours_cur})
-
-        if not salaries_config:
-            st.info("Aucun salarié trouvé dans l'onglet 'liste'.")
-            st.stop()
-
-        # ── Récupère les overrides depuis planning ─────────────────────────
-        # headers_pl = ligne 1 = noms des salariés
-        def _get_planning_col(sal_nom):
-            for i, h in enumerate(headers_pl):
-                if h.strip().lower() == sal_nom.strip().lower():
-                    return i
-            return None
-
-        def _get_overrides_for_sal(sal_nom):
-            col_idx = _get_planning_col(sal_nom)
-            if col_idx is None:
-                return {}
-            overrides = {}
-            for row in rows_pl:
-                if len(row) <= col_idx:
-                    continue
-                cell = row[col_idx].strip()
-                if not cell:
-                    continue
-                # format: semaine_30:lundi_08:00-17:00,mardi_09:00-18:00
-                if ":" not in cell:
-                    continue
-                try:
-                    sem_part, horaires_part = cell.split(":", 1)
-                    sem_num = int(sem_part.replace("semaine_", "").strip())
-                    jours_overrides = {}
-                    for bloc in horaires_part.split(","):
-                        bloc = bloc.strip()
-                        if "_" not in bloc or "-" not in bloc:
-                            continue
-                        jour_k, heures = bloc.split("_", 1)
-                        hd, hf = heures.split("-")
-                        jours_overrides[jour_k.strip()] = {"debut": hd.strip(), "fin": hf.strip()}
-                    overrides[sem_num] = jours_overrides
-                except Exception:
-                    continue
-            return overrides
-
-        # ── Semaine courante ───────────────────────────────────────────────
-        num_semaine = lundi.isocalendar()[1]
-        annee_sem = lundi.isocalendar()[0]
-
-        st.caption(f"Semaine actuelle : **S{num_semaine} {annee_sem}** — du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}")
-        st.markdown("---")
-
-        for sal_item in salaries_config:
-            nom_s = sal_item["nom"]
-            jours_s = sal_item["jours"]
-            overrides = _get_overrides_for_sal(nom_s)
-            overrides_sem = overrides.get(num_semaine, {})
-
-            with st.container(border=True):
-                st.markdown(f"<div style='font-weight:800;font-size:1rem;color:var(--primary);margin-bottom:10px;'>👷 {nom_s}</div>", unsafe_allow_html=True)
-
-                # ── Jours travaillés ───────────────────────────────────────
-                st.markdown("<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;'>Jours habituels</div>", unsafe_allow_html=True)
-                col_jours, col_save_j = st.columns([5, 1])
-                with col_jours:
-                    sel_jours = st.multiselect(
-                        "Jours",
-                        JOURS_LIST,
-                        default=jours_s,
-                        key=f"jours_sel_{nom_s}",
-                        label_visibility="collapsed",
-                    )
-                with col_save_j:
-                    if st.button("💾 Jours", key=f"save_jours_{nom_s}", use_container_width=True):
-                        try:
-                            ws_l2, _ = get_worksheet(user, "liste")
-                            all_vals = ws_l2.get_all_values()
-                            h_low2 = [h.strip().lower() for h in all_vals[0]]
-                            s_idx2 = next((i for i, h in enumerate(h_low2) if "salar" in h), None)
-                            j_idx2 = next((i for i, h in enumerate(h_low2) if "jour" in h), None)
-                            if j_idx2 is None:
-                                # Crée la colonne
-                                j_idx2 = len(all_vals[0])
-                                ws_l2.update_cell(1, j_idx2 + 1, "jours_travail")
-                            if s_idx2 is not None:
-                                for row_i, r2 in enumerate(all_vals[1:], start=2):
-                                    if len(r2) > s_idx2 and r2[s_idx2].strip() == nom_s:
-                                        ws_l2.update_cell(row_i, j_idx2 + 1, ",".join(sel_jours))
-                                        break
-                                _load_liste_raw.clear()
-                                st.success(f"✅ Jours de {nom_s} mis à jour.")
-                                st.rerun()
-                        except Exception as ex:
-                            st.error(f"Erreur : {ex}")
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                # ── Horaires override semaine ──────────────────────────────
-                st.markdown(f"<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;'>Horaires spécifiques — Semaine {num_semaine}</div>", unsafe_allow_html=True)
-
-                jours_actifs = sel_jours if sel_jours else jours_s
-                new_overrides = {}
-
-                cols_h = st.columns(len(jours_actifs)) if jours_actifs else []
-                for i, jour_k in enumerate(jours_actifs):
-                    cur_ov = overrides_sem.get(jour_k.lower(), {})
-                    cur_deb = cur_ov.get("debut", "08:00")
-                    cur_fin = cur_ov.get("fin", "17:00")
-                    try:
-                        t_deb = datetime.strptime(cur_deb, "%H:%M").time()
-                    except Exception:
-                        t_deb = datetime.strptime("08:00", "%H:%M").time()
-                    try:
-                        t_fin = datetime.strptime(cur_fin, "%H:%M").time()
-                    except Exception:
-                        t_fin = datetime.strptime("17:00", "%H:%M").time()
-
-                    with cols_h[i]:
-                        st.markdown(f"<div style='text-align:center;font-weight:700;font-size:0.8rem;color:var(--primary);margin-bottom:4px;'>{jour_k}</div>", unsafe_allow_html=True)
-                        hd = st.time_input("Début", value=t_deb, key=f"hd_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
-                        hf = st.time_input("Fin",   value=t_fin, key=f"hf_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
-                        new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
-
-                if st.button(f"💾 Sauvegarder horaires S{num_semaine}", key=f"save_planning_{nom_s}", use_container_width=True, type="primary"):
-                    try:
-                        ws_pl, err_pl2 = get_worksheet(user, "planning")
-                        if err_pl2:
-                            # Crée l'onglet planning si inexistant
-                            sheet_name, gsa_json = get_user_credentials(user)
-                            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-                            gc = gspread.authorize(creds)
-                            sh = gc.open(sheet_name)
-                            ws_pl = sh.add_worksheet(title="planning", rows=200, cols=50)
-
-                        all_pl = ws_pl.get_all_values()
-                        headers_pl_cur = all_pl[0] if all_pl else []
-
-                        # Trouve ou crée la colonne du salarié
-                        col_sal_pl = None
-                        for i, h in enumerate(headers_pl_cur):
-                            if h.strip().lower() == nom_s.strip().lower():
-                                col_sal_pl = i
-                                break
-                        if col_sal_pl is None:
-                            col_sal_pl = len(headers_pl_cur)
-                            ws_pl.update_cell(1, col_sal_pl + 1, nom_s)
-                            all_pl = ws_pl.get_all_values()
-
-                        # Formate la valeur
-                        horaires_str = ",".join([f"{j}_{v['debut']}-{v['fin']}" for j, v in new_overrides.items()])
-                        cell_val = f"semaine_{num_semaine}:{horaires_str}"
-
-                        # Cherche si la semaine existe déjà
-                        target_row = None
-                        for row_i, row in enumerate(all_pl[1:], start=2):
-                            if len(row) > col_sal_pl and f"semaine_{num_semaine}:" in row[col_sal_pl]:
-                                target_row = row_i
-                                break
-
-                        if target_row:
-                            ws_pl.update_cell(target_row, col_sal_pl + 1, cell_val)
-                        else:
-                            # Ajoute une nouvelle ligne
-                            new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
-                            new_row[col_sal_pl] = cell_val
-                            ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
-
-                        _load_planning_raw.clear()
-                        st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"Erreur : {ex}")
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB : PLANNING SEMAINE
+    # ══════════════════════════════════════════════════════════════════════
     with tab_planning:
-        COL_SAL_S = fcol(df, "salarié", "salarie", "salar")
-        COL_HDeb_S = fcol(df, "heure_debut", "heure debut", "heure_deb")
-        COL_HFin_S = fcol(df, "heure_fin", "heure fin")
+        COL_SAL_S   = fcol(df, "salarié", "salarie", "salar")
+        COL_HDeb_S  = fcol(df, "heure_debut", "heure debut", "heure_deb")
+        COL_HFin_S  = fcol(df, "heure_fin", "heure fin")
 
         if not COL_SAL_S:
             st.warning("⚠️ Colonne 'salarié' non détectée dans l'onglet 'suivie'.")
@@ -3193,20 +3054,24 @@ elif page == "Salariés":
 
         df_s = df.copy()
         df_s["_start_d"] = df_s[COL_DATE_DEBUT].apply(parse_date_s)
-        df_s["_end_d"] = df_s[COL_DATE_FIN].apply(parse_date_s)
+        df_s["_end_d"]   = df_s[COL_DATE_FIN].apply(parse_date_s)
         df_s = df_s[df_s["_start_d"].notna() & df_s["_end_d"].notna()]
-        df_s["_sal"] = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip())
-        df_s["_hdeb"] = df_s[COL_HDeb_S].apply(fmt_time_s) if COL_HDeb_S else ""
-        df_s["_hfin"] = df_s[COL_HFin_S].apply(fmt_time_s) if COL_HFin_S else ""
+        df_s["_sal"]    = df_s[COL_SAL_S].apply(lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip())
+        df_s["_hdeb"]   = df_s[COL_HDeb_S].apply(fmt_time_s) if COL_HDeb_S else ""
+        df_s["_hfin"]   = df_s[COL_HFin_S].apply(fmt_time_s) if COL_HFin_S else ""
         df_s["_hdeb_f"] = df_s[COL_HDeb_S].apply(parse_time_s) if COL_HDeb_S else 0.0
         df_s["_hfin_f"] = df_s[COL_HFin_S].apply(parse_time_s) if COL_HFin_S else 0.0
         df_s["_duree_h"] = (df_s["_hfin_f"] - df_s["_hdeb_f"] - PAUSE_H).clip(lower=0)
 
-        df_sem = df_s[(df_s["_start_d"] <= dimanche) & (df_s["_end_d"] >= lundi) & (df_s["_sal"] != "")].copy()
+        df_sem = df_s[
+            (df_s["_start_d"] <= dimanche) &
+            (df_s["_end_d"] >= lundi) &
+            (df_s["_sal"] != "")
+        ].copy()
 
-        salaries_sem = sorted(df_sem["_sal"].unique(), key=str.lower)
+        salaries_sem    = sorted(df_sem["_sal"].unique(), key=str.lower)
         salaries_connus = sorted([s for s in df_s["_sal"].unique() if s], key=str.lower)
-        all_salaries = salaries_connus if salaries_connus else salaries_sem
+        all_salaries    = salaries_connus if salaries_connus else salaries_sem
 
         def jours_reels(sal_nom, start_d, end_d):
             jours_fixes = jours_salaries.get(sal_nom, ["Lun", "Mar", "Mer", "Jeu", "Ven"])
@@ -3220,18 +3085,34 @@ elif page == "Salariés":
             return result
 
         def heures_semaine(sal_nom, chantiers_df):
+            """Calcule les heures totales en tenant compte des overrides planning."""
+            overrides_sal = _get_overrides_for_sal(sal_nom)
             total = 0.0
             for _, row in chantiers_df.iterrows():
                 jours_r = jours_reels(sal_nom, row["_start_d"], row["_end_d"])
-                jours_cette_sem = [j for j in jours_r if lundi <= j <= dimanche]
-                total += len(jours_cette_sem) * row["_duree_h"]
+                for jour in jours_r:
+                    if lundi <= jour <= dimanche:
+                        hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal_nom, jour, row, overrides_sal)
+                        if hdeb_eff and hfin_eff:
+                            try:
+                                h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
+                                h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
+                                total += max(0, h_fin_f - h_deb_f - PAUSE_H)
+                            except Exception:
+                                total += row["_duree_h"]
+                        else:
+                            total += row["_duree_h"]
             return total
 
         surcharges = 0
         for sal in salaries_sem:
             for jour in jours_sem:
                 ch_sal = df_sem[df_sem["_sal"] == sal]
-                nb = sum(1 for _, r in ch_sal.iterrows() if r["_start_d"] <= jour <= r["_end_d"] and jour in jours_reels(sal, r["_start_d"], r["_end_d"]))
+                nb = sum(
+                    1 for _, r in ch_sal.iterrows()
+                    if r["_start_d"] <= jour <= r["_end_d"]
+                    and jour in jours_reels(sal, r["_start_d"], r["_end_d"])
+                )
                 if nb > 1:
                     surcharges += 1
 
@@ -3245,13 +3126,13 @@ elif page == "Salariés":
 
         for sal in all_salaries:
             chantiers_sal = df_sem[df_sem["_sal"] == sal]
-            actif = len(chantiers_sal) > 0
-            jours_fixes = jours_salaries.get(sal, ["Lun", "Mar", "Mer", "Jeu", "Ven"])
-            h_total = heures_semaine(sal, chantiers_sal) if actif else 0.0
+            actif         = len(chantiers_sal) > 0
+            jours_fixes   = jours_salaries.get(sal, ["Lun", "Mar", "Mer", "Jeu", "Ven"])
+            h_total       = heures_semaine(sal, chantiers_sal) if actif else 0.0
 
             status_color = "#00d68f" if actif else "#6b84a3"
             status_label = f"{len(chantiers_sal)} chantier(s)" if actif else "Disponible"
-            heures_info = f" · {h_total:.1f}h cette semaine" if h_total > 0 else ""
+            heures_info  = f" · {h_total:.1f}h cette semaine" if h_total > 0 else ""
 
             st.markdown(
                 f'<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;'
@@ -3270,15 +3151,43 @@ elif page == "Salariés":
 
             if actif:
                 with st.expander("📅 Voir le détail de la semaine", expanded=False):
+                    # ── Grille 7 jours ─────────────────────────────────────
+                    overrides_sal = _get_overrides_for_sal(sal)
                     cols_j = st.columns(7)
                     for i, (jour, nom_j) in enumerate(zip(jours_sem, jours_noms)):
                         est_jour_fixe = nom_j in jours_fixes
-                        rows_jour = [r for _, r in chantiers_sal.iterrows() if jour in jours_reels(sal, r["_start_d"], r["_end_d"])]
+                        rows_jour = [
+                            r for _, r in chantiers_sal.iterrows()
+                            if jour in jours_reels(sal, r["_start_d"], r["_end_d"])
+                        ]
                         nb_j = len(rows_jour)
-                        h_j = sum(r["_duree_h"] for r in rows_jour)
 
-                        is_today = jour == today_s
-                        today_ring = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
+                        # Calcul heures avec override
+                        h_j = 0.0
+                        for r in rows_jour:
+                            hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal, jour, r, overrides_sal)
+                            if hdeb_eff and hfin_eff:
+                                try:
+                                    h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
+                                    h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
+                                    h_j += max(0, h_fin_f - h_deb_f - PAUSE_H)
+                                except Exception:
+                                    h_j += r["_duree_h"]
+                            else:
+                                h_j += r["_duree_h"]
+
+                        is_today    = jour == today_s
+                        today_ring  = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
+
+                        # Affiche override horaire s'il existe
+                        JOURS_KEYS = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+                        jour_key   = JOURS_KEYS[jour.weekday()]
+                        num_sem_j  = jour.isocalendar()[1]
+                        ov_sem     = overrides_sal.get(num_sem_j, {})
+                        ov_badge   = ""
+                        if jour_key in ov_sem:
+                            ov_h = ov_sem[jour_key]
+                            ov_badge = f"<div style='font-size:0.65rem;color:#ffb84d;margin-top:2px;'>✏️ {ov_h['debut']}–{ov_h['fin']}</div>"
 
                         if not est_jour_fixe:
                             bg, border, txt, txt_col = "rgba(0,0,0,0.02)", "var(--border)", "— Repos", "var(--text-dim)"
@@ -3298,12 +3207,17 @@ elif page == "Salariés":
                                 f'<div style="font-weight:700;font-size:0.78rem;color:var(--text-muted);">{nom_j}</div>'
                                 f'<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px;">{jour.strftime("%d/%m")}</div>'
                                 f'<div style="font-size:0.75rem;font-weight:600;color:{txt_col};">{txt}</div>'
-                                f"{heures_j_str}</div>",
+                                f"{heures_j_str}{ov_badge}</div>",
                                 unsafe_allow_html=True,
                             )
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.markdown("<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;'>🏗️ Chantiers de la semaine</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);"
+                        "margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;'>"
+                        "🏗️ Chantiers de la semaine</div>",
+                        unsafe_allow_html=True,
+                    )
 
                     for _, row in chantiers_sal.sort_values("_start_d").iterrows():
                         def _v(col):
@@ -3312,27 +3226,49 @@ elif page == "Salariés":
                             v = str(row[col]).strip()
                             return "" if v.lower() in ("nan", "none", "") else v.replace("<", "&lt;").replace(">", "&gt;")
 
-                        num_c = _v(COL_NUM)
+                        num_c    = _v(COL_NUM)
                         client_c = _v(COL_CLIENT)
-                        chant_c = _v(COL_CHANTIER)
-                        adr_c = _v(COL_ADRESSE)
-                        mont_c = _v(COL_MONTANT)
-                        hdeb_c = row["_hdeb"]
-                        hfin_c = row["_hfin"]
-                        start_c = row["_start_d"].strftime("%d/%m/%Y")
-                        end_c = row["_end_d"].strftime("%d/%m/%Y")
+                        chant_c  = _v(COL_CHANTIER)
+                        adr_c    = _v(COL_ADRESSE)
+                        mont_c   = _v(COL_MONTANT)
+                        start_c  = row["_start_d"].strftime("%d/%m/%Y")
+                        end_c    = row["_end_d"].strftime("%d/%m/%Y")
 
-                        jours_r_sem = [j for j in jours_reels(sal, row["_start_d"], row["_end_d"]) if lundi <= j <= dimanche]
+                        jours_r_sem = [
+                            j for j in jours_reels(sal, row["_start_d"], row["_end_d"])
+                            if lundi <= j <= dimanche
+                        ]
                         nb_jours_r = len(jours_r_sem)
-                        h_chantier = nb_jours_r * row["_duree_h"]
 
-                        horaire_c = ""
-                        if hdeb_c and hfin_c:
-                            horaire_c = f"🕐 {hdeb_c} → {hfin_c} ({row['_duree_h']:.1f}h/j, pause {PAUSE_H:.0f}h déduite)"
+                        # ── Horaire effectif avec override ─────────────────
+                        h_chantier = 0.0
+                        horaire_c  = ""
+                        for jour_r in jours_r_sem:
+                            hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal, jour_r, row, overrides_sal)
+                            if hdeb_eff and hfin_eff:
+                                try:
+                                    h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
+                                    h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
+                                    duree_eff = max(0, h_fin_f - h_deb_f - PAUSE_H)
+                                except Exception:
+                                    duree_eff = row["_duree_h"]
+                                h_chantier += duree_eff
+                                if not horaire_c:
+                                    note = " · <em style='font-size:0.72rem;opacity:0.7;'>chaque jour</em>" if nb_jours_r > 1 else ""
+                                    # Badge override si horaire modifié
+                                    JOURS_KEYS2 = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+                                    jour_key2   = JOURS_KEYS2[jour_r.weekday()]
+                                    num_sem2    = jour_r.isocalendar()[1]
+                                    is_override = jour_key2 in overrides_sal.get(num_sem2, {})
+                                    override_badge = " <span style='background:rgba(255,184,77,0.2);color:#ffb84d;padding:1px 5px;border-radius:4px;font-size:0.7rem;'>✏️ modifié</span>" if is_override else ""
+                                    horaire_c = f"🕐 {hdeb_eff} → {hfin_eff} ({duree_eff:.1f}h/j, pause {PAUSE_H:.0f}h déduite){override_badge}{note}"
+                            else:
+                                h_chantier += row["_duree_h"]
 
                         jours_fixes_str = ", ".join(jours_fixes) if jours_fixes else "—"
-                        num_badge = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 7px;border-radius:5px;font-size:0.75rem;font-weight:600;margin-right:6px;">{num_c}</span>' if num_c else ""
-                        client_b = f'<strong style="color:var(--text-main);">{client_c}</strong>' if client_c else ""
+                        num_badge    = f'<span style="background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 7px;border-radius:5px;font-size:0.75rem;font-weight:600;margin-right:6px;">{num_c}</span>' if num_c else ""
+                        client_b     = f'<strong style="color:var(--text-main);">{client_c}</strong>' if client_c else ""
+                        montant_badge = f'<span style="background:rgba(0,214,143,0.1);color:#00d68f;padding:2px 8px;border-radius:5px;font-size:0.75rem;font-weight:600;">{mont_c} €</span>' if mont_c else ""
 
                         st.markdown(
                             f'<div style="padding:12px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">'
@@ -3344,7 +3280,7 @@ elif page == "Salariés":
                             + f"<div style='display:flex;gap:8px;flex-wrap:wrap;'>"
                             + f"<span style='background:rgba(79,142,247,0.1);color:#4f8ef7;padding:2px 8px;border-radius:5px;font-size:0.75rem;'>📅 {start_c}</span>"
                             + f"<span style='background:rgba(255,92,122,0.1);color:#ff5c7a;padding:2px 8px;border-radius:5px;font-size:0.75rem;'>🏁 {end_c}</span>"
-                            + (f"<span style='background:rgba(0,214,143,0.1);color:#00d68f;padding:2px 8px;border-radius:5px;font-size:0.75rem;font-weight:600;'>{mont_c} €</span>" if mont_c else "")
+                            + (f"{montant_badge}" if mont_c else "")
                             + "</div></div>",
                             unsafe_allow_html=True,
                         )
@@ -3353,6 +3289,189 @@ elif page == "Salariés":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB : CONFIGURATION JOURS TRAVAILLÉS
+    # ══════════════════════════════════════════════════════════════════════
+    with tab_config:
+        st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
+
+        err_l, headers_l, rows_l = _load_liste_raw(user)
+
+        if err_l:
+            st.error(f"❌ Onglet 'liste' introuvable : {err_l}")
+            st.stop()
+
+        headers_low = [h.strip().lower() for h in headers_l]
+        sal_idx_l   = next((i for i, h in enumerate(headers_low) if "salar" in h), None)
+        jour_idx_l  = next((i for i, h in enumerate(headers_low) if "jour"  in h), None)
+
+        if sal_idx_l is None:
+            st.warning("⚠️ Colonne 'salarié' introuvable dans l'onglet 'liste'.")
+            st.stop()
+
+        salaries_config = []
+        for r in rows_l:
+            if len(r) > sal_idx_l and r[sal_idx_l].strip():
+                nom = r[sal_idx_l].strip()
+                cur_jours = ""
+                if jour_idx_l is not None and len(r) > jour_idx_l:
+                    cur_jours = r[jour_idx_l].strip()
+                jours_cur = (
+                    [j.strip() for j in cur_jours.replace(";", ",").split(",") if j.strip() in JOURS_DICO]
+                    if cur_jours else ["Lun", "Mar", "Mer", "Jeu", "Ven"]
+                )
+                salaries_config.append({"nom": nom, "jours": jours_cur})
+
+        if not salaries_config:
+            st.info("Aucun salarié trouvé dans l'onglet 'liste'.")
+            st.stop()
+
+        num_semaine = lundi.isocalendar()[1]
+        annee_sem   = lundi.isocalendar()[0]
+        st.caption(f"Semaine actuelle : **S{num_semaine} {annee_sem}** — du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}")
+        st.markdown("---")
+
+        for sal_item in salaries_config:
+            nom_s  = sal_item["nom"]
+            jours_s = sal_item["jours"]
+            overrides      = _get_overrides_for_sal(nom_s)
+            overrides_sem  = overrides.get(num_semaine, {})
+
+            with st.container(border=True):
+                st.markdown(
+                    f"<div style='font-weight:800;font-size:1rem;color:var(--primary);margin-bottom:10px;'>👷 {nom_s}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # ── Jours habituels ────────────────────────────────────────
+                st.markdown(
+                    "<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);"
+                    "text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;'>Jours habituels</div>",
+                    unsafe_allow_html=True,
+                )
+                col_jours, col_save_j = st.columns([5, 1])
+                with col_jours:
+                    sel_jours = st.multiselect(
+                        "Jours", JOURS_LIST,
+                        default=jours_s,
+                        key=f"jours_sel_{nom_s}",
+                        label_visibility="collapsed",
+                    )
+                with col_save_j:
+                    if st.button("💾 Jours", key=f"save_jours_{nom_s}", use_container_width=True):
+                        try:
+                            ws_l2, _ = get_worksheet(user, "liste")
+                            all_vals  = ws_l2.get_all_values()
+                            h_low2    = [h.strip().lower() for h in all_vals[0]]
+                            s_idx2    = next((i for i, h in enumerate(h_low2) if "salar" in h), None)
+                            j_idx2    = next((i for i, h in enumerate(h_low2) if "jour"  in h), None)
+                            if j_idx2 is None:
+                                j_idx2 = len(all_vals[0])
+                                ws_l2.update_cell(1, j_idx2 + 1, "jours_travail")
+                            if s_idx2 is not None:
+                                for row_i, r2 in enumerate(all_vals[1:], start=2):
+                                    if len(r2) > s_idx2 and r2[s_idx2].strip() == nom_s:
+                                        ws_l2.update_cell(row_i, j_idx2 + 1, ",".join(sel_jours))
+                                        break
+                                _load_liste_raw.clear()
+                                _load_jours_salaries.clear()
+                                st.success(f"✅ Jours de {nom_s} mis à jour.")
+                                st.rerun()
+                        except Exception as ex:
+                            st.error(f"Erreur : {ex}")
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Horaires spécifiques pour la semaine ───────────────────
+                st.markdown(
+                    f"<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);"
+                    f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;'>"
+                    f"Horaires spécifiques — Semaine {num_semaine}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                jours_actifs  = sel_jours if sel_jours else jours_s
+                new_overrides = {}
+                cols_h        = st.columns(len(jours_actifs)) if jours_actifs else []
+
+                for i, jour_k in enumerate(jours_actifs):
+                    cur_ov  = overrides_sem.get(jour_k.lower(), {})
+                    cur_deb = cur_ov.get("debut", "08:00")
+                    cur_fin = cur_ov.get("fin",   "17:00")
+                    try:
+                        t_deb = datetime.strptime(cur_deb, "%H:%M").time()
+                    except Exception:
+                        t_deb = datetime.strptime("08:00", "%H:%M").time()
+                    try:
+                        t_fin = datetime.strptime(cur_fin, "%H:%M").time()
+                    except Exception:
+                        t_fin = datetime.strptime("17:00", "%H:%M").time()
+
+                    with cols_h[i]:
+                        # Indique visuellement si un override existe déjà
+                        has_ov = jour_k.lower() in overrides_sem
+                        badge  = " ✏️" if has_ov else ""
+                        st.markdown(
+                            f"<div style='text-align:center;font-weight:700;font-size:0.8rem;"
+                            f"color:{'#ffb84d' if has_ov else 'var(--primary)'};margin-bottom:4px;'>{jour_k}{badge}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        hd = st.time_input("Début", value=t_deb, key=f"hd_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
+                        hf = st.time_input("Fin",   value=t_fin, key=f"hf_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
+                        new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
+
+                if st.button(
+                    f"💾 Sauvegarder horaires S{num_semaine}",
+                    key=f"save_planning_{nom_s}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    try:
+                        ws_pl, err_pl2 = get_worksheet(user, "planning")
+                        if err_pl2:
+                            sheet_name, gsa_json = get_user_credentials(user)
+                            creds  = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+                            gc     = gspread.authorize(creds)
+                            sh     = gc.open(sheet_name)
+                            ws_pl  = sh.add_worksheet(title="planning", rows=200, cols=50)
+
+                        all_pl          = ws_pl.get_all_values()
+                        headers_pl_cur  = all_pl[0] if all_pl else []
+
+                        col_sal_pl = None
+                        for i, h in enumerate(headers_pl_cur):
+                            if h.strip().lower() == nom_s.strip().lower():
+                                col_sal_pl = i
+                                break
+                        if col_sal_pl is None:
+                            col_sal_pl = len(headers_pl_cur)
+                            ws_pl.update_cell(1, col_sal_pl + 1, nom_s)
+                            all_pl = ws_pl.get_all_values()
+
+                        horaires_str = ",".join([
+                            f"{j}_{v['debut']}-{v['fin']}"
+                            for j, v in new_overrides.items()
+                        ])
+                        cell_val = f"semaine_{num_semaine}:{horaires_str}"
+
+                        target_row = None
+                        for row_i, row in enumerate(all_pl[1:], start=2):
+                            if len(row) > col_sal_pl and f"semaine_{num_semaine}:" in row[col_sal_pl]:
+                                target_row = row_i
+                                break
+
+                        if target_row:
+                            ws_pl.update_cell(target_row, col_sal_pl + 1, cell_val)
+                        else:
+                            new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
+                            new_row[col_sal_pl] = cell_val
+                            ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
+
+                        _load_planning_raw.clear()
+                        st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Erreur : {ex}")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
