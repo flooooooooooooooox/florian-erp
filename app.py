@@ -2196,44 +2196,38 @@ elif page == "📅 Planning":
     df_plan = df[cols_utiles].copy()
 
     MOIS_FR = {
-    "janvier":1,"février":2,"fevrier":2,"mars":3,"avril":4,"mai":5,"juin":6,
-    "juillet":7,"août":8,"aout":8,"septembre":9,"octobre":10,"novembre":11,"décembre":12,"decembre":12
-}
- 
-def parse_date_flex(val):
-    import re
-    s = str(val).strip()
-    if not s or s.lower() in ("nan", "none", ""):
-        return pd.NaT
-    # Supprimer partie heure si présente (ex: "2026-04-15 00:00:00")
-    s = s.split("T")[0].split(" ")[0] if re.match(r"\d{4}-\d{2}-\d{2}", s) else s
-    # Formats numériques classiques
-    for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]:
-        try:
-            return pd.to_datetime(s, format=fmt)
-        except:
-            pass
-    # Format "15 avril 2026" ou "15 April 2026"
-    m = re.match(r"(\d{1,2})\s+([a-zéûîôàA-Z]+)\s+(\d{4})", s, re.IGNORECASE)
-    if m:
-        day, month_str, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
-        # Mois français
-        mois_num = MOIS_FR.get(month_str)
-        if mois_num:
+        "janvier":1,"février":2,"fevrier":2,"mars":3,"avril":4,"mai":5,"juin":6,
+        "juillet":7,"août":8,"aout":8,"septembre":9,"octobre":10,"novembre":11,"décembre":12,"decembre":12
+    }
+
+    def parse_date_flex(val):
+        import re
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return pd.NaT
+        s = s.split("T")[0].split(" ")[0] if re.match(r"\d{4}-\d{2}-\d{2}", s) else s
+        for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]:
             try:
-                return pd.Timestamp(year=year, month=mois_num, day=day)
+                return pd.to_datetime(s, format=fmt)
             except:
                 pass
-        # Laisser pandas essayer avec locale anglaise
+        m = re.match(r"(\d{1,2})\s+([a-zéûîôàA-Z]+)\s+(\d{4})", s, re.IGNORECASE)
+        if m:
+            day, month_str, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+            mois_num = MOIS_FR.get(month_str)
+            if mois_num:
+                try:
+                    return pd.Timestamp(year=year, month=mois_num, day=day)
+                except:
+                    pass
+            try:
+                return pd.to_datetime(f"{day} {m.group(2)} {year}", format="%d %B %Y")
+            except:
+                pass
         try:
-            return pd.to_datetime(f"{day} {m.group(2)} {year}", format="%d %B %Y")
+            return pd.to_datetime(s, dayfirst=True)
         except:
-            pass
-    # Fallback générique pandas
-    try:
-        return pd.to_datetime(s, dayfirst=True)
-    except:
-        return pd.NaT
+            return pd.NaT
 
     df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
