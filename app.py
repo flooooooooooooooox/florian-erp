@@ -1012,7 +1012,6 @@ elif page == "📝 Éditeur Google Sheet":
 elif page == "🔔 Notifications":
     page_header("🔔 Notifications", "Devis signés en attente de planification")
 
-    WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook-test/reponse-{user}"
     WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user}"
 
     @st.cache_data(ttl=60, show_spinner=False)
@@ -2185,6 +2184,33 @@ elif page == "📅 Planning":
             if 0 <= h <= 23: return f"{h:02d}:00"
         except: pass
         return s
+    import re
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return ""
+    # Supprimer les espaces autour du séparateur : "08 : 00" → "08:00"
+    s = re.sub(r"\s*:\s*", ":", s)
+    # Si l'heure est dans une datetime "2026-04-15 08:00:00" → prend la partie heure
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        parts = s.split(" ")
+        if len(parts) >= 2:
+            s = parts[1]
+    # Format HH:MM ou HH:MM:SS
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+    if m:
+        h, mn = int(m.group(1)), int(m.group(2))
+        if 0 <= h <= 23 and 0 <= mn <= 59:
+            return f"{h:02d}:{mn:02d}"
+    # Format entier seul "8" → "08:00"
+    try:
+        h = int(float(s))
+        if 0 <= h <= 23:
+            return f"{h:02d}:00"
+    except:
+        pass
+    return s
 
     today = datetime.now()
 
@@ -2199,6 +2225,45 @@ elif page == "📅 Planning":
             except: pass
         try: return pd.to_datetime(s, dayfirst=True)
         except: return pd.NaT
+    MOIS_FR = {
+    "janvier":1,"février":2,"fevrier":2,"mars":3,"avril":4,"mai":5,"juin":6,
+    "juillet":7,"août":8,"aout":8,"septembre":9,"octobre":10,"novembre":11,"décembre":12,"decembre":12
+}
+ 
+def parse_date_flex(val):
+    import re
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return pd.NaT
+    # Supprimer partie heure si présente (ex: "2026-04-15 00:00:00")
+    s = s.split("T")[0].split(" ")[0] if re.match(r"\d{4}-\d{2}-\d{2}", s) else s
+    # Formats numériques classiques
+    for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]:
+        try:
+            return pd.to_datetime(s, format=fmt)
+        except:
+            pass
+    # Format "15 avril 2026" ou "15 April 2026"
+    m = re.match(r"(\d{1,2})\s+([a-zéûîôàA-Z]+)\s+(\d{4})", s, re.IGNORECASE)
+    if m:
+        day, month_str, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        # Mois français
+        mois_num = MOIS_FR.get(month_str)
+        if mois_num:
+            try:
+                return pd.Timestamp(year=year, month=mois_num, day=day)
+            except:
+                pass
+        # Laisser pandas essayer avec locale anglaise
+        try:
+            return pd.to_datetime(f"{day} {m.group(2)} {year}", format="%d %B %Y")
+        except:
+            pass
+    # Fallback générique pandas
+    try:
+        return pd.to_datetime(s, dayfirst=True)
+    except:
+        return pd.NaT
 
     df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
@@ -2638,6 +2703,124 @@ elif page == "👷 Salariés":
                 except: pass
             try: return float(s)
             except: return 0.0
+        # ══════════════════════════════════════════════════════════════════════
+# PATCH À APPLIQUER DANS app.py — PAGE PLANNING
+# Remplace les fonctions parse_date_flex et clean_time_val existantes
+# par celles-ci, plus robustes.
+# ══════════════════════════════════════════════════════════════════════
+
+# ── parse_date_flex ───────────────────────────────────────────────────
+# Gère tous les formats rencontrés dans le Sheet :
+#   "15/04/2026"  "2026-04-15"  "15 avril 2026"  "15 April 2026"
+#   "2026-04-15T00:00:00"  "April 15, 2026"  etc.
+
+MOIS_FR = {
+    "janvier":1,"février":2,"fevrier":2,"mars":3,"avril":4,"mai":5,"juin":6,
+    "juillet":7,"août":8,"aout":8,"septembre":9,"octobre":10,"novembre":11,"décembre":12,"decembre":12
+}
+
+def parse_date_flex(val):
+    import re
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return pd.NaT
+    # Supprimer partie heure si présente (ex: "2026-04-15 00:00:00")
+    s = s.split("T")[0].split(" ")[0] if re.match(r"\d{4}-\d{2}-\d{2}", s) else s
+    # Formats numériques classiques
+    for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]:
+        try:
+            return pd.to_datetime(s, format=fmt)
+        except:
+            pass
+    # Format "15 avril 2026" ou "15 April 2026"
+    m = re.match(r"(\d{1,2})\s+([a-zéûîôàA-Z]+)\s+(\d{4})", s, re.IGNORECASE)
+    if m:
+        day, month_str, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        # Mois français
+        mois_num = MOIS_FR.get(month_str)
+        if mois_num:
+            try:
+                return pd.Timestamp(year=year, month=mois_num, day=day)
+            except:
+                pass
+        # Laisser pandas essayer avec locale anglaise
+        try:
+            return pd.to_datetime(f"{day} {m.group(2)} {year}", format="%d %B %Y")
+        except:
+            pass
+    # Fallback générique pandas
+    try:
+        return pd.to_datetime(s, dayfirst=True)
+    except:
+        return pd.NaT
+
+
+# ── clean_time_val ────────────────────────────────────────────────────
+# Gère : "08:00"  "8:00"  "08 : 00"  "8"  "08:00:00"  "08 00"
+# Retourne une string "HH:MM" ou "" si invalide.
+
+def clean_time_val(val):
+    import re
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return ""
+    # Supprimer les espaces autour du séparateur : "08 : 00" → "08:00"
+    s = re.sub(r"\s*:\s*", ":", s)
+    # Si l'heure est dans une datetime "2026-04-15 08:00:00" → prend la partie heure
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        parts = s.split(" ")
+        if len(parts) >= 2:
+            s = parts[1]
+    # Format HH:MM ou HH:MM:SS
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+    if m:
+        h, mn = int(m.group(1)), int(m.group(2))
+        if 0 <= h <= 23 and 0 <= mn <= 59:
+            return f"{h:02d}:{mn:02d}"
+    # Format entier seul "8" → "08:00"
+    try:
+        h = int(float(s))
+        if 0 <= h <= 23:
+            return f"{h:02d}:00"
+    except:
+        pass
+    return s
+
+
+# ── parse_time_s (pour calcul heures) ────────────────────────────────
+# Retourne un float (ex: 8.5 pour 08:30)
+
+def parse_time_s(val):
+    import re
+    if val is None:
+        return 0.0
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return 0.0
+    s = re.sub(r"\s*:\s*", ":", s)
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        parts = s.split(" ")
+        if len(parts) >= 2:
+            s = parts[1]
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+    if m:
+        try:
+            return int(m.group(1)) + int(m.group(2)) / 60
+        except:
+            pass
+    try:
+        return float(s)
+    except:
+        return 0.0
+
+
+# ── fmt_time_s (pour affichage dans la vue salariés) ──────────────────
+# Retourne une string "HH:MM" ou "" si invalide.
+
+def fmt_time_s(val):
+    return clean_time_val(val)
 
         def fmt_time_s(val):
             s = str(val).strip()
@@ -2841,4 +3024,5 @@ elif page == "📁 Tous les dossiers":
         d = d[mask]
 
     st.caption(f"{len(d)} dossier(s) trouvé(s)")
-    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste","_statut_ch","_star
+    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste","_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
+    show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
