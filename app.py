@@ -2844,35 +2844,34 @@ elif page == "Salariés":
     JOURS_LIST = list(JOURS_DICO.keys())
 
     @st.cache_data(ttl=30, show_spinner=False)
-    def _load_jours_salaries(u):
-        ws, err = get_worksheet(u, "liste")
-        if err:
+def _load_jours_salaries(u):
+    ws, err = get_worksheet(u, "liste")
+    if err:
+        return {}
+    try:
+        vals = ws.get_all_values()
+        if not vals or len(vals) < 2:
             return {}
-        try:
-            vals = ws.get_all_values()
-            if not vals or len(vals) < 2:
-                return {}
-            headers = [h.strip().lower() for h in vals[0]]
-            sal_idx = next((i for i, h in enumerate(headers) if "salar" in h), None)
-            if sal_idx is None:
-                return {}
-            jour_idx = next((i for i, h in enumerate(headers) if "jour" in h), None)
-            result = {}
-            for r in vals[1:]:
-                if len(r) <= sal_idx:
-                    continue
-                nom = r[sal_idx].strip()
-                if not nom:
-                    continue
-                if jour_idx is not None and len(r) > jour_idx and r[jour_idx].strip():
-                    jours = [j.strip() for j in r[jour_idx].replace(";", ",").split(",") if j.strip() in JOURS_DICO]
-                else:
-                    jours = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
-                result[nom] = jours
-            return result
-        except Exception:
-            return {}
-
+        headers = [h.strip().lower() for h in vals[0]]
+        # Prend la première colonne si "salar" non trouvé
+        sal_idx = next((i for i, h in enumerate(headers) if "salar" in h), 0)
+        jour_idx = next((i for i, h in enumerate(headers) if "jour" in h), None)
+        result = {}
+        for r in vals[1:]:
+            if len(r) <= sal_idx:
+                continue
+            nom = r[sal_idx].strip()
+            if not nom:
+                continue
+            if jour_idx is not None and len(r) > jour_idx and r[jour_idx].strip():
+                jours = [j.strip() for j in r[jour_idx].replace(";", ",").split(",") if j.strip() in JOURS_DICO]
+            else:
+                jours = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
+            result[nom] = jours
+        return result
+    except Exception:
+        return {}
+        
     # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
     @st.cache_data(ttl=10, show_spinner=False)
     def _load_planning_raw(u):
