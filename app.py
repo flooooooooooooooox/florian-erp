@@ -2165,39 +2165,78 @@ elif page == "📅 Planning":
         st.stop()
 
     def clean_time_val(val):
-        if val is None: return ""
-        s = str(val).strip().replace(" ", "")
-        if not s or s.lower() in ("nan", "none", ""): return ""
-        if " " in str(val) and ":" in str(val):
-            time_part = str(val).strip().split(" ")[-1]
-            parts = time_part.split(":")
+        import re
+        if val is None:
+            return ""
+        s = str(val).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return ""
+        # Supprimer les espaces autour du séparateur : "08 : 00" → "08:00"
+        s = re.sub(r"\s*:\s*", ":", s)
+        # Si l'heure est dans une datetime "2026-04-15 08:00:00" → prend la partie heure
+        if re.match(r"\d{4}-\d{2}-\d{2}", s):
+            parts = s.split(" ")
             if len(parts) >= 2:
-                try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-                except: pass
-        if ":" in s:
-            parts = s.split(":")
-            if len(parts) >= 2:
-                try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-                except: pass
-        try:
-            h = int(s)
-            if 0 <= h <= 23: return f"{h:02d}:00"
-        except: pass
-        return s
+                s = parts[1]
+        # Format HH:MM ou HH:MM:SS
+        m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+        if m:
+            h, mn = int(m.group(1)), int(m.group(2))
+            if 0 <= h <= 23 and 0 <= mn <= 59:
+                return f"{h:02d}:{mn:02d}"
+    # Format entier seul "8" → "08:00"
+    try:
+        h = int(float(s))
+        if 0 <= h <= 23:
+            return f"{h:02d}:00"
+    except:
+        pass
+    return s
 
     today = datetime.now()
 
     cols_utiles = [c for c in [COL_DATE_DEBUT, COL_DATE_FIN, COL_SALARIE_P, COL_HEURE_DEB_P, COL_HEURE_FIN_P, COL_NUM, COL_CLIENT, COL_CHANTIER, COL_ADRESSE, COL_MONTANT] if c]
     df_plan = df[cols_utiles].copy()
 
-    def parse_date_flex(val):
-        s = str(val).strip()
-        if not s or s.lower() in ("nan", "none", ""): return pd.NaT
-        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"]:
-            try: return pd.to_datetime(s, format=fmt)
-            except: pass
-        try: return pd.to_datetime(s, dayfirst=True)
-        except: return pd.NaT
+    MOIS_FR = {
+    "janvier":1,"février":2,"fevrier":2,"mars":3,"avril":4,"mai":5,"juin":6,
+    "juillet":7,"août":8,"aout":8,"septembre":9,"octobre":10,"novembre":11,"décembre":12,"decembre":12
+}
+ 
+def parse_date_flex(val):
+    import re
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", ""):
+        return pd.NaT
+    # Supprimer partie heure si présente (ex: "2026-04-15 00:00:00")
+    s = s.split("T")[0].split(" ")[0] if re.match(r"\d{4}-\d{2}-\d{2}", s) else s
+    # Formats numériques classiques
+    for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"]:
+        try:
+            return pd.to_datetime(s, format=fmt)
+        except:
+            pass
+    # Format "15 avril 2026" ou "15 April 2026"
+    m = re.match(r"(\d{1,2})\s+([a-zéûîôàA-Z]+)\s+(\d{4})", s, re.IGNORECASE)
+    if m:
+        day, month_str, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        # Mois français
+        mois_num = MOIS_FR.get(month_str)
+        if mois_num:
+            try:
+                return pd.Timestamp(year=year, month=mois_num, day=day)
+            except:
+                pass
+        # Laisser pandas essayer avec locale anglaise
+        try:
+            return pd.to_datetime(f"{day} {m.group(2)} {year}", format="%d %B %Y")
+        except:
+            pass
+    # Fallback générique pandas
+    try:
+        return pd.to_datetime(s, dayfirst=True)
+    except:
+        return pd.NaT
 
     df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
@@ -2626,17 +2665,27 @@ elif page == "👷 Salariés":
             except: return None
 
         def parse_time_s(val):
-            if val is None: return 0.0
+            import re
+            if val is None:
+                return 0.0
             s = str(val).strip()
-            if not s or s.lower() in ("nan","none",""): return 0.0
-            if " " in s and ":" in s:
-                s = s.split(" ")[-1]
-            parts = s.split(":")
-            if len(parts) >= 2:
-                try: return int(parts[0]) + int(parts[1]) / 60
-                except: pass
-            try: return float(s)
-            except: return 0.0
+            if not s or s.lower() in ("nan", "none", ""):
+                return 0.0
+            s = re.sub(r"\s*:\s*", ":", s)
+            if re.match(r"\d{4}-\d{2}-\d{2}", s):
+                parts = s.split(" ")
+                if len(parts) >= 2:
+                    s = parts[1]
+            m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", s)
+            if m:
+                try:
+                    return int(m.group(1)) + int(m.group(2)) / 60
+                except:
+                    pass
+            try:
+                return float(s)
+            except:
+                return 0.0
 
         def fmt_time_s(val):
             s = str(val).strip()
