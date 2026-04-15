@@ -2944,7 +2944,7 @@ elif page == "Salariés":
         """
         num_sem = jour_date.isocalendar()[1]
         overrides_sem = overrides_all.get(num_sem, {})
-        JOURS_KEYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+        JOURS_KEYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
         jour_key = JOURS_KEYS[jour_date.weekday()]
         if jour_key in overrides_sem:
             ov = overrides_sem[jour_key]
@@ -3203,7 +3203,7 @@ elif page == "Salariés":
                         today_ring  = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
 
                         # Affiche override horaire s'il existe
-                        JOURS_KEYS = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+                        JOURS_KEYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
                         jour_key   = JOURS_KEYS[jour.weekday()]
                         num_sem_j  = jour.isocalendar()[1]
                         ov_sem     = overrides_sal.get(num_sem_j, {})
