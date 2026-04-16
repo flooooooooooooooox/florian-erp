@@ -3480,7 +3480,7 @@ elif page == "Salariés":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "Retards & Avenants": :
+elif page == "Retards & Avenants":
     page_header("Retards & Avenants", "Signalement de retard chantier — mise à jour automatique via n8n")
 
     WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook-test/retard-{user}"
