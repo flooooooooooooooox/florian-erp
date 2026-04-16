@@ -1221,7 +1221,7 @@ elif page == "Éditeur Google Sheet":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : NOTIFICATIONS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page.startswith("Notifications"):
+elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
 
     WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user}"
