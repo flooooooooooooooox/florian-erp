@@ -3431,7 +3431,7 @@ with tab_config:
                         )
                         new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
 
-                if st.button(
+ if st.button(
                     f"💾 Sauvegarder horaires S{num_semaine}",
                     key=f"save_planning_{sal_idx_cfg}",
                     use_container_width=True,
@@ -3470,20 +3470,17 @@ with tab_config:
                             if len(row) > col_sal_pl and f"semaine_{num_semaine}:" in row[col_sal_pl]:
                                 target_row = row_i
                                 break
-
                         if target_row:
                             ws_pl.update_cell(target_row, col_sal_pl + 1, cell_val)
                         else:
                             new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
                             new_row[col_sal_pl] = cell_val
                             ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
-
                         _load_planning_raw.clear()
                         st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
-# ← ici il faut être sûr qu'on est bien revenu au niveau 0
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
