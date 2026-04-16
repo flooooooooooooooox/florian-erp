@@ -2875,8 +2875,15 @@ if page == "Vue Générale":
                     with btn_col:
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
-                            st.session_state["_page_index"] = pages.index("Espace Clients")
-                            st.session_state["nav_radio"] = "Espace Clients"
+                            # La sidebar affiche des labels décorés (ex: "⌂ Espace Clients").
+                            # On retrouve donc l'index via `page_key_map` plutôt qu'en dur.
+                            target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
+                            if target_label is not None:
+                                st.session_state["_page_index"] = pages.index(target_label)
+                                st.session_state["nav_radio"] = target_label
+                            else:
+                                # Fallback : si jamais la structure sidebar change
+                                st.session_state["nav_override"] = "Espace Clients"
                             st.rerun()
 
                 if vg_nb_attente > ALERT_PREVIEW:
