@@ -3478,11 +3478,11 @@ with tab_config:
                             new_row[col_sal_pl] = cell_val
                             ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
 
-                            _load_planning_raw.clear()
-                             st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
-                             st.rerun()
-                        except Exception as ex:
-                            st.error(f"Erreur : {ex}")
+                        _load_planning_raw.clear()
+                        st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Erreur : {ex}")
 # ← ici il faut être sûr qu'on est bien revenu au niveau 0
 
 # ══════════════════════════════════════════════════════════════════════════════
