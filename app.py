@@ -1245,7 +1245,17 @@ elif page == "Espace Clients":
                 if not filtered_client_names:
                     st.warning("Aucun client ne correspond à votre recherche.")
                 else:
-                    selected_client_name = st.selectbox("Sélectionnez un client :", filtered_client_names)
+                    # Si on arrive ici via un clic depuis une autre page, `prefill_client`
+                    # contient (normalement) le nom exact du dossier client.
+                    # On force alors la `selectbox` sur le bon index.
+                    prefill_norm = (prefill_client or "").strip().lower()
+                    exact_match = next((n for n in filtered_client_names if n.strip().lower() == prefill_norm), None)
+                    default_index = filtered_client_names.index(exact_match) if exact_match in filtered_client_names else 0
+                    selected_client_name = st.selectbox(
+                        "Sélectionnez un client :",
+                        filtered_client_names,
+                        index=default_index,
+                    )
                     selected_client_id = next(f['id'] for f in client_folders if f['name'] == selected_client_name)
 
                     st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
