@@ -3955,3 +3955,40 @@ elif page == "Retards & Avenants":
                         st.caption(resp.text[:300])
                 except Exception as ex:
                     st.error(f"Erreur réseau : {ex}")
+
+elif page == "Coordonnées & RGPD":
+    page_header("Coordonnées & RGPD", "Informations de contact, confidentialité et droits d'accès")
+
+    with st.container(border=True):
+        st.markdown("### Coordonnées")
+        st.markdown("**Entreprise** : FLOXIA")
+        st.markdown("**Responsable** : Florian")
+        st.markdown("**Application** : ERP Streamlit interne")
+
+    with st.container(border=True):
+        st.markdown("### Utilisation des données")
+        st.markdown(
+            "Les données affichées dans cette application proviennent principalement de vos Google Sheets, "
+            "des informations de compte stockées dans Supabase et des actions réalisées par les utilisateurs connectés."
+        )
+        st.markdown(
+            "Certaines actions peuvent envoyer des informations vers des automatisations `n8n` "
+            "pour générer des documents, envoyer des notifications ou signaler des retards."
+        )
+
+    with st.container(border=True):
+        st.markdown("### Droits utilisateurs")
+        st.markdown(
+            "Les onglets visibles pour chaque utilisateur sont limités par les droits d'accès configurés dans le panneau `Utilisateurs`."
+        )
+        st.info(
+            "Dans cette version, les droits d'accès sont enregistrés localement dans l'application "
+            "car la colonne `allowed_pages` n'existe pas dans la table `users` de Supabase."
+        )
+
+    with st.container(border=True):
+        st.markdown("### Bonnes pratiques RGPD")
+        st.markdown("- Ne partage pas d'identifiants ou de secrets Google Service Account.")
+        st.markdown("- N'envoie que les données strictement necessaires aux automatisations.")
+        st.markdown("- Vérifie les informations client avant tout envoi ou toute relance.")
+        st.markdown("- Déconnecte-toi en fin de session sur un poste partagé.")
