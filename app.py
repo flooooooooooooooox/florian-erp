@@ -3296,7 +3296,7 @@ elif page == "Salariés":
     # ══════════════════════════════════════════════════════════════════════
     # TAB : CONFIGURATION JOURS TRAVAILLÉS
     # ══════════════════════════════════════════════════════════════════════
-    with tab_config:
+with tab_config:
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
 
         err_l, headers_l, rows_l = _load_liste_raw(user)
@@ -3335,11 +3335,11 @@ elif page == "Salariés":
         st.caption(f"Semaine actuelle : **S{num_semaine} {annee_sem}** — du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}")
         st.markdown("---")
 
-        for sal_item in salaries_config:
-            nom_s  = sal_item["nom"]
+        for sal_idx_cfg, sal_item in enumerate(salaries_config):
+            nom_s   = sal_item["nom"]
             jours_s = sal_item["jours"]
-            overrides      = _get_overrides_for_sal(nom_s)
-            overrides_sem  = overrides.get(num_semaine, {})
+            overrides     = _get_overrides_for_sal(nom_s)
+            overrides_sem = overrides.get(num_semaine, {})
 
             with st.container(border=True):
                 st.markdown(
@@ -3358,11 +3358,11 @@ elif page == "Salariés":
                     sel_jours = st.multiselect(
                         "Jours", JOURS_LIST,
                         default=jours_s,
-                        key=f"jours_sel_{nom_s}",
+                        key=f"jours_sel_{sal_idx_cfg}_{nom_s}",
                         label_visibility="collapsed",
                     )
                 with col_save_j:
-                    if st.button("💾 Jours", key=f"save_jours_{nom_s}", use_container_width=True):
+                    if st.button("💾 Jours", key=f"save_jours_{sal_idx_cfg}", use_container_width=True):
                         try:
                             ws_l2, _ = get_worksheet(user, "liste")
                             all_vals  = ws_l2.get_all_values()
@@ -3412,7 +3412,6 @@ elif page == "Salariés":
                         t_fin = datetime.strptime("17:00", "%H:%M").time()
 
                     with cols_h[i]:
-                        # Indique visuellement si un override existe déjà
                         has_ov = jour_k.lower() in overrides_sem
                         badge  = " ✏️" if has_ov else ""
                         st.markdown(
@@ -3420,13 +3419,21 @@ elif page == "Salariés":
                             f"color:{'#ffb84d' if has_ov else 'var(--primary)'};margin-bottom:4px;'>{jour_k}{badge}</div>",
                             unsafe_allow_html=True,
                         )
-                        hd = st.time_input("Début", value=t_deb, key=f"hd_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
-                        hf = st.time_input("Fin",   value=t_fin, key=f"hf_{nom_s}_{jour_k}_{num_semaine}", label_visibility="collapsed")
+                        hd = st.time_input(
+                            "Début", value=t_deb,
+                            key=f"hd_{sal_idx_cfg}_{jour_k}_{num_semaine}",
+                            label_visibility="collapsed",
+                        )
+                        hf = st.time_input(
+                            "Fin", value=t_fin,
+                            key=f"hf_{sal_idx_cfg}_{jour_k}_{num_semaine}",
+                            label_visibility="collapsed",
+                        )
                         new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
 
                 if st.button(
                     f"💾 Sauvegarder horaires S{num_semaine}",
-                    key=f"save_planning_{nom_s}",
+                    key=f"save_planning_{sal_idx_cfg}",
                     use_container_width=True,
                     type="primary",
                 ):
@@ -3439,8 +3446,8 @@ elif page == "Salariés":
                             sh     = gc.open(sheet_name)
                             ws_pl  = sh.add_worksheet(title="planning", rows=200, cols=50)
 
-                        all_pl          = ws_pl.get_all_values()
-                        headers_pl_cur  = all_pl[0] if all_pl else []
+                        all_pl         = ws_pl.get_all_values()
+                        headers_pl_cur = all_pl[0] if all_pl else []
 
                         col_sal_pl = None
                         for i, h in enumerate(headers_pl_cur):
@@ -3476,7 +3483,6 @@ elif page == "Salariés":
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
