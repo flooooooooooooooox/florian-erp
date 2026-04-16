@@ -274,6 +274,163 @@ section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+.ceo-hero {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 24px 26px;
+    margin: 0 0 18px 0;
+    background:
+        radial-gradient(circle at top right, rgba(255,184,77,0.16), transparent 24%),
+        radial-gradient(circle at left center, rgba(79,142,247,0.18), transparent 28%),
+        linear-gradient(135deg, rgba(19,34,56,0.98), rgba(10,17,30,0.98));
+    box-shadow: 0 24px 60px rgba(0,0,0,0.22);
+}
+.ceo-hero-title {
+    font-size: 2.15rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #f8fbff;
+    margin-bottom: 6px;
+}
+.ceo-hero-subtitle {
+    font-size: 0.95rem;
+    color: #9fb3cc;
+    max-width: 900px;
+    line-height: 1.55;
+}
+.ceo-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+.ceo-chip {
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: #dbe8ff;
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.ceo-section-title {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 10px 0 10px;
+}
+.ceo-actions {
+    border: 1px solid var(--border);
+    background: linear-gradient(135deg, rgba(79,142,247,0.10), rgba(255,184,77,0.08));
+    border-radius: 18px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+.ceo-kpi-card {
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    padding: 18px 18px 16px;
+    min-height: 148px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(160deg, rgba(18,31,50,0.98), rgba(10,19,33,0.98));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 18px 38px rgba(0,0,0,0.16);
+}
+.ceo-kpi-top {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:16px;
+}
+.ceo-kpi-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #fff;
+}
+.ceo-kpi-label {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 800;
+}
+.ceo-kpi-value {
+    color: #f8fbff;
+    font-size: 2rem;
+    line-height: 1.05;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    margin-bottom: 8px;
+}
+.ceo-kpi-delta {
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+.ceo-kpi-bar {
+    margin-top: 14px;
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+}
+.ceo-kpi-fill {
+    height: 100%;
+    border-radius: 999px;
+}
+.ceo-card {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(19,34,56,0.98), rgba(12,23,40,0.98));
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+}
+.ceo-card-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #f3f8ff;
+    margin-bottom: 6px;
+}
+.ceo-card-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.ceo-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+[data-testid="stDataFrame"] div[role="grid"] div[role="row"]:nth-child(even) {
+    background-color: rgba(255,255,255,0.015) !important;
+}
+[data-testid="stDataFrame"] div[role="columnheader"] {
+    background: linear-gradient(180deg, rgba(79,142,247,0.18), rgba(79,142,247,0.03)) !important;
+    color: #eaf2ff !important;
+    font-weight: 800 !important;
+    border-bottom: 1px solid rgba(79,142,247,0.18) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ── AUTH ───────────────────────────────────────────────────────────────────────
 if not check_login():
     st.stop()
@@ -575,7 +732,16 @@ def show_table(dataframe, key_suffix=""):
     show_all = st.session_state.get(f"show_all_{key_suffix}", False)
     displayed = dataframe if show_all else dataframe.head(LIMIT)
     if isinstance(displayed, pd.DataFrame):
-        styled_df = displayed.style.apply(style_relances, axis=1)
+        formatted = displayed.copy()
+        for col in formatted.columns:
+            col_low = str(col).lower()
+            if "%" in col_low:
+                formatted[col] = formatted[col].apply(lambda v: f"{v} %" if str(v).strip() not in ("", "nan", "None") else "")
+            elif any(k in col_low for k in ["montant", "budget", "reste", "ttc", "ht", "ca"]) and "%" not in col_low:
+                formatted[col] = formatted[col].apply(
+                    lambda v: f"{clean_amount(v):,.0f} €".replace(",", " ") if str(v).strip() not in ("", "nan", "None") else ""
+                )
+        styled_df = formatted.style.apply(style_relances, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.dataframe(displayed, use_container_width=True, hide_index=True)
@@ -619,6 +785,60 @@ def page_header(title, subtitle=""):
     </div>
     """, unsafe_allow_html=True)
 
+
+def render_ceo_hero(title, subtitle="", chips=None):
+    chips = chips or []
+    chips_html = "".join([f"<div class='ceo-chip'>{c}</div>" for c in chips if c])
+    st.markdown(
+        f"""
+        <div class="ceo-hero">
+            <div class="ceo-hero-title">{title}</div>
+            <div class="ceo-hero-subtitle">{subtitle}</div>
+            {"<div class='ceo-chip-row'>" + chips_html + "</div>" if chips_html else ""}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_kpi_cards(cards):
+    cols = st.columns(len(cards))
+    for col, card in zip(cols, cards):
+        accent = card.get("accent", "#4f8ef7")
+        bg = card.get("accent_bg", "rgba(79,142,247,0.18)")
+        fill = max(0, min(100, int(card.get("fill_pct", 0))))
+        delta = card.get("delta", "")
+        delta_color = card.get("delta_color", accent)
+        with col:
+            st.markdown(
+                f"""
+                <div class="ceo-kpi-card">
+                    <div class="ceo-kpi-top">
+                        <div>
+                            <div class="ceo-kpi-label">{card.get("label", "")}</div>
+                        </div>
+                        <div class="ceo-kpi-icon" style="background:{bg};">{card.get("icon", "•")}</div>
+                    </div>
+                    <div class="ceo-kpi-value">{card.get("value", "")}</div>
+                    <div class="ceo-kpi-delta" style="color:{delta_color};">{delta}</div>
+                    <div class="ceo-kpi-bar"><div class="ceo-kpi-fill" style="width:{fill}%;background:{accent};"></div></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_filter_banner(title, helper=""):
+    st.markdown(
+        f"""
+        <div class="ceo-actions">
+            <div class="ceo-card-title">{title}</div>
+            {"<div class='ceo-card-subtitle'>" + helper + "</div>" if helper else ""}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def safe_radio_index(options, key, default=0):
     """Retourne l'index sécurisé pour st.radio, évite ValueError si la valeur en session est obsolète."""
     val = st.session_state.get(key)
@@ -657,24 +877,25 @@ with st.sidebar:
     if pending_badge > 0:
         notif_label = f"🔴 Notifications ({pending_badge})"
 
+    st.markdown("<div class='ceo-section-title' style='padding:0 2px;'>Navigation Executive</div>", unsafe_allow_html=True)
     page_items = [
-        ("Vue Générale", "Vue Générale"),
-        ("Créer un devis", "Créer un devis"),
-        ("Devis", "Devis"),
-        ("Factures & Paiements", "Factures & Paiements"),
-        ("Chantiers", "Chantiers"),
-        ("Planning", "Planning"),
-        ("Salariés", "Salariés"),
-        ("Notifications", notif_label),
-        ("Espace Clients", "Espace Clients"),
-        ("Tous les dossiers", "Tous les dossiers"),
-        ("Éditeur Google Sheet", "Éditeur Google Sheet"),
-        ("Dépenses", "Dépenses"),
-        ("Retards & Avenants", "Retards & Avenants"),
-        ("Coordonnées & RGPD", "Coordonnées & RGPD"),
+        ("Vue Générale", "◈ Vue Générale"),
+        ("Créer un devis", "✦ Créer un devis"),
+        ("Devis", "◉ Devis"),
+        ("Factures & Paiements", "◌ Factures & Paiements"),
+        ("Chantiers", "◆ Chantiers"),
+        ("Planning", "▣ Planning"),
+        ("Salariés", "◍ Salariés"),
+        ("Notifications", f"✉ {notif_label}"),
+        ("Espace Clients", "⌂ Espace Clients"),
+        ("Tous les dossiers", "▤ Tous les dossiers"),
+        ("Éditeur Google Sheet", "⌘ Éditeur Google Sheet"),
+        ("Dépenses", "◐ Dépenses"),
+        ("Retards & Avenants", "△ Retards & Avenants"),
+        ("Coordonnées & RGPD", "☰ Coordonnées & RGPD"),
     ]
     if role == "admin":
-        page_items.append(("Utilisateurs", "Utilisateurs"))
+        page_items.append(("Utilisateurs", "☷ Utilisateurs"))
 
     allowed_pages = st.session_state.get("allowed_pages", AVAILABLE_PAGES.copy())
     if role != "admin":
@@ -2471,8 +2692,19 @@ if page in PAGES_NEED_MAIN_DF:
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "Vue Générale":
     page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    render_ceo_hero(
+        "Pilotage exécutif",
+        "Vision consolidée du business : revenus sécurisés, conversion commerciale, encaissements et zones de friction. "
+        "Cette vue sert de cockpit principal pour décider vite.",
+        chips=[
+            f"{nb_devis} dossiers",
+            f"{int(df['_signe'].sum())} signés",
+            f"{int(df['_fact_fin'].sum())} facturés",
+        ],
+    )
 
     # ── Sélecteur de dates global ──────────────────────────────────────────
+    render_filter_banner("Zone filtres", "Cadre la période d'analyse pour isoler une campagne, un mois ou une période de production.")
     with st.expander("📅 Filtrer par période", expanded=False):
         col_fd1, col_fd2, col_fd3 = st.columns([2, 2, 1])
         with col_fd1:
@@ -2519,11 +2751,12 @@ if page == "Vue Générale":
             label_periode = f"Jusqu'au {date_fin_vg.strftime('%d/%m/%Y')}"
         st.info(f"📅 Période active : **{label_periode}** — {vg_nb_devis} dossier(s)")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("CA Sécurisé", fmt(vg_ca_signe), f"{vg_nb_signes} devis signés")
-    c2.metric("⏳ CA En Négociation", fmt(vg_ca_non_s), f"{vg_nb_attente} en cours")
-    c3.metric("📈 Taux de Conversion", f"{vg_taux_conv} %")
-    c4.metric("Reste à Encaisser", fmt(vg_reste))
+    render_kpi_cards([
+        {"label": "CA Sécurisé", "value": fmt(vg_ca_signe), "delta": f"{vg_nb_signes} devis signés", "icon": "€", "fill_pct": 100 if vg_total_ca <= 0 else int((vg_ca_signe / max(vg_total_ca, 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "CA En Négociation", "value": fmt(vg_ca_non_s), "delta": f"{vg_nb_attente} en cours", "icon": "◔", "fill_pct": 100 if vg_total_ca <= 0 else int((vg_ca_non_s / max(vg_total_ca, 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Taux de Conversion", "value": f"{vg_taux_conv} %", "delta": f"{vg_nb_signes} / {vg_nb_devis} transformés", "icon": "↗", "fill_pct": vg_taux_conv, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)", "delta_color": "#4f8ef7"},
+        {"label": "Reste à Encaisser", "value": fmt(vg_reste), "delta": "Exposition de trésorerie", "icon": "◈", "fill_pct": 100 if vg_ca_signe <= 0 else int((vg_reste / max(vg_ca_signe, 1)) * 100), "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2684,15 +2917,22 @@ if page == "Vue Générale":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Devis":
     page_header("Gestion des Devis", f"{nb_devis} devis au total")
+    render_ceo_hero(
+        "Pipeline commercial",
+        "Lecture rapide du pipe devis, du stock en attente de signature et de la valeur déjà convertie.",
+        chips=[f"{nb_devis} devis", f"{taux_conv}% conversion", fmt(total_ca)],
+    )
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Devis Émis", nb_devis)
-    c2.metric("Taux de Transformation", f"{taux_conv} %")
-    c3.metric("Volume CA Global", fmt(total_ca))
+    render_kpi_cards([
+        {"label": "Total devis", "value": nb_devis, "delta": "Volume commercial total", "icon": "◉", "fill_pct": 100, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
+        {"label": "Transformation", "value": f"{taux_conv} %", "delta": "Taux de signature", "icon": "↗", "fill_pct": taux_conv, "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "Volume global", "value": fmt(total_ca), "delta": "Valeur cumulée des devis", "icon": "€", "fill_pct": 100, "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_DATE, COL_RELANCE1, COL_RELANCE2, COL_RELANCE3, COL_STATUT] if c]
 
+    render_filter_banner("Zone filtres", "Recherche rapide par client, chantier ou numéro de devis.")
     search = st.text_input("🔍 Rechercher un devis", placeholder="Nom du client, chantier, numéro...", key="search_devis")
     df_d = df.copy()
     if search:
@@ -2728,16 +2968,23 @@ elif page == "Devis":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Factures & Paiements":
     page_header("Factures & Paiements", "Suivi des encaissements")
+    render_ceo_hero(
+        "Santé financière",
+        "Vue CEO sur les encaissements, les factures finales émises et le volume encore à sécuriser.",
+        chips=[f"{nb_fact_ok} factures finales", fmt(reste_encaissement), f"{len(df_imp)} sans facture finale"],
+    )
 
     df_imp = df[df["_signe"] & ~df["_fact_fin"]]
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Factures finales émises", nb_fact_ok)
-    c2.metric("Sans facture finale", len(df_imp))
-    c3.metric("CA restant à facturer", fmt(reste_encaissement))
+    render_kpi_cards([
+        {"label": "Factures finales", "value": nb_fact_ok, "delta": "Dossiers totalement facturés", "icon": "◌", "fill_pct": 100 if len(df) == 0 else int((nb_fact_ok / max(len(df), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "Sans facture finale", "value": len(df_imp), "delta": "Potentiel de facturation", "icon": "△", "fill_pct": 100 if len(df) == 0 else int((len(df_imp) / max(len(df), 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Reste à facturer", "value": fmt(reste_encaissement), "delta": "Trésorerie à convertir", "icon": "€", "fill_pct": 100, "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
 
+    render_filter_banner("Zone filtres", "Analyse instantanée des paiements par client ou chantier.")
     search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...", key="search_f")
     df_f = df.copy()
     if search_f:
@@ -2771,6 +3018,11 @@ elif page == "Factures & Paiements":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Chantiers":
     page_header("Suivi des Chantiers", "Vue d'ensemble des travaux")
+    render_ceo_hero(
+        "Portefeuille chantiers",
+        "Lecture opérationnelle haut de gamme par carte : budget, jalons, réserves et état d'exécution.",
+        chips=["Cartes premium", "Lecture rapide", "Pilotage terrain"],
+    )
 
     df["_statut_ch"] = df["_pv"].apply(lambda x: "Terminé" if x else "En cours")
     df["_progress_ch"] = [
@@ -2780,11 +3032,12 @@ elif page == "Chantiers":
     status_meta = [chantier_status_meta(p, done) for p, done in zip(df["_progress_ch"], df["_pv"])]
     df["_status_label"] = [m[0] for m in status_meta]
     df["_status_color"] = [m[1] for m in status_meta]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("En cours", int((~df["_pv"]).sum()))
-    c2.metric("Tréso. en cours", fmt(df[~df["_pv"]]["_montant"].sum()))
-    c3.metric("Terminés (PV signé)", int(df["_pv"].sum()))
-    c4.metric("CA réalisé", fmt(df[df["_pv"]]["_montant"].sum()))
+    render_kpi_cards([
+        {"label": "En cours", "value": int((~df["_pv"]).sum()), "delta": "Chantiers actifs", "icon": "◆", "fill_pct": 100 if len(df) == 0 else int(((~df['_pv']).sum() / max(len(df), 1)) * 100), "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
+        {"label": "Tréso en cours", "value": fmt(df[~df['_pv']]['_montant'].sum()), "delta": "Valeur encore ouverte", "icon": "€", "fill_pct": 100, "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Terminés", "value": int(df["_pv"].sum()), "delta": "PV signés", "icon": "✓", "fill_pct": 100 if len(df) == 0 else int((df['_pv'].sum() / max(len(df), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "CA réalisé", "value": fmt(df[df["_pv"]]["_montant"].sum()), "delta": "Production validée", "icon": "◈", "fill_pct": 100, "accent": "#7c3aed", "accent_bg": "rgba(124,58,237,0.18)", "delta_color": "#b794f6"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
     search_ch = st.text_input("🔍 Filtrer", placeholder="Client, lieu...", key="search_ch")
@@ -2795,8 +3048,51 @@ elif page == "Chantiers":
             if col: mask |= df_ch[col].astype(str).str.contains(search_ch, case=False, na=False)
         df_ch = df_ch[mask]
 
-    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE] if c]
-    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves"}
+    def render_chantier_cards(df_cards, empty_message):
+        if df_cards.empty:
+            st.info(empty_message)
+            return
+        for _, row in df_cards.iterrows():
+            client = str(row.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
+            chantier = str(row.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
+            adresse = str(row.get(COL_ADRESSE, "")).strip() if COL_ADRESSE else ""
+            budget = fmt(clean_amount(row.get(COL_MONTANT, 0))) if COL_MONTANT else "—"
+            debut = str(row.get(COL_DATE_DEBUT, "")).strip() if COL_DATE_DEBUT else ""
+            fin = str(row.get(COL_DATE_FIN, "")).strip() if COL_DATE_FIN else ""
+            reserve_txt = str(row.get(COL_RESERVE, "")).strip() if COL_RESERVE else ""
+            progress_pct = int(row.get("_progress_ch", 0))
+            status_label, status_color, status_bg = chantier_status_meta(progress_pct, bool(row.get("_pv", False)))
+            reserve_badge = (
+                f"<span class='ceo-status-badge' style='background:rgba(255,184,77,0.14);color:#ffb84d;border:1px solid rgba(255,184,77,0.26);'>Réserves</span>"
+                if reserve_txt and has_reserve(reserve_txt) else ""
+            )
+            st.markdown(
+                f"""
+                <div class="ceo-card">
+                    <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;">
+                        <div style="flex:1;">
+                            <div class="ceo-card-title">{client or 'Client non renseigné'}</div>
+                            <div class="ceo-card-subtitle">{chantier or 'Chantier non renseigné'}</div>
+                            {"<div style='font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;'>" + adresse + "</div>" if adresse else ""}
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                                <span class="ceo-status-badge" style="background:{status_bg};color:{status_color};border:1px solid {status_color}33;">{status_label}</span>
+                                {reserve_badge}
+                            </div>
+                            <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;">Début : <strong style='color:#e8f0fe;'>{debut or '—'}</strong> · Fin : <strong style='color:#e8f0fe;'>{fin or '—'}</strong></div>
+                            <div style="margin-top:10px;background:rgba(255,255,255,0.06);border-radius:999px;height:10px;overflow:hidden;max-width:320px;">
+                                <div style="width:{progress_pct}%;background:{status_color};height:100%;"></div>
+                            </div>
+                            <div style="margin-top:6px;font-size:0.8rem;color:{status_color};font-weight:700;">Avancement exécutif : {progress_pct}%</div>
+                        </div>
+                        <div style="text-align:right;min-width:170px;">
+                            <div style="font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);font-weight:800;">Budget</div>
+                            <div style="font-size:1.55rem;font-weight:800;color:#f8fbff;margin-top:6px;">{budget}</div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
@@ -2823,25 +3119,11 @@ elif page == "Chantiers":
     if tab_ch_choice == "En cours":
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
-        if not d.empty:
-            st.dataframe(
-                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.info("Aucun chantier en cours.")
+        render_chantier_cards(d, "Aucun chantier en cours.")
     elif tab_ch_choice == "Livrés (PV signé)":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
-        if not d.empty:
-            st.dataframe(
-                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.info("Aucun chantier livré.")
+        render_chantier_cards(d, "Aucun chantier livré.")
     else:
         d = df_ch[df_ch["_has_reserve"]]
         if d.empty:
@@ -2851,17 +3133,18 @@ elif page == "Chantiers":
             r1.metric("Avec réserves", len(d))
             r2.metric("CA concerné", fmt(d['_montant'].sum()))
             r3.metric("Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
-            st.dataframe(
-                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
-                use_container_width=True,
-                hide_index=True,
-            )
+            render_chantier_cards(d, "Aucun chantier avec réserves.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Planning":
     page_header("Planning des Chantiers", "Vue calendrier des interventions")
+    render_ceo_hero(
+        "Planning stratégique",
+        "Vue temporelle premium des interventions avec accent sur les ressources, la durée et la progression chantier.",
+        chips=["Timeline visuelle", "Priorités terrain", "Lecture journalière"],
+    )
 
     COL_SALARIE_P   = fcol(df, "salarié", "salarie", "salar")
     COL_HEURE_DEB_P = fcol(df, "heure_debut", "heure debut", "heure_deb")
@@ -2923,10 +3206,11 @@ elif page == "Planning":
     df_plan["_status_color"] = [m[1] for m in plan_status_meta]
 
     # ── KPIs ───────────────────────────────────────────────────────────────
-    k1, k2, k3 = st.columns(3)
-    k1.metric("Total planifiés", len(df_plan))
-    k2.metric("En cours / à venir", int((df_plan["_end"].dt.date >= today.date()).sum()))
-    k3.metric("Terminés", int((df_plan["_end"].dt.date < today.date()).sum()))
+    render_kpi_cards([
+        {"label": "Total planifiés", "value": len(df_plan), "delta": "Charge totale", "icon": "▣", "fill_pct": 100, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
+        {"label": "En cours / à venir", "value": int((df_plan['_end'].dt.date >= today.date()).sum()), "delta": "Pipeline terrain", "icon": "◔", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end'].dt.date >= today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Terminés", "value": int((df_plan['_end'].dt.date < today.date()).sum()), "delta": "Interventions closes", "icon": "✓", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end'].dt.date < today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
