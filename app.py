@@ -3431,7 +3431,7 @@ with tab_config:
                         )
                         new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
 
-                  if st.button(
+                if st.button(
                     f"💾 Sauvegarder horaires S{num_semaine}",
                     key=f"save_planning_{sal_idx_cfg}",
                     use_container_width=True,
