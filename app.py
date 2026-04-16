@@ -11,7 +11,7 @@ import os
 import calendar
 import requests
 import re
-from auth import check_login, logout, admin_panel, get_user_credentials
+from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
 
 st.set_page_config(
@@ -147,7 +147,11 @@ html, body, [data-testid="stAppViewContainer"] {{
     font-weight: 500 !important;
     font-size: 0.88rem !important;
     padding: 8px 18px !important;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}}
+.stTabs [data-baseweb="tab"]:hover {{
+    transform: scale(1.04);
+    background: rgba(79,142,247,0.08) !important;
 }}
 .stTabs [aria-selected="true"] {{
     background: var(--primary) !important;
@@ -202,6 +206,7 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
     width: 100%;
 }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover {{ background: var(--bg-card); border-color: var(--border); }}
+[data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label:hover p {{ transform: scale(1.03); transform-origin: left center; }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-checked="true"] {{
     background: linear-gradient(135deg, var(--primary-glow), rgba(79,142,247,0.08)) !important;
     border-color: rgba(79,142,247,0.4) !important;
@@ -259,6 +264,12 @@ section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="
 .page-header {{ padding: 8px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }}
 .page-header h1 {{ font-family: 'Inter', sans-serif !important; font-size: 1.9rem !important; font-weight: 800 !important; letter-spacing: -0.03em; margin: 0 !important; color: var(--text-main) !important; }}
 .page-header .subtitle {{ color: var(--text-muted); font-size: 0.88rem; margin-top: 4px; }}
+.page-header {{
+    background: linear-gradient(180deg, rgba(79,142,247,0.06), rgba(79,142,247,0.00));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -587,24 +598,34 @@ with st.sidebar:
     if pending_badge > 0:
         notif_label = f"🔴 Notifications ({pending_badge})"
 
-    pages = [
-        "Vue Générale",
-        "Créer un devis",
-        "Devis",
-        "Factures & Paiements",
-        "Chantiers",
-        "Planning",
-        "Salariés",
-        notif_label,
-        "Espace Clients",
-        "Tous les dossiers",
-        "Éditeur Google Sheet",
-        "Dépenses",
-        "Retards & Avenants",
-        "Coordonnées & RGPD"
+    page_items = [
+        ("Vue Générale", "Vue Générale"),
+        ("Créer un devis", "Créer un devis"),
+        ("Devis", "Devis"),
+        ("Factures & Paiements", "Factures & Paiements"),
+        ("Chantiers", "Chantiers"),
+        ("Planning", "Planning"),
+        ("Salariés", "Salariés"),
+        ("Notifications", notif_label),
+        ("Espace Clients", "Espace Clients"),
+        ("Tous les dossiers", "Tous les dossiers"),
+        ("Éditeur Google Sheet", "Éditeur Google Sheet"),
+        ("Dépenses", "Dépenses"),
+        ("Retards & Avenants", "Retards & Avenants"),
+        ("Coordonnées & RGPD", "Coordonnées & RGPD"),
     ]
     if role == "admin":
-        pages.append("Utilisateurs")
+        page_items.append(("Utilisateurs", "Utilisateurs"))
+
+    allowed_pages = st.session_state.get("allowed_pages", AVAILABLE_PAGES.copy())
+    if role != "admin":
+        page_items = [p for p in page_items if p[0] in allowed_pages]
+
+    pages = [p[1] for p in page_items]
+    page_key_map = {p[1]: p[0] for p in page_items}
+    if not pages:
+        st.error("Aucun onglet autorisé pour ce compte.")
+        st.stop()
 
     if "nav_override" in st.session_state:
         _override = st.session_state.pop("nav_override")
@@ -631,6 +652,7 @@ with st.sidebar:
     )
     if page in pages:
         st.session_state["_page_index"] = pages.index(page)
+    page = page_key_map.get(page, page)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
