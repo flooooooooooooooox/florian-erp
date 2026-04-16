@@ -362,6 +362,49 @@ def safe_slug(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_-]", "", raw)
     return cleaned or "default"
 
+N8N_TIMEOUT_SECONDS = 30
+
+def _log_send_event(endpoint: str, status_code=None, error_msg=None):
+    logs = st.session_state.setdefault("_send_logs", [])
+    logs.insert(0, {
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "endpoint": endpoint,
+        "status": status_code if status_code is not None else "ERR",
+        "error": (str(error_msg)[:180] if error_msg else ""),
+    })
+    st.session_state["_send_logs"] = logs[:30]
+
+def post_n8n(endpoint: str, payload: dict):
+    try:
+        resp = requests.post(
+            endpoint,
+            json=payload,
+            timeout=N8N_TIMEOUT_SECONDS,
+            headers={"Content-Type": "application/json"},
+        )
+        if resp.status_code not in (200, 201):
+            _log_send_event(endpoint, status_code=resp.status_code, error_msg=resp.text[:180])
+        return resp, None
+    except requests.exceptions.Timeout:
+        _log_send_event(endpoint, error_msg="timeout")
+        return None, "timeout"
+    except Exception as ex:
+        _log_send_event(endpoint, error_msg=str(ex))
+        return None, str(ex)
+
+def show_data_source_error(message: str, clear_fn=None, retry_key: str = "retry_data_source"):
+    st.error(message)
+    st.info("La source est peut-être lente/indisponible. Réessaie dans quelques secondes.")
+    if st.button("Réessayer", key=retry_key):
+        if clear_fn:
+            clear_fn()
+        st.rerun()
+
+def clear_cache_if_exists(func_name: str):
+    fn = globals().get(func_name)
+    if fn and hasattr(fn, "clear"):
+        fn.clear()
+
 @st.cache_data(ttl=120, show_spinner=False)
 def get_main_dataset(username: str):
     df_raw, error = get_sheet_data(username)
@@ -620,6 +663,22 @@ with st.sidebar:
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
+with st.expander("Diagnostic n8n (endpoints & logs)", expanded=False):
+    st.caption("Endpoints actifs pour ce compte :")
+    st.code(
+        "\n".join([
+            f"reponse: https://n8n.florianai.fr/webhook/reponse-{user_slug}",
+            f"devis:    https://n8n.florianai.fr/webhook/{user_slug}",
+            f"retard:   https://n8n.florianai.fr/webhook/retard-{user_slug}",
+        ])
+    )
+    send_logs = st.session_state.get("_send_logs", [])
+    if send_logs:
+        st.caption("Derniers envois (sans données sensibles) :")
+        st.dataframe(pd.DataFrame(send_logs), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Aucun envoi loggé dans cette session.")
+
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "Utilisateurs":
     admin_panel()
@@ -630,7 +689,7 @@ if page == "Utilisateurs":
 elif page == "Dépenses":
     page_header("Dépenses", "Suivi des charges et TVA récupérable")
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=90, show_spinner=False)
     def _load_depenses(u):
         ws, err = get_worksheet(u, "Depenses")
         if err:
@@ -652,7 +711,11 @@ elif page == "Dépenses":
     err_dep, df_dep = _load_depenses(user)
 
     if err_dep:
-        st.error(f"Onglet 'Depenses' introuvable : {err_dep}")
+        show_data_source_error(
+            f"Onglet 'Depenses' indisponible : {err_dep}",
+            clear_fn=_load_depenses.clear,
+            retry_key="retry_depenses_source",
+        )
         st.info("Crée un onglet 'Depenses' dans ton Google Sheet.")
         st.stop()
 
@@ -963,13 +1026,18 @@ elif page == "Éditeur Google Sheet":
                    "Serrurerie / Métallerie","Terrassement / VRD","Maçonnerie","Enduit / Ravalement",
                    "Étanchéité / Hydrofuge","Nettoyage / Évacuation","Autre"]
 
-    tab_presta, tab_catalogue = st.tabs(["Feuille Prestations", "Catalogue"])
+    editor_tab = st.radio(
+        "",
+        ["Feuille Prestations", "Catalogue"],
+        horizontal=True,
+        key="editor_sheet_tab",
+    )
 
-    with tab_presta:
+    if editor_tab == "Feuille Prestations":
         PRESTA_COLS = ["categorie", "Type de poste", "Sous-prestation", "Description", "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"]
         st.caption("Colonnes Feuille 1 attendues : categorie | Type de poste | Sous-prestation | Description | Prix MO HT | Prix Fourn. HT | Marge (%) | Quantité | Total HT")
 
-        @st.cache_data(ttl=10, show_spinner=False)
+        @st.cache_data(ttl=30, show_spinner=False)
         def load_presta(u):
             ws, err = get_worksheet(u, "Feuille 1")
             if err:
@@ -992,10 +1060,7 @@ elif page == "Éditeur Google Sheet":
         err_p, df_p = load_presta(user)
 
         if err_p:
-            st.error(f"{err_p}")
-            if st.button("Retenter"):
-                load_presta.clear()
-                st.rerun()
+            show_data_source_error(f"Feuille 1 indisponible : {err_p}", clear_fn=load_presta.clear, retry_key="retry_presta")
         else:
             sub_p_view, sub_p_add, sub_p_edit, sub_p_del = st.tabs(["Voir","Ajouter","Modifier","Supprimer"])
 
@@ -1058,7 +1123,8 @@ elif page == "Éditeur Google Sheet":
                         else:
                             new_row = [inputs_p.get(h, "") for h in (list(df_p.columns) if len(df_p) > 0 else PRESTA_COLS)]
                             ws_p2.insert_row(new_row, index=len(df_p)+2, value_input_option="USER_ENTERED")
-                            st.cache_data.clear()
+                            load_presta.clear()
+                            clear_cache_if_exists("_load_prestations_devis")
                             st.success("Ligne ajoutée.")
                             st.rerun()
                     except Exception as e:
@@ -1132,7 +1198,8 @@ elif page == "Éditeur Google Sheet":
                             else:
                                 for col_idx, h in enumerate(headers_p2, start=1):
                                     ws_p3.update_cell(sel_idx+2, col_idx, mod_inputs.get(h,""))
-                                st.cache_data.clear()
+                                load_presta.clear()
+                                clear_cache_if_exists("_load_prestations_devis")
                                 st.success("Modification enregistrée.")
                                 st.rerun()
                         except Exception as e:
@@ -1159,16 +1226,17 @@ elif page == "Éditeur Google Sheet":
                             if err4: st.error(err4)
                             else:
                                 ws_p4.delete_rows(del_idx+2)
-                                st.cache_data.clear()
+                                load_presta.clear()
+                                clear_cache_if_exists("_load_prestations_devis")
                                 st.success("Ligne supprimée.")
                                 st.rerun()
                         except Exception as e:
                             st.error(f"Erreur : {e}")
 
-    with tab_catalogue:
+    if editor_tab == "Catalogue":
         CATA_COLS = ["Catégorie","Article","Description","Prix Achat HT","% Marge","Prix Vente HT"]
 
-        @st.cache_data(ttl=10, show_spinner=False)
+        @st.cache_data(ttl=30, show_spinner=False)
         def load_catalogue(u):
             ws, err = get_worksheet(u, "catalogue")
             if err: return err, pd.DataFrame()
@@ -1187,10 +1255,7 @@ elif page == "Éditeur Google Sheet":
 
         err_c, df_c = load_catalogue(user)
         if err_c:
-            st.error(f"{err_c}")
-            if st.button("Retenter", key="btn_retry_cata"):
-                load_catalogue.clear()
-                st.rerun()
+            show_data_source_error(f"Catalogue indisponible : {err_c}", clear_fn=load_catalogue.clear, retry_key="btn_retry_cata")
         else:
             sub_c_view, sub_c_add, sub_c_edit, sub_c_del = st.tabs(["Voir","Ajouter","Modifier","Supprimer"])
 
@@ -1234,7 +1299,8 @@ elif page == "Éditeur Google Sheet":
                         if err_c2: st.error(err_c2)
                         else:
                             ws_c2.insert_row([inputs_c.get(h,"") for h in headers_c], index=len(df_c)+2, value_input_option="USER_ENTERED")
-                            st.cache_data.clear()
+                            load_catalogue.clear()
+                            clear_cache_if_exists("_load_catalogue_devis")
                             st.success("Article ajouté.")
                             st.rerun()
                     except Exception as e:
@@ -1281,7 +1347,8 @@ elif page == "Éditeur Google Sheet":
                             else:
                                 for col_idx, h in enumerate(headers_c2, start=1):
                                     ws_c3.update_cell(sel_idx_c+2, col_idx, mod_inputs_c.get(h,""))
-                                st.cache_data.clear()
+                                load_catalogue.clear()
+                                clear_cache_if_exists("_load_catalogue_devis")
                                 st.success("Modification enregistrée.")
                                 st.rerun()
                         except Exception as e:
@@ -1301,7 +1368,8 @@ elif page == "Éditeur Google Sheet":
                             if err_c4: st.error(err_c4)
                             else:
                                 ws_c4.delete_rows(del_idx_c+2)
-                                st.cache_data.clear()
+                                load_catalogue.clear()
+                                clear_cache_if_exists("_load_catalogue_devis")
                                 st.success("Article supprimé.")
                                 st.rerun()
                         except Exception as e:
@@ -1317,7 +1385,7 @@ elif "Notifications" in page:
 
     WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user_slug}"
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
         ws, err = get_worksheet(u, "liste")
         if err:
@@ -1335,7 +1403,7 @@ elif "Notifications" in page:
         except Exception:
             return []
 
-    @st.cache_data(ttl=15, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_notifications(u):
         ws, err = get_worksheet(u, "notifications")
         if err:
@@ -1438,8 +1506,12 @@ elif "Notifications" in page:
     err_n, df_notif = _load_notifications(user)
 
     if err_n:
-        st.error(f"Onglet 'notifications' introuvable : {err_n}")
-        st.info("Crée un onglet 'notifications' dans ton Google Sheet avec les colonnes : date_reception, numero_devis, nom_client, objet, montant, statut")
+        show_data_source_error(
+            f"Onglet 'notifications' indisponible : {err_n}",
+            clear_fn=_load_notifications.clear,
+            retry_key="retry_notif_source",
+        )
+        st.caption("Colonnes attendues : date_reception, numero_devis, nom_client, objet, montant, statut")
         st.stop()
 
     df_attente = df_notif[df_notif.get("statut", pd.Series(dtype=str)).astype(str).str.strip() == "en_attente"] if "statut" in df_notif.columns else df_notif
@@ -1584,12 +1656,13 @@ elif "Notifications" in page:
                                 "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
                             }
                             try:
-                                resp = requests.post(
-                                    WEBHOOK_REPONSE,
-                                    json=payload_notif,
-                                    timeout=30,
-                                    headers={"Content-Type": "application/json"}
-                                )
+                                resp, send_err = post_n8n(WEBHOOK_REPONSE, payload_notif)
+                                if send_err:
+                                    if send_err == "timeout":
+                                        st.error("Timeout — le webhook n8n ne répond pas.")
+                                    else:
+                                        st.error(f"Erreur réseau : {send_err}")
+                                    continue
                                 if resp.status_code in (200, 201):
                                     ok_liste, err_liste = _upsert_planning_liste(
                                         user,
@@ -2205,10 +2278,13 @@ elif page == "Créer un devis":
                 payload = _build_payload()
                 payload["action"] = "imprimer"
                 try:
-                    resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
-                    if resp.status_code in (200, 201):
+                    resp, send_err = post_n8n(WEBHOOK_URL, payload)
+                    if send_err:
+                        st.error("Timeout — n8n ne répond pas." if send_err == "timeout" else f"Erreur : {send_err}")
+                        resp = None
+                    if resp is not None and resp.status_code in (200, 201):
                         st.success("Envoyé à n8n pour impression.")
-                    else:
+                    elif resp is not None:
                         st.error(f"Erreur {resp.status_code}")
                 except Exception as ex:
                     st.error(f"Erreur : {ex}")
@@ -2220,14 +2296,18 @@ elif page == "Créer un devis":
                     payload = _build_payload()
                     payload["action"] = "envoyer"
                     try:
-                        resp = requests.post(WEBHOOK_URL, json=payload, timeout=30, headers={"Content-Type": "application/json"})
-                        if resp.status_code in (200, 201):
+                        resp, send_err = post_n8n(WEBHOOK_URL, payload)
+                        if send_err:
+                            st.error("Timeout — n8n ne répond pas." if send_err == "timeout" else f"Erreur : {send_err}")
+                        elif resp.status_code in (200, 201):
                             st.success("Devis envoyé au client.")
                             st.session_state.devis_lignes = [
                                 {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
                             ]
                             st.session_state.devis_preview = False
-                            st.cache_data.clear()
+                            get_sheet_data.clear()
+                            get_main_dataset.clear()
+                            clear_cache_if_exists("get_pending_notifications_count")
                         else:
                             st.error(f"Erreur {resp.status_code}")
                     except Exception as ex:
@@ -2248,12 +2328,11 @@ PAGES_NEED_MAIN_DF = {
 if page in PAGES_NEED_MAIN_DF:
     dataset, error, is_empty_sheet = get_main_dataset(user)
     if error:
-        get_main_dataset.clear()
-        get_sheet_data.clear()
-        st.error("Impossible de se connecter à Google Sheets.")
-        st.info(f"Détail : {error}")
-        if st.button("Réessayer"):
-            st.rerun()
+        show_data_source_error(
+            f"Impossible de se connecter à Google Sheets. Détail : {error}",
+            clear_fn=lambda: (get_main_dataset.clear(), get_sheet_data.clear()),
+            retry_key="retry_main_dataset",
+        )
         st.stop()
 
     if is_empty_sheet:
@@ -2962,7 +3041,7 @@ elif page == "Salariés":
     JOURS_DICO = {"Lun": 0, "Mar": 1, "Mer": 2, "Jeu": 3, "Ven": 4, "Sam": 5, "Dim": 6}
     JOURS_LIST = list(JOURS_DICO.keys())
 
-    @st.cache_data(ttl=30, show_spinner=False)
+    @st.cache_data(ttl=120, show_spinner=False)
     def _load_jours_salaries(u):
         ws, err = get_worksheet(u, "liste")
         if err:
@@ -2992,7 +3071,7 @@ elif page == "Salariés":
             return {}
         
     # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
-    @st.cache_data(ttl=10, show_spinner=False)
+    @st.cache_data(ttl=45, show_spinner=False)
     def _load_planning_raw(u):
         ws, err = get_worksheet(u, "planning")
         if err:
@@ -3005,7 +3084,7 @@ elif page == "Salariés":
         except Exception as e:
             return str(e), [], []
 
-    @st.cache_data(ttl=10, show_spinner=False)
+    @st.cache_data(ttl=90, show_spinner=False)
     def _load_liste_raw(u):
         ws, err = get_worksheet(u, "liste")
         if err:
@@ -3106,12 +3185,17 @@ elif page == "Salariés":
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    tab_planning, tab_config = st.tabs(["📅 Planning semaine", "⚙️ Jours travaillés"])
+    sal_view = st.radio(
+        "",
+        ["📅 Planning semaine", "⚙️ Jours travaillés"],
+        horizontal=True,
+        key="sal_view_mode",
+    )
 
     # ══════════════════════════════════════════════════════════════════════
     # TAB : PLANNING SEMAINE
     # ══════════════════════════════════════════════════════════════════════
-    with tab_planning:
+    if sal_view == "📅 Planning semaine":
         COL_SAL_S   = fcol(df, "salarié", "salarie", "salar")
         COL_HDeb_S  = fcol(df, "heure_debut", "heure debut", "heure_deb")
         COL_HFin_S  = fcol(df, "heure_fin", "heure fin")
@@ -3436,7 +3520,7 @@ elif page == "Salariés":
     # ══════════════════════════════════════════════════════════════════════
     # TAB : CONFIGURATION JOURS TRAVAILLÉS
     # ══════════════════════════════════════════════════════════════════════
-    with tab_config:
+    if sal_view == "⚙️ Jours travaillés":
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
 
         err_l, headers_l, rows_l = _load_liste_raw(user)
@@ -3632,7 +3716,7 @@ elif page == "Retards & Avenants":
 
     WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook/retard-{user_slug}"
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=90, show_spinner=False)
     def _load_envoie_pv(u):
         try:
             creds_data = get_user_credentials(u)
@@ -3665,7 +3749,11 @@ elif page == "Retards & Avenants":
     err_pv, df_pv = _load_envoie_pv(user)
 
     if err_pv:
-        st.error(f"Erreur chargement 'envoie pv' : {err_pv}")
+        show_data_source_error(
+            f"Erreur chargement 'envoie pv' : {err_pv}",
+            clear_fn=_load_envoie_pv.clear,
+            retry_key="retry_retard_pv",
+        )
         st.stop()
 
     if df_pv.empty:
@@ -3790,7 +3878,7 @@ elif page == "Retards & Avenants":
     st.markdown("<br>", unsafe_allow_html=True)
     col_btn1_r, col_btn2_r = st.columns([1, 2])
     with col_btn1_r:
-        st.caption(f"Webhook cible : `retard-{user}`")
+        st.caption(f"Webhook cible : `retard-{user_slug}`")
     with col_btn2_r:
         if st.button("📤 Envoyer le signalement à n8n", use_container_width=True, type="primary", key="btn_send_retard"):
             errors_r = []
@@ -3808,18 +3896,16 @@ elif page == "Retards & Avenants":
                     st.error(e)
             else:
                 try:
-                    resp = requests.post(
-                        WEBHOOK_RETARD,
-                        json=payload_retard,
-                        timeout=30,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    if resp.status_code in (200, 201):
+                    resp, send_err = post_n8n(WEBHOOK_RETARD, payload_retard)
+                    if send_err:
+                        if send_err == "timeout":
+                            st.error("Timeout — le webhook n8n ne répond pas.")
+                        else:
+                            st.error(f"Erreur réseau : {send_err}")
+                    elif resp.status_code in (200, 201):
                         st.success(f"✅ Signalement envoyé pour **{nom_client_r}** — Devis `{num_devis_r}`.")
                     else:
                         st.error(f"Erreur n8n : HTTP {resp.status_code}")
                         st.caption(resp.text[:300])
-                except requests.exceptions.Timeout:
-                    st.error("Timeout — le webhook n8n ne répond pas.")
                 except Exception as ex:
                     st.error(f"Erreur réseau : {ex}")
