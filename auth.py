@@ -7,6 +7,23 @@ import requests
 import bcrypt
 import time
 
+AVAILABLE_PAGES = [
+    "Vue Générale",
+    "Créer un devis",
+    "Devis",
+    "Factures & Paiements",
+    "Chantiers",
+    "Planning",
+    "Salariés",
+    "Notifications",
+    "Espace Clients",
+    "Tous les dossiers",
+    "Éditeur Google Sheet",
+    "Dépenses",
+    "Retards & Avenants",
+    "Coordonnées & RGPD",
+]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPABASE — config
@@ -70,6 +87,15 @@ def _sb_update_password(username: str, new_hash: str) -> bool:
         f"{_sb_url()}/rest/v1/users?username=eq.{username}",
         headers=_sb_headers(),
         json={"password_hash": new_hash},
+        timeout=10,
+    )
+    return r.ok
+
+def _sb_update_user(username: str, payload: dict) -> bool:
+    r = requests.patch(
+        f"{_sb_url()}/rest/v1/users?username=eq.{username}",
+        headers=_sb_headers(),
+        json=payload,
         timeout=10,
     )
     return r.ok
@@ -210,6 +236,7 @@ def check_login() -> bool:
                     st.session_state["authenticated"] = True
                     st.session_state["username"]      = "florian"
                     st.session_state["role"]          = "admin"
+                    st.session_state["allowed_pages"] = AVAILABLE_PAGES.copy() + ["Utilisateurs"]
                     st.rerun()
                 else:
                     _record_failed_attempt()
@@ -223,6 +250,11 @@ def check_login() -> bool:
                         st.session_state["authenticated"] = True
                         st.session_state["username"]      = username
                         st.session_state["role"]          = u.get("role", "viewer")
+                        allowed_pages = u.get("allowed_pages")
+                        if isinstance(allowed_pages, list) and allowed_pages:
+                            st.session_state["allowed_pages"] = allowed_pages
+                        else:
+                            st.session_state["allowed_pages"] = AVAILABLE_PAGES.copy()
                         st.rerun()
                     else:
                         _record_failed_attempt()
@@ -234,7 +266,7 @@ def check_login() -> bool:
     return False
 
 def logout():
-    for k in ["authenticated", "username", "role"]:
+    for k in ["authenticated", "username", "role", "allowed_pages"]:
         st.session_state.pop(k, None)
 
 # ── Panel admin ────────────────────────────────────────────────────────────────
@@ -257,13 +289,36 @@ def admin_panel():
                 continue
             c1, c2, c3 = st.columns([3, 4, 1])
             c1.markdown(f"**{uname}**")
-            c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}`")
+            rights_count = len(u.get("allowed_pages", []) or AVAILABLE_PAGES)
+            c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}` — Accès : {rights_count} onglets")
             if c3.button("🗑️", key=f"del_{uname}"):
                 if _sb_delete(uname):
                     st.success(f"✅ User **{uname}** supprimé.")
                     st.rerun()
                 else:
                     st.error("Erreur lors de la suppression.")
+
+            current_rights = u.get("allowed_pages")
+            if not isinstance(current_rights, list) or not current_rights:
+                current_rights = AVAILABLE_PAGES.copy()
+
+            with st.expander(f"Droits d'accès : {uname}", expanded=False):
+                selected_pages = st.multiselect(
+                    "Onglets autorisés",
+                    AVAILABLE_PAGES,
+                    default=[p for p in current_rights if p in AVAILABLE_PAGES],
+                    key=f"rights_{uname}",
+                )
+                if st.button("Enregistrer les droits", key=f"save_rights_{uname}", use_container_width=True):
+                    if len(selected_pages) == 0:
+                        st.error("Sélectionne au moins un onglet.")
+                    else:
+                        ok_rights = _sb_update_user(uname, {"allowed_pages": selected_pages})
+                        if ok_rights:
+                            st.success(f"Droits mis à jour pour {uname}.")
+                            st.rerun()
+                        else:
+                            st.error("Impossible de mettre à jour les droits.")
     except Exception as e:
         st.error(f"Erreur chargement users : {e}")
 
@@ -287,6 +342,11 @@ def admin_panel():
             placeholder='{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}',
             height=220,
         )
+        new_allowed_pages = st.multiselect(
+            "Onglets autorisés",
+            AVAILABLE_PAGES,
+            default=AVAILABLE_PAGES,
+        )
         submitted_create = st.form_submit_button("✅ Créer l'utilisateur", use_container_width=True)
 
     if submitted_create:
@@ -301,6 +361,8 @@ def admin_panel():
             err = "Le SHEET_NAME est obligatoire."
         elif not gsa_clean:
             err = "Le JSON Google Service Account est obligatoire."
+        elif len(new_allowed_pages) == 0:
+            err = "Sélectionne au moins un onglet autorisé."
         else:
             # Nettoyage JSON
             if gsa_clean.startswith("```"):
@@ -328,6 +390,7 @@ def admin_panel():
                 "role":          new_role,
                 "sheet_name":    new_sheet.strip(),
                 "google_sa":     gsa_clean,
+                "allowed_pages": new_allowed_pages,
             })
             if ok:
                 st.success(f"✅ User **{new_username}** créé avec le rôle `{new_role}`.")
