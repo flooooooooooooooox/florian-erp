@@ -3431,6 +3431,7 @@ with tab_config:
                         )
                         new_overrides[jour_k.lower()] = {"debut": hd.strftime("%H:%M"), "fin": hf.strftime("%H:%M")}
 
+                # On ferme la boucle 'for' et le 'with cols_h' en s'alignant ici
                 if st.button(
                     f"💾 Sauvegarder horaires S{num_semaine}",
                     key=f"save_planning_{sal_idx_cfg}",
@@ -3441,12 +3442,12 @@ with tab_config:
                         ws_pl, err_pl2 = get_worksheet(user, "planning")
                         if err_pl2:
                             sheet_name, gsa_json = get_user_credentials(user)
-                            creds  = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-                            gc     = gspread.authorize(creds)
-                            sh     = gc.open(sheet_name)
-                            ws_pl  = sh.add_worksheet(title="planning", rows=200, cols=50)
+                            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+                            gc = gspread.authorize(creds)
+                            sh = gc.open(sheet_name)
+                            ws_pl = sh.add_worksheet(title="planning", rows=200, cols=50)
 
-                        all_pl         = ws_pl.get_all_values()
+                        all_pl = ws_pl.get_all_values()
                         headers_pl_cur = all_pl[0] if all_pl else []
 
                         col_sal_pl = None
@@ -3454,15 +3455,13 @@ with tab_config:
                             if h.strip().lower() == nom_s.strip().lower():
                                 col_sal_pl = i
                                 break
+                        
                         if col_sal_pl is None:
                             col_sal_pl = len(headers_pl_cur)
                             ws_pl.update_cell(1, col_sal_pl + 1, nom_s)
                             all_pl = ws_pl.get_all_values()
 
-                        horaires_str = ",".join([
-                            f"{j}_{v['debut']}-{v['fin']}"
-                            for j, v in new_overrides.items()
-                        ])
+                        horaires_str = ",".join([f"{j}_{v['debut']}-{v['fin']}" for j, v in new_overrides.items()])
                         cell_val = f"semaine_{num_semaine}:{horaires_str}"
 
                         target_row = None
@@ -3470,24 +3469,26 @@ with tab_config:
                             if len(row) > col_sal_pl and f"semaine_{num_semaine}:" in row[col_sal_pl]:
                                 target_row = row_i
                                 break
+                        
                         if target_row:
                             ws_pl.update_cell(target_row, col_sal_pl + 1, cell_val)
                         else:
                             new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
                             new_row[col_sal_pl] = cell_val
                             ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
+                        
                         _load_planning_raw.clear()
-                        st.success(f"✅ Horaires S{num_semaine} de {nom_s} sauvegardés.")
+                        st.success(f"✅ Horaires S{num_semaine} sauvegardés.")
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
-        # <--- Il manquait les retours à la ligne ici pour fermer le 'with tab_config' et le 'elif page == "Salariés"'
-        
-# ══════════════════════════════════════════════════════════════════════════════
+
+# ── ON REVIENT À LA MARGE POUR LA PAGE SUIVANTE ────────────────────────────────
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Retards & Avenants":
-    page_header("Retards & Avenants", "Signalement de retard chantier — mise à jour automatique via n8n")
+    page_header("Retards & Avenants", "Signalement de retard chantier")
+    # ... reste du code
 
     WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook/retard-{user}"
 
