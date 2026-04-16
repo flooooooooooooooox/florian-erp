@@ -116,6 +116,57 @@ def _sb_update_user(username: str, payload: dict) -> tuple:
     # On renvoie aussi le détail pour pouvoir diagnostiquer "Impossible de mettre à jour les droits."
     return r.ok, r.status_code, (r.text or "").strip()
 
+def _sb_get_user_rights(username: str) -> tuple:
+    r = requests.get(
+        f"{_sb_url()}/rest/v1/user_rights?username=eq.{username}&select=allowed_pages",
+        headers=_sb_admin_headers(),
+        timeout=10,
+    )
+    detail = (r.text or "").strip()
+    if not r.ok:
+        return None, r.status_code, detail
+    try:
+        data = r.json()
+    except Exception:
+        return None, r.status_code, detail
+    if not data:
+        return [], r.status_code, ""
+    allowed_pages = data[0].get("allowed_pages", [])
+    if isinstance(allowed_pages, list):
+        return allowed_pages, r.status_code, ""
+    return [], r.status_code, ""
+
+def _sb_set_user_rights(username: str, selected_pages: list) -> tuple:
+    payload = {
+        "username": username,
+        "allowed_pages": [p for p in selected_pages if p in AVAILABLE_PAGES],
+    }
+    headers = _sb_admin_headers().copy()
+    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+    r = requests.post(
+        f"{_sb_url()}/rest/v1/user_rights",
+        headers=headers,
+        json=payload,
+        timeout=10,
+    )
+    return r.ok, r.status_code, (r.text or "").strip()
+
+def _sb_delete_user_rights(username: str) -> tuple:
+    r = requests.delete(
+        f"{_sb_url()}/rest/v1/user_rights?username=eq.{username}",
+        headers=_sb_admin_headers(),
+        timeout=10,
+    )
+    return r.ok, r.status_code, (r.text or "").strip()
+
+def _uses_missing_rights_table(status_code: int, detail: str) -> bool:
+    detail_low = (detail or "").lower()
+    return status_code in (400, 404) and (
+        "user_rights" in detail_low or
+        "schema cache" in detail_low or
+        "could not find" in detail_low
+    )
+
 def _load_local_rights() -> dict:
     if not os.path.exists(RIGHTS_FILE):
         return {}
@@ -134,9 +185,20 @@ def _save_local_rights(data: dict) -> bool:
     except Exception:
         return False
 
+def _delete_local_rights(username: str) -> bool:
+    rights_map = _load_local_rights()
+    if username in rights_map:
+        rights_map.pop(username, None)
+        return _save_local_rights(rights_map)
+    return True
+
 def get_allowed_pages(username: str, user_record: dict | None = None) -> list:
     if username == "florian":
         return AVAILABLE_PAGES.copy() + ["Utilisateurs"]
+
+    sb_rights, _, _ = _sb_get_user_rights(username)
+    if isinstance(sb_rights, list) and sb_rights:
+        return [p for p in sb_rights if p in AVAILABLE_PAGES]
 
     rights_map = _load_local_rights()
     local_rights = rights_map.get(username)
@@ -152,11 +214,18 @@ def get_allowed_pages(username: str, user_record: dict | None = None) -> list:
     return AVAILABLE_PAGES.copy()
 
 def set_allowed_pages(username: str, selected_pages: list) -> tuple:
+    ok, status_code, detail = _sb_set_user_rights(username, selected_pages)
+    if ok:
+        _delete_local_rights(username)
+        return True, status_code, detail
+    if not _uses_missing_rights_table(status_code, detail):
+        return False, status_code, detail
+
     rights_map = _load_local_rights()
     rights_map[username] = [p for p in selected_pages if p in AVAILABLE_PAGES]
     ok = _save_local_rights(rights_map)
     if ok:
-        return True, 200, ""
+        return True, 200, "fallback_local"
     return False, 500, "Impossible d'écrire le fichier local des droits."
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -349,6 +418,10 @@ def admin_panel():
             c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}` — Accès : {rights_count} onglets")
             if c3.button("🗑️", key=f"del_{uname}"):
                 if _sb_delete(uname):
+                    ok_rights_cleanup, status_cleanup, detail_cleanup = _sb_delete_user_rights(uname)
+                    if not ok_rights_cleanup and not _uses_missing_rights_table(status_cleanup, detail_cleanup):
+                        st.warning(f"Droits Supabase non nettoyés pour {uname}.")
+                    _delete_local_rights(uname)
                     st.success(f"✅ User **{uname}** supprimé.")
                     st.rerun()
                 else:
@@ -367,7 +440,10 @@ def admin_panel():
                     else:
                         ok_rights, status_code, detail = set_allowed_pages(uname, selected_pages)
                         if ok_rights:
-                            st.success(f"Droits mis à jour pour {uname}.")
+                            if detail == "fallback_local":
+                                st.success(f"Droits mis à jour pour {uname} (stockage local temporaire).")
+                            else:
+                                st.success(f"Droits mis à jour pour {uname}.")
                             st.rerun()
                         else:
                             # Détail tronqué pour éviter l'affichage d'infos trop longues.
