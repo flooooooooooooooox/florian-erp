@@ -2795,8 +2795,8 @@ elif page == "Chantiers":
             if col: mask |= df_ch[col].astype(str).str.contains(search_ch, case=False, na=False)
         df_ch = df_ch[mask]
 
-    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_status_label", "_progress_ch"] if c]
-    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves", "_status_label": "Statut", "_progress_ch": "Avancement (%)"}
+    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE] if c]
+    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves"}
 
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
