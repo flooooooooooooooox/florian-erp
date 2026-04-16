@@ -3296,7 +3296,7 @@ elif page == "Salariés":
     # ══════════════════════════════════════════════════════════════════════
     # TAB : CONFIGURATION JOURS TRAVAILLÉS
     # ══════════════════════════════════════════════════════════════════════
-with tab_config:
+    with tab_config:
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
 
         err_l, headers_l, rows_l = _load_liste_raw(user)
