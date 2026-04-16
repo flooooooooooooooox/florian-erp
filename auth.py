@@ -7,6 +7,8 @@ import requests
 import bcrypt
 import time
 
+RIGHTS_FILE = "user_rights.json"
+
 AVAILABLE_PAGES = [
     "Vue Générale",
     "Créer un devis",
@@ -113,6 +115,49 @@ def _sb_update_user(username: str, payload: dict) -> tuple:
     )
     # On renvoie aussi le détail pour pouvoir diagnostiquer "Impossible de mettre à jour les droits."
     return r.ok, r.status_code, (r.text or "").strip()
+
+def _load_local_rights() -> dict:
+    if not os.path.exists(RIGHTS_FILE):
+        return {}
+    try:
+        with open(RIGHTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _save_local_rights(data: dict) -> bool:
+    try:
+        with open(RIGHTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+def get_allowed_pages(username: str, user_record: dict | None = None) -> list:
+    if username == "florian":
+        return AVAILABLE_PAGES.copy() + ["Utilisateurs"]
+
+    rights_map = _load_local_rights()
+    local_rights = rights_map.get(username)
+    if isinstance(local_rights, list) and local_rights:
+        return [p for p in local_rights if p in AVAILABLE_PAGES]
+
+    u = user_record if user_record is not None else _sb_get(username)
+    if isinstance(u, dict):
+        allowed_pages = u.get("allowed_pages")
+        if isinstance(allowed_pages, list) and allowed_pages:
+            return [p for p in allowed_pages if p in AVAILABLE_PAGES]
+
+    return AVAILABLE_PAGES.copy()
+
+def set_allowed_pages(username: str, selected_pages: list) -> tuple:
+    rights_map = _load_local_rights()
+    rights_map[username] = [p for p in selected_pages if p in AVAILABLE_PAGES]
+    ok = _save_local_rights(rights_map)
+    if ok:
+        return True, 200, ""
+    return False, 500, "Impossible d'écrire le fichier local des droits."
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -264,11 +309,7 @@ def check_login() -> bool:
                         st.session_state["authenticated"] = True
                         st.session_state["username"]      = username
                         st.session_state["role"]          = u.get("role", "viewer")
-                        allowed_pages = u.get("allowed_pages")
-                        if isinstance(allowed_pages, list) and allowed_pages:
-                            st.session_state["allowed_pages"] = allowed_pages
-                        else:
-                            st.session_state["allowed_pages"] = AVAILABLE_PAGES.copy()
+                        st.session_state["allowed_pages"] = get_allowed_pages(username, u)
                         st.rerun()
                     else:
                         _record_failed_attempt()
@@ -303,7 +344,8 @@ def admin_panel():
                 continue
             c1, c2, c3 = st.columns([3, 4, 1])
             c1.markdown(f"**{uname}**")
-            rights_count = len(u.get("allowed_pages", []) or AVAILABLE_PAGES)
+            current_rights = get_allowed_pages(uname, u)
+            rights_count = len(current_rights or AVAILABLE_PAGES)
             c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}` — Accès : {rights_count} onglets")
             if c3.button("🗑️", key=f"del_{uname}"):
                 if _sb_delete(uname):
@@ -311,10 +353,6 @@ def admin_panel():
                     st.rerun()
                 else:
                     st.error("Erreur lors de la suppression.")
-
-            current_rights = u.get("allowed_pages")
-            if not isinstance(current_rights, list) or not current_rights:
-                current_rights = AVAILABLE_PAGES.copy()
 
             with st.expander(f"Droits d'accès : {uname}", expanded=False):
                 selected_pages = st.multiselect(
@@ -327,7 +365,7 @@ def admin_panel():
                     if len(selected_pages) == 0:
                         st.error("Sélectionne au moins un onglet.")
                     else:
-                        ok_rights, status_code, detail = _sb_update_user(uname, {"allowed_pages": selected_pages})
+                        ok_rights, status_code, detail = set_allowed_pages(uname, selected_pages)
                         if ok_rights:
                             st.success(f"Droits mis à jour pour {uname}.")
                             st.rerun()
@@ -405,9 +443,9 @@ def admin_panel():
                 "role":          new_role,
                 "sheet_name":    new_sheet.strip(),
                 "google_sa":     gsa_clean,
-                "allowed_pages": new_allowed_pages,
             })
             if ok:
+                set_allowed_pages(new_username.strip(), new_allowed_pages)
                 st.success(f"✅ User **{new_username}** créé avec le rôle `{new_role}`.")
                 if not new_password.strip():
                     st.info(f"🔑 Mot de passe : `{pwd}` — notez-le, il ne sera plus affiché.")
