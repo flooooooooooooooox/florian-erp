@@ -3480,24 +3480,86 @@ elif page == "Salariés":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "Retards & Avenants":
+elif page == "Retards & Avenants": :
     page_header("Retards & Avenants", "Signalement de retard chantier — mise à jour automatique via n8n")
 
     WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook-test/retard-{user}"
 
-    df_retard = df[df["_signe"] & ~df["_pv"]].copy()
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_envoie_pv(u):
+        try:
+            creds_data = get_user_credentials(u)
+            # get_user_credentials retourne (sheet_name, gsa_json)
+            _, gsa_json = creds_data
+            if not gsa_json:
+                return "Credentials non configurés.", pd.DataFrame()
+            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+            gc = gspread.authorize(creds)
+            # Ouvre le sheet spécifique
+            sh = gc.open("Automatisation des relances devis par dates")
+            ws = sh.worksheet("envoie pv")
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return None, pd.DataFrame()
+            headers = _dedup_headers(vals[0])
+            rows = vals[1:]
+            n = len(headers)
+            padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+            df_pv = pd.DataFrame(padded, columns=headers)
+            df_pv = df_pv.replace("", pd.NA).dropna(how="all").fillna("")
+            return None, df_pv
+        except gspread.exceptions.WorksheetNotFound:
+            return "Onglet 'envoie pv' introuvable.", pd.DataFrame()
+        except gspread.exceptions.SpreadsheetNotFound:
+            return "Sheet 'Automatisation des relances devis par dates' introuvable.", pd.DataFrame()
+        except Exception as e:
+            return str(e), pd.DataFrame()
+
+    err_pv, df_pv = _load_envoie_pv(user)
+
+    if err_pv:
+        st.error(f"Erreur chargement 'envoie pv' : {err_pv}")
+        st.stop()
+
+    if df_pv.empty:
+        st.info("Aucun dossier trouvé dans l'onglet 'envoie pv'.")
+        st.stop()
+
+    if st.button("Actualiser", key="btn_refresh_retard"):
+        _load_envoie_pv.clear()
+        st.rerun()
+
+    # Détection colonnes de l'onglet envoie pv
+    def pvcol(df_in, *kws):
+        for kw in kws:
+            for c in df_in.columns:
+                if kw.lower() in str(c).strip().lower():
+                    return c
+        return None
+
+    PV_CLIENT   = pvcol(df_pv, "client")
+    PV_EMAIL    = pvcol(df_pv, "email")
+    PV_OBJET    = pvcol(df_pv, "objet")
+    PV_NUM      = pvcol(df_pv, "numero devis", "numero", "num")
+    PV_DATE_ENV = pvcol(df_pv, "date d'envoie", "date envoie", "date")
+    PV_TYPE_PAI = pvcol(df_pv, "type_paiement", "type paiement", "paiement")
+    PV_STATUT   = pvcol(df_pv, "statut")
+    PV_LIEN     = pvcol(df_pv, "lien pv", "lien")
+
+    # Filtre : uniquement les lignes avec un numéro de devis valide
+    df_retard = df_pv[df_pv[PV_NUM].astype(str).str.strip().ne("") & df_pv[PV_NUM].astype(str).str.strip().ne("nan")].copy() if PV_NUM else df_pv.copy()
 
     if df_retard.empty:
-        st.info("Aucun chantier actif (devis signé, PV non signé).")
+        st.info("Aucun chantier actif dans 'envoie pv'.")
         st.stop()
 
     st.markdown("#### Sélectionner le chantier concerné")
 
     def _label_chantier_r(row):
         parts = []
-        if COL_NUM     and str(row.get(COL_NUM,     "")).strip() not in ("", "nan"): parts.append(str(row[COL_NUM]).strip())
-        if COL_CLIENT  and str(row.get(COL_CLIENT,  "")).strip() not in ("", "nan"): parts.append(str(row[COL_CLIENT]).strip())
-        if COL_CHANTIER and str(row.get(COL_CHANTIER,"")).strip() not in ("", "nan"): parts.append(str(row[COL_CHANTIER]).strip())
+        if PV_NUM    and str(row.get(PV_NUM,    "")).strip() not in ("", "nan"): parts.append(str(row[PV_NUM]).strip())
+        if PV_CLIENT and str(row.get(PV_CLIENT, "")).strip() not in ("", "nan"): parts.append(str(row[PV_CLIENT]).strip())
+        if PV_OBJET  and str(row.get(PV_OBJET,  "")).strip() not in ("", "nan"): parts.append(str(row[PV_OBJET]).strip())
         return " — ".join(parts) if parts else f"Ligne {row.name + 2}"
 
     chantier_labels_r = [_label_chantier_r(row) for _, row in df_retard.iterrows()]
@@ -3511,14 +3573,12 @@ elif page == "Retards & Avenants":
         v = str(sel_row_r.get(col, "")).strip()
         return "" if v.lower() in ("nan", "none", "") else v
 
-    num_devis_r   = _safe_r(COL_NUM)
-    nom_client_r  = _safe_r(COL_CLIENT)
-    chantier_id_r = _safe_r(COL_CHANTIER)
-    montant_r     = _safe_r(COL_MONTANT)
-    adresse_r     = _safe_r(COL_ADRESSE) if COL_ADRESSE else ""
-
-    email_col_r      = fcol(df, "email", "mail", "courriel")
-    email_client_r   = _safe_r(email_col_r) if email_col_r else ""
+    num_devis_r   = _safe_r(PV_NUM)
+    nom_client_r  = _safe_r(PV_CLIENT)
+    chantier_id_r = _safe_r(PV_OBJET)
+    email_client_r = _safe_r(PV_EMAIL)
+    type_pai_r    = _safe_r(PV_TYPE_PAI)
+    date_env_r    = _safe_r(PV_DATE_ENV)
 
     # ── Récap chantier ────────────────────────────────────────────────────
     with st.container(border=True):
@@ -3526,9 +3586,11 @@ elif page == "Retards & Avenants":
         rc1, rc2, rc3 = st.columns(3)
         rc1.markdown(f"**N° Devis**\n\n`{num_devis_r or '—'}`")
         rc2.markdown(f"**Client**\n\n{nom_client_r or '—'}")
-        rc3.markdown(f"**Montant**\n\n{montant_r + ' €' if montant_r else '—'}")
-        if adresse_r:
-            st.markdown(f"📍 {adresse_r}")
+        rc3.markdown(f"**Type paiement**\n\n{type_pai_r or '—'}")
+        if date_env_r:
+            st.markdown(f"📅 Envoyé le : **{date_env_r}**")
+        if chantier_id_r:
+            st.markdown(f"🏗️ Objet : **{chantier_id_r}**")
 
     st.markdown("---")
     st.markdown("#### Signalement du retard")
@@ -3536,17 +3598,11 @@ elif page == "Retards & Avenants":
     col_f1_r, col_f2_r = st.columns(2)
 
     with col_f1_r:
-        date_fin_cur_str = _safe_r(COL_DATE_FIN) if COL_DATE_FIN else ""
-        try:
-            date_fin_pre_r = pd.to_datetime(date_fin_cur_str, dayfirst=True).date() if date_fin_cur_str else datetime.today().date()
-        except Exception:
-            date_fin_pre_r = datetime.today().date()
-
-        ancienne_date_r = st.date_input("Date de fin initiale (ancienne)", value=date_fin_pre_r, key="retard_ancienne_date")
+        ancienne_date_r = st.date_input("Date de fin initiale (ancienne)", value=datetime.today().date(), key="retard_ancienne_date")
         email_r         = st.text_input("Email client", value=email_client_r, placeholder="jean.dupont@email.com", key="retard_email")
 
     with col_f2_r:
-        nouvelle_date_r = st.date_input("Nouvelle date de fin prévue", value=date_fin_pre_r + timedelta(days=14), key="retard_nouvelle_date")
+        nouvelle_date_r = st.date_input("Nouvelle date de fin prévue", value=datetime.today().date() + timedelta(days=14), key="retard_nouvelle_date")
         motif_r         = st.selectbox("Motif du retard", [
             "Rupture de stock matériaux",
             "Conditions météorologiques",
@@ -3577,6 +3633,7 @@ elif page == "Retards & Avenants":
         "nouvelle_date": nouvelle_date_r.strftime("%d/%m/%Y"),
         "motif":         motif_r,
         "details":       details_r.strip(),
+        "type_paiement": type_pai_r,
         "entreprise":    "FLOXIA",
     }
 
@@ -3591,7 +3648,7 @@ elif page == "Retards & Avenants":
         if st.button("📤 Envoyer le signalement à n8n", use_container_width=True, type="primary", key="btn_send_retard"):
             errors_r = []
             if not num_devis_r:
-                errors_r.append("Numéro de devis introuvable — vérifiez la colonne dans Sheets.")
+                errors_r.append("Numéro de devis introuvable.")
             if not nom_client_r:
                 errors_r.append("Nom client manquant.")
             if delta_r <= 0:
@@ -3604,30 +3661,18 @@ elif page == "Retards & Avenants":
                     st.error(e)
             else:
                 try:
-                    resp = requests.post(WEBHOOK_RETARD, json=payload_retard, timeout=30, headers={"Content-Type": "application/json"})
+                    resp = requests.post(
+                        WEBHOOK_RETARD,
+                        json=payload_retard,
+                        timeout=30,
+                        headers={"Content-Type": "application/json"}
+                    )
                     if resp.status_code in (200, 201):
-                        st.success(f"✅ Signalement envoyé pour **{nom_client_r}** — Devis `{num_devis_r}`. n8n va mettre à jour le Google Sheet et générer le PV de retard.")
+                        st.success(f"✅ Signalement envoyé pour **{nom_client_r}** — Devis `{num_devis_r}`.")
                     else:
                         st.error(f"Erreur n8n : HTTP {resp.status_code}")
                         st.caption(resp.text[:300])
                 except requests.exceptions.Timeout:
-                    st.error("Timeout — le webhook n8n ne répond pas. Vérifiez qu'il est actif.")
+                    st.error("Timeout — le webhook n8n ne répond pas.")
                 except Exception as ex:
                     st.error(f"Erreur réseau : {ex}")
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : TOUS LES DOSSIERS
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "Tous les dossiers":
-    page_header("Tous les dossiers", f"{len(df)} dossiers au total")
-
-    search = st.text_input("🔍 Recherche globale", placeholder="Client, chantier, numéro...", key="search_all")
-    d = df.copy()
-    if search:
-        mask = pd.Series([False]*len(d), index=d.index)
-        for col in [COL_CLIENT, COL_CHANTIER, COL_NUM]:
-            if col: mask |= d[col].astype(str).str.contains(search, case=False, na=False)
-        d = d[mask]
-
-    st.caption(f"{len(d)} dossier(s) trouvé(s)")
-    drop_cols = ["_montant","_signe","_fact_fin","_pv","_acompte1","_acompte2","_reste","_statut_ch","_start","_end","_statut_code","_mois_str","_mois_ord"]
-    show_table(d.drop(columns=drop_cols, errors="ignore").reset_index(drop=True), "all")
