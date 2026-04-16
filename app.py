@@ -277,6 +277,29 @@ section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="
 if not check_login():
     st.stop()
 
+# ── Conditions d'utilisation ──────────────────────────────────────────────────
+# Objectif : rappeler que l'accès dépend des droits utilisateur (`allowed_pages`)
+# et éviter les confusions lors de la gestion des accès.
+_TERMS_VERSION = "v1"
+_username = st.session_state.get("username", "")
+_terms_key = f"accepted_terms_{_username}"
+if _username and st.session_state.get(_terms_key) != _TERMS_VERSION:
+    st.markdown("<div class='page-header'><h1>Conditions d'utilisation</h1></div>", unsafe_allow_html=True)
+    st.markdown(
+        "En utilisant cette application, vous acceptez que : "
+        "`vos droits d'accès` déterminent les pages/fonctionnalités visibles (champ `allowed_pages`), "
+        "que vos actions peuvent déclencher des automatisations via `n8n` (webhooks), "
+        "et que vous vous engagez à ne pas divulguer d'informations internes ou sensibles."
+    )
+    accept = st.checkbox(
+        "J'ai lu et j'accepte les conditions d'utilisation",
+        key="accept_terms_checkbox",
+    )
+    if accept:
+        st.session_state[_terms_key] = _TERMS_VERSION
+        st.rerun()
+    st.stop()
+
 # ── CONFIG GOOGLE SHEETS & DRIVE ───────────────────────────────────────────────
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -685,21 +708,22 @@ with st.sidebar:
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-with st.expander("Diagnostic n8n (endpoints & logs)", expanded=False):
-    st.caption("Endpoints actifs pour ce compte :")
-    st.code(
-        "\n".join([
-            f"reponse: https://n8n.florianai.fr/webhook/reponse-{user_slug}",
-            f"devis:    https://n8n.florianai.fr/webhook/{user_slug}",
-            f"retard:   https://n8n.florianai.fr/webhook/retard-{user_slug}",
-        ])
-    )
-    send_logs = st.session_state.get("_send_logs", [])
-    if send_logs:
-        st.caption("Derniers envois (sans données sensibles) :")
-        st.dataframe(pd.DataFrame(send_logs), use_container_width=True, hide_index=True)
-    else:
-        st.caption("Aucun envoi loggé dans cette session.")
+if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
+    with st.expander("Diagnostic n8n (endpoints & logs)", expanded=False):
+        st.caption("Endpoints actifs pour ce compte :")
+        st.code(
+            "\n".join([
+                f"reponse: https://n8n.florianai.fr/webhook/reponse-{user_slug}",
+                f"devis:    https://n8n.florianai.fr/webhook/{user_slug}",
+                f"retard:   https://n8n.florianai.fr/webhook/retard-{user_slug}",
+            ])
+        )
+        send_logs = st.session_state.get("_send_logs", [])
+        if send_logs:
+            st.caption("Derniers envois (sans données sensibles) :")
+            st.dataframe(pd.DataFrame(send_logs), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Aucun envoi loggé dans cette session.")
 
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "Utilisateurs":
