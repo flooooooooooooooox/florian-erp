@@ -13,6 +13,7 @@ import requests
 import re
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
+from activity_log import log_activity, read_activity_logs
 
 st.set_page_config(
     page_title="Florian AI Bâtiment – ERP",
@@ -416,15 +417,50 @@ def post_n8n(endpoint: str, payload: dict):
             timeout=N8N_TIMEOUT_SECONDS,
             headers={"Content-Type": "application/json"},
         )
+        actor = st.session_state.get("username", "inconnu")
+        action_name = f"webhook_envoye_http_{resp.status_code}"
+        target_name = payload.get("num_devis") or payload.get("numero_devis") or payload.get("nom_client") or endpoint
+        log_activity(actor, action_name, target=str(target_name), details={"endpoint": endpoint})
         if resp.status_code not in (200, 201):
             _log_send_event(endpoint, status_code=resp.status_code, error_msg=resp.text[:180])
         return resp, None
     except requests.exceptions.Timeout:
         _log_send_event(endpoint, error_msg="timeout")
+        log_activity(st.session_state.get("username", "inconnu"), "webhook_timeout", target=endpoint)
         return None, "timeout"
     except Exception as ex:
         _log_send_event(endpoint, error_msg=str(ex))
+        log_activity(st.session_state.get("username", "inconnu"), "webhook_erreur", target=endpoint, details={"error": str(ex)[:180]})
         return None, str(ex)
+
+
+def compute_chantier_progress(start_val, end_val, is_finished=False):
+    if is_finished:
+        return 100
+    start_dt = pd.to_datetime(start_val, errors="coerce")
+    end_dt = pd.to_datetime(end_val, errors="coerce")
+    if pd.isna(start_dt) or pd.isna(end_dt):
+        return 0
+    start_date = start_dt.date()
+    end_date = end_dt.date()
+    today_date = datetime.now().date()
+    if end_date < start_date:
+        return 0
+    if today_date <= start_date:
+        return 0
+    if today_date >= end_date:
+        return 100
+    total_days = max((end_date - start_date).days, 1)
+    elapsed_days = max((today_date - start_date).days, 0)
+    return min(100, max(0, int(round((elapsed_days / total_days) * 100))))
+
+
+def chantier_status_meta(progress_pct, is_finished=False):
+    if is_finished or progress_pct >= 100:
+        return "Termine", "#00d68f", "rgba(0,214,143,0.14)"
+    if progress_pct <= 0:
+        return "A demarrer", "#94a3b8", "rgba(148,163,184,0.12)"
+    return "En cours", "#4f8ef7", "rgba(79,142,247,0.14)"
 
 def show_data_source_error(message: str, clear_fn=None, retry_key: str = "retry_data_source"):
     st.error(message)
@@ -1730,6 +1766,17 @@ elif "Notifications" in page:
                                         statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
                                         if statut_col:
                                             ws_n.update_cell(sheet_row, statut_col, "planifie")
+                                    log_activity(
+                                        user,
+                                        "chantier_modifie",
+                                        target=numero or client or objet,
+                                        details={
+                                            "type": "planification",
+                                            "salarie": salarie_sel,
+                                            "date_debut": date_debut_notif.strftime("%Y-%m-%d"),
+                                            "date_fin": date_fin_notif.strftime("%Y-%m-%d"),
+                                        },
+                                    )
                                     _load_notifications.clear()
                                     st.success(f"Planification envoyée à n8n pour {client}.")
                                     st.rerun()
@@ -2329,6 +2376,7 @@ elif page == "Créer un devis":
                         st.error("Timeout — n8n ne répond pas." if send_err == "timeout" else f"Erreur : {send_err}")
                         resp = None
                     if resp is not None and resp.status_code in (200, 201):
+                        log_activity(user, "devis_modifie", target=str(payload.get("numero_devis", "")), details={"action": "imprimer"})
                         st.success("Envoyé à n8n pour impression.")
                     elif resp is not None:
                         st.error(f"Erreur {resp.status_code}")
@@ -2346,6 +2394,7 @@ elif page == "Créer un devis":
                         if send_err:
                             st.error("Timeout — n8n ne répond pas." if send_err == "timeout" else f"Erreur : {send_err}")
                         elif resp.status_code in (200, 201):
+                            log_activity(user, "devis_modifie", target=str(payload.get("numero_devis", "")), details={"action": "envoyer_client"})
                             st.success("Devis envoyé au client.")
                             st.session_state.devis_lignes = [
                                 {"source": "libre", "article": "", "description": "", "prix_ht": 0.0, "qte": 1.0, "categorie": ""}
@@ -2724,6 +2773,13 @@ elif page == "Chantiers":
     page_header("Suivi des Chantiers", "Vue d'ensemble des travaux")
 
     df["_statut_ch"] = df["_pv"].apply(lambda x: "Terminé" if x else "En cours")
+    df["_progress_ch"] = [
+        compute_chantier_progress(start_val, end_val, is_finished=pv_done)
+        for start_val, end_val, pv_done in zip(df[COL_DATE_DEBUT], df[COL_DATE_FIN], df["_pv"])
+    ]
+    status_meta = [chantier_status_meta(p, done) for p, done in zip(df["_progress_ch"], df["_pv"])]
+    df["_status_label"] = [m[0] for m in status_meta]
+    df["_status_color"] = [m[1] for m in status_meta]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("En cours", int((~df["_pv"]).sum()))
     c2.metric("Tréso. en cours", fmt(df[~df["_pv"]]["_montant"].sum()))
@@ -2739,8 +2795,8 @@ elif page == "Chantiers":
             if col: mask |= df_ch[col].astype(str).str.contains(search_ch, case=False, na=False)
         df_ch = df_ch[mask]
 
-    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_statut_ch"] if c]
-    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves", "_statut_ch": "État d'avancement"}
+    cols_ch = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ADRESSE, COL_DATE_DEBUT, COL_DATE_FIN, COL_RESERVE, "_status_label", "_progress_ch"] if c]
+    valid_rename_map = {COL_CLIENT: "Client", COL_CHANTIER: "Projet / Chantier", COL_MONTANT: "Budget (€)", COL_ADRESSE: "Lieu des travaux", COL_DATE_DEBUT: "Début", COL_DATE_FIN: "Fin prévue", COL_RESERVE: "Réserves", "_status_label": "Statut", "_progress_ch": "Avancement (%)"}
 
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
@@ -2767,11 +2823,25 @@ elif page == "Chantiers":
     if tab_ch_choice == "En cours":
         d = df_ch[~df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) actif(s) — {fmt(d['_montant'].sum())}")
-        show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_cours")
+        if not d.empty:
+            st.dataframe(
+                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Aucun chantier en cours.")
     elif tab_ch_choice == "Livrés (PV signé)":
         d = df_ch[df_ch["_pv"]]
         st.caption(f"{len(d)} chantier(s) livré(s) — {fmt(d['_montant'].sum())}")
-        show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_termines")
+        if not d.empty:
+            st.dataframe(
+                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Aucun chantier livré.")
     else:
         d = df_ch[df_ch["_has_reserve"]]
         if d.empty:
@@ -2781,7 +2851,11 @@ elif page == "Chantiers":
             r1.metric("Avec réserves", len(d))
             r2.metric("CA concerné", fmt(d['_montant'].sum()))
             r3.metric("Non livrés", int((d["_has_reserve"] & ~d["_pv"]).sum()))
-            show_table((d[cols_ch].rename(columns=valid_rename_map) if cols_ch else d).reset_index(drop=True), "ch_reserves")
+            st.dataframe(
+                (d[cols_ch].rename(columns=valid_rename_map)).reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : PLANNING
@@ -2840,6 +2914,13 @@ elif page == "Planning":
         df_plan["_salarie"] = ""
     df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB_P].apply(clean_time_val) if COL_HEURE_DEB_P else ""
     df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN_P].apply(clean_time_val) if COL_HEURE_FIN_P else ""
+    df_plan["_progress_pct"] = [
+        compute_chantier_progress(start_val, end_val)
+        for start_val, end_val in zip(df_plan["_start"], df_plan["_end"])
+    ]
+    plan_status_meta = [chantier_status_meta(p, False if p < 100 else True) for p in df_plan["_progress_pct"]]
+    df_plan["_status_label"] = [m[0] for m in plan_status_meta]
+    df_plan["_status_color"] = [m[1] for m in plan_status_meta]
 
     # ── KPIs ───────────────────────────────────────────────────────────────
     k1, k2, k3 = st.columns(3)
@@ -2921,6 +3002,8 @@ elif page == "Planning":
                     duree = (row["_end"] - row["_start"]).days + 1
                     termine = row["_end"].date() < today.date()
                     color = "#00d68f" if termine else "#4f8ef7"
+                    progress_pct = int(row.get("_progress_pct", 0))
+                    status_label = row.get("_status_label", "En cours")
 
                     def _get(col):
                         if not col or col not in row.index: return ""
@@ -2954,6 +3037,10 @@ elif page == "Planning":
                           {"<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;'>" + adresse + "</div>" if adresse else ""}
                           {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>" + sal + "</div>" if sal else ""}
                           {"<div style='font-size:0.85rem;color:#ffb84d;'>" + horaire + "</div>" if horaire else ""}
+                          <div style='margin-top:8px;font-size:0.8rem;color:{color};font-weight:700;'>{status_label} · {progress_pct}%</div>
+                          <div style='margin-top:6px;background:rgba(255,255,255,0.06);border-radius:999px;height:8px;overflow:hidden;'>
+                            <div style='width:{progress_pct}%;background:{color};height:100%;'></div>
+                          </div>
                         </div>
                         <div style="text-align:right;flex-shrink:0;">
                           <div style="margin-bottom:8px;">{montant_badge}</div>
@@ -2981,7 +3068,8 @@ elif page == "Planning":
                 duree     = (row["_end"] - row["_start"]).days + 1
                 termine   = row["_end"].date() < today.date()
                 color     = "#00d68f" if termine else "#4f8ef7"
-                label_st  = "Terminé" if termine else "En cours / À venir"
+                label_st  = row.get("_status_label", "En cours / À venir")
+                progress_pct = int(row.get("_progress_pct", 0))
 
                 def _get2(col):
                     if not col or col not in row.index: return ""
@@ -3017,6 +3105,10 @@ elif page == "Planning":
                       {"<div style='font-weight:600;font-size:0.88rem;color:#4f8ef7;margin-bottom:4px;'>" + sal + "</div>" if sal else "<div style='color:var(--text-muted);font-size:0.85rem;margin-bottom:4px;'>Intervenant non renseigné</div>"}
                       {"<div style='font-size:0.85rem;color:#ffb84d;margin-top:2px;'>" + horaire_html + "</div>" if horaire_html else ""}
                       <div style="margin-top:8px;"><span style="padding:2px 10px;border-radius:99px;font-size:0.75rem;font-weight:700;color:{color};border:1px solid {color};background:rgba(0,0,0,0.04);">{label_st}</span></div>
+                      <div style="margin-top:8px;font-size:0.8rem;color:{color};font-weight:700;">Avancement : {progress_pct}%</div>
+                      <div style="margin-top:6px;background:rgba(255,255,255,0.06);border-radius:999px;height:8px;overflow:hidden;max-width:220px;">
+                        <div style="width:{progress_pct}%;background:{color};height:100%;"></div>
+                      </div>
                     </div>
                     <div style="text-align:right;flex-shrink:0;">
                       <div style="margin-bottom:8px;">{montant_badge}</div>
@@ -3646,6 +3738,7 @@ elif page == "Salariés":
                                 for row_i, r2 in enumerate(all_vals[1:], start=2):
                                     if len(r2) > s_idx2 and r2[s_idx2].strip() == nom_s:
                                         ws_l2.update_cell(row_i, j_idx2 + 1, ",".join(sel_jours))
+                                        log_activity(user, "chantier_modifie", target=nom_s, details={"type": "jours_travail", "jours": sel_jours})
                                         break
                                 _load_liste_raw.clear()
                                 _load_jours_salaries.clear()
@@ -3746,6 +3839,12 @@ elif page == "Salariés":
                             new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
                             new_row[col_sal_pl] = cell_val
                             ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
+                        log_activity(
+                            user,
+                            "chantier_modifie",
+                            target=nom_s,
+                            details={"type": "planning_semaine", "semaine": num_semaine, "horaires": new_overrides},
+                        )
                         
                         _load_planning_raw.clear()
                         st.success(f"✅ Horaires S{num_semaine} sauvegardés.")
@@ -3992,3 +4091,16 @@ elif page == "Coordonnées & RGPD":
         st.markdown("- N'envoie que les données strictement necessaires aux automatisations.")
         st.markdown("- Vérifie les informations client avant tout envoi ou toute relance.")
         st.markdown("- Déconnecte-toi en fin de session sur un poste partagé.")
+
+    with st.container(border=True):
+        st.markdown("### Journal d'activité")
+        activity_rows = read_activity_logs(limit=150)
+        if activity_rows:
+            df_logs = pd.DataFrame(activity_rows)
+            if "details" in df_logs.columns:
+                df_logs["details"] = df_logs["details"].apply(
+                    lambda d: json.dumps(d, ensure_ascii=False) if isinstance(d, dict) else str(d)
+                )
+            st.dataframe(df_logs, use_container_width=True, hide_index=True)
+        else:
+            st.info("Aucune activité enregistrée pour le moment.")
