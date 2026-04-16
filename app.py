@@ -10,6 +10,7 @@ import json
 import os
 import calendar
 import requests
+import re
 from auth import check_login, logout, admin_panel, get_user_credentials
 import streamlit.components.v1 as components
 
@@ -271,7 +272,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-def get_worksheet(username: str, tab_name: str):
+@st.cache_resource(show_spinner=False)
+def get_spreadsheet(username: str):
     sheet_name, gsa_json = get_user_credentials(username)
     if not sheet_name or not gsa_json:
         return None, "Credentials non configurés."
@@ -279,6 +281,15 @@ def get_worksheet(username: str, tab_name: str):
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
         gc = gspread.authorize(creds)
         sh = gc.open(sheet_name)
+        return sh, None
+    except Exception as e:
+        return None, str(e)
+
+def get_worksheet(username: str, tab_name: str):
+    sh, err = get_spreadsheet(username)
+    if err or not sh:
+        return None, err or "Impossible d'ouvrir le Google Sheet."
+    try:
         ws = sh.worksheet(tab_name)
         return ws, None
     except gspread.exceptions.WorksheetNotFound:
@@ -301,12 +312,9 @@ def _dedup_headers(headers):
 @st.cache_data(ttl=60, show_spinner=False)
 def get_sheet_data(username: str):
     try:
-        sheet_name, gsa_json = get_user_credentials(username)
-        if not sheet_name or not gsa_json:
-            return pd.DataFrame(), "Credentials non configurés."
-        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-        gc = gspread.authorize(creds)
-        sh = gc.open(sheet_name)
+        sh, err = get_spreadsheet(username)
+        if err or not sh:
+            return pd.DataFrame(), err or "Impossible d'ouvrir le Google Sheet."
         try:
             ws = sh.worksheet("suivie")
         except Exception:
@@ -348,6 +356,11 @@ def fcol(df, *keywords):
             if kw.lower() in str(c).strip().lower():
                 return c
     return None
+
+def safe_slug(value: str) -> str:
+    raw = str(value or "").strip()
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", raw)
+    return cleaned or "default"
 
 @st.cache_data(ttl=120, show_spinner=False)
 def get_main_dataset(username: str):
@@ -521,6 +534,7 @@ with st.sidebar:
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
     user = st.session_state.get("username", "")
+    user_slug = safe_slug(user)
     role = st.session_state.get("role", "viewer")
 
     st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
@@ -1301,7 +1315,7 @@ elif page == "Éditeur Google Sheet":
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
 
-    WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user}"
+    WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user_slug}"
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_salaries(u):
@@ -1611,7 +1625,7 @@ elif page == "Créer un devis":
     import streamlit.components.v1 as components
     page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user}"
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user_slug}"
 
     def _parse_prix(val):
         try:
@@ -2888,6 +2902,57 @@ elif page == "Planning":
                   </div>
                 </div>""", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
+# PAGE : TOUS LES DOSSIERS
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "Tous les dossiers":
+    page_header("Tous les dossiers", "Recherche globale et vue consolidée")
+
+    search_all = st.text_input(
+        "🔍 Rechercher dans tous les dossiers",
+        placeholder="Client, chantier, numéro, adresse...",
+        key="search_all_dossiers",
+    ).strip()
+
+    status_opts = ["Tous", "Signés", "Non signés", "Facturés", "Non facturés"]
+    status_filter = st.radio(
+        "",
+        status_opts,
+        horizontal=True,
+        key="all_dossiers_status_filter",
+    )
+
+    df_all = df.copy()
+    if search_all:
+        mask = pd.Series([False] * len(df_all), index=df_all.index)
+        for col in [COL_CLIENT, COL_CHANTIER, COL_NUM, COL_ADRESSE, COL_STATUT]:
+            if col:
+                mask |= df_all[col].astype(str).str.contains(search_all, case=False, na=False)
+        df_all = df_all[mask]
+
+    if status_filter == "Signés":
+        df_all = df_all[df_all["_signe"]]
+    elif status_filter == "Non signés":
+        df_all = df_all[~df_all["_signe"]]
+    elif status_filter == "Facturés":
+        df_all = df_all[df_all["_fact_fin"]]
+    elif status_filter == "Non facturés":
+        df_all = df_all[~df_all["_fact_fin"]]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dossiers affichés", len(df_all))
+    c2.metric("CA affiché", fmt(df_all["_montant"].sum() if not df_all.empty else 0))
+    c3.metric("Signés", int(df_all["_signe"].sum()) if not df_all.empty else 0)
+
+    cols_all = [
+        c for c in [
+            COL_CLIENT, COL_CHANTIER, COL_NUM, COL_MONTANT, COL_ADRESSE, COL_DATE,
+            COL_DATE_DEBUT, COL_DATE_FIN, COL_STATUT, COL_SIGN, COL_FACT_FIN, COL_PV
+        ] if c
+    ]
+    st.markdown("---")
+    show_table(df_all[cols_all].reset_index(drop=True) if cols_all else df_all.reset_index(drop=True), "all_dossiers")
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : SALARIÉS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Salariés":
@@ -3565,7 +3630,7 @@ elif page == "Retards & Avenants":
     page_header("Retards & Avenants", "Signalement de retard chantier")
     # ... reste du code
 
-    WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook/retard-{user}"
+    WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook/retard-{user_slug}"
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_envoie_pv(u):
