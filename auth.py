@@ -43,6 +43,19 @@ def _sb_headers() -> dict:
         "Prefer":        "return=representation",
     }
 
+def _sb_admin_headers() -> dict:
+    """
+    Headers "service role" pour les opérations d'écriture (update/insert/delete).
+    Si la clé n'existe pas, on retombe sur SUPABASE_KEY (comportement historique).
+    """
+    k = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "") or _sb_key()
+    return {
+        "apikey":        k,
+        "Authorization": f"Bearer {k}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
+
 def _sb_get(username: str):
     """Récupère un user depuis Supabase."""
     r = requests.get(
@@ -66,7 +79,7 @@ def _sb_insert(user: dict) -> bool:
     """Insère un nouveau user."""
     r = requests.post(
         f"{_sb_url()}/rest/v1/users",
-        headers=_sb_headers(),
+        headers=_sb_admin_headers(),
         json=user,
         timeout=10,
     )
@@ -76,7 +89,7 @@ def _sb_delete(username: str) -> bool:
     """Supprime un user."""
     r = requests.delete(
         f"{_sb_url()}/rest/v1/users?username=eq.{username}",
-        headers=_sb_headers(),
+        headers=_sb_admin_headers(),
         timeout=10,
     )
     return r.ok
@@ -85,20 +98,21 @@ def _sb_update_password(username: str, new_hash: str) -> bool:
     """Met à jour le mot de passe."""
     r = requests.patch(
         f"{_sb_url()}/rest/v1/users?username=eq.{username}",
-        headers=_sb_headers(),
+        headers=_sb_admin_headers(),
         json={"password_hash": new_hash},
         timeout=10,
     )
     return r.ok
 
-def _sb_update_user(username: str, payload: dict) -> bool:
+def _sb_update_user(username: str, payload: dict) -> tuple:
     r = requests.patch(
         f"{_sb_url()}/rest/v1/users?username=eq.{username}",
-        headers=_sb_headers(),
+        headers=_sb_admin_headers(),
         json=payload,
         timeout=10,
     )
-    return r.ok
+    # On renvoie aussi le détail pour pouvoir diagnostiquer "Impossible de mettre à jour les droits."
+    return r.ok, r.status_code, (r.text or "").strip()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -313,12 +327,13 @@ def admin_panel():
                     if len(selected_pages) == 0:
                         st.error("Sélectionne au moins un onglet.")
                     else:
-                        ok_rights = _sb_update_user(uname, {"allowed_pages": selected_pages})
+                        ok_rights, status_code, detail = _sb_update_user(uname, {"allowed_pages": selected_pages})
                         if ok_rights:
                             st.success(f"Droits mis à jour pour {uname}.")
                             st.rerun()
                         else:
-                            st.error("Impossible de mettre à jour les droits.")
+                            # Détail tronqué pour éviter l'affichage d'infos trop longues.
+                            st.error(f"Impossible de mettre à jour les droits. (HTTP {status_code}) {detail[:300]}")
     except Exception as e:
         st.error(f"Erreur chargement users : {e}")
 
