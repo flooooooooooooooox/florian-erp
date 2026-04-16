@@ -16,7 +16,7 @@ import streamlit.components.v1 as components
 from activity_log import log_activity, read_activity_logs
 
 st.set_page_config(
-    page_title="Florian AI Bâtiment – ERP",
+    page_title="Floxia ERP",
     page_icon="F",
     layout="wide",
     initial_sidebar_state="expanded",
