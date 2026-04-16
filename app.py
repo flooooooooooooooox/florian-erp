@@ -349,6 +349,83 @@ def fcol(df, *keywords):
                 return c
     return None
 
+@st.cache_data(ttl=120, show_spinner=False)
+def get_main_dataset(username: str):
+    df_raw, error = get_sheet_data(username)
+    if error:
+        return None, error, False
+    if df_raw.empty:
+        return None, None, True
+
+    df = df_raw.copy()
+    col_client = fcol(df, "client")
+    col_chantier = fcol(df, "objet", "chantier")
+    col_num = fcol(df, "n° devis", "n°", "num")
+    col_montant = fcol(df, "montant")
+    col_sign = fcol(df, "devis signé", "signé")
+    col_fact_fin = fcol(df, "facture finale", "finale", "final")
+    col_pv = fcol(df, "pv signé", "pv")
+    col_statut = fcol(df, "statut")
+    col_date = fcol(df, "date creation", "date créa", "date devis", "date creat")
+    col_modalite = fcol(df, "modalit")
+    col_tva = fcol(df, "tva")
+    col_relance1 = fcol(df, "relance 1")
+    col_relance2 = fcol(df, "relance 2")
+    col_relance3 = fcol(df, "relance 3")
+    col_acompte1 = fcol(df, "acompte 1")
+    col_acompte2 = fcol(df, "acompte 2")
+    col_reserve = fcol(df, "réserve", "reserve", "avec reserve", "sans reserve")
+    col_adresse = fcol(df, "address", "adresse")
+    col_date_debut = fcol(df, "début des travaux", "debut des travaux", "date début", "date debut", "colonne 21")
+    col_date_fin = fcol(df, "fin des travaux", "date fin", "date de fin")
+    col_equipe = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
+
+    df["_montant"] = df[col_montant].apply(clean_amount) if col_montant else 0.0
+    df["_acompte1"] = df[col_acompte1].apply(clean_amount) if col_acompte1 else 0.0
+    df["_acompte2"] = df[col_acompte2].apply(clean_amount) if col_acompte2 else 0.0
+    df["_reste"] = (df["_montant"] - df["_acompte1"] - df["_acompte2"]).clip(lower=0)
+    df["_signe"] = df[col_sign].apply(is_checked) if col_sign else False
+    df["_fact_fin"] = df[col_fact_fin].apply(is_checked) if col_fact_fin else False
+    df["_pv"] = df[col_pv].apply(is_checked) if col_pv else False
+
+    nb_signes = int(df["_signe"].sum())
+    nb_devis = len(df)
+
+    dataset = {
+        "df": df,
+        "COL_CLIENT": col_client,
+        "COL_CHANTIER": col_chantier,
+        "COL_NUM": col_num,
+        "COL_MONTANT": col_montant,
+        "COL_SIGN": col_sign,
+        "COL_FACT_FIN": col_fact_fin,
+        "COL_PV": col_pv,
+        "COL_STATUT": col_statut,
+        "COL_DATE": col_date,
+        "COL_MODALITE": col_modalite,
+        "COL_TVA": col_tva,
+        "COL_RELANCE1": col_relance1,
+        "COL_RELANCE2": col_relance2,
+        "COL_RELANCE3": col_relance3,
+        "COL_ACOMPTE1": col_acompte1,
+        "COL_ACOMPTE2": col_acompte2,
+        "COL_RESERVE": col_reserve,
+        "COL_ADRESSE": col_adresse,
+        "COL_DATE_DEBUT": col_date_debut,
+        "COL_DATE_FIN": col_date_fin,
+        "COL_EQUIPE": col_equipe,
+        "total_ca": df["_montant"].sum(),
+        "nb_devis": nb_devis,
+        "nb_signes": nb_signes,
+        "nb_attente": nb_devis - nb_signes,
+        "nb_fact_ok": int(df["_fact_fin"].sum()),
+        "ca_signe": df[df["_signe"]]["_montant"].sum(),
+        "ca_non_s": df[~df["_signe"]]["_montant"].sum(),
+        "taux_conv": int((nb_signes / nb_devis) * 100) if nb_devis > 0 else 0,
+        "reste_encaissement": df[(df["_signe"]) & (~df["_fact_fin"])]["_reste"].sum(),
+    }
+    return dataset, None, False
+
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
@@ -388,7 +465,7 @@ def show_table(dataframe, key_suffix=""):
                 st.session_state[f"show_all_{key_suffix}"] = False
                 st.rerun()
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def get_pending_notifications_count(username: str) -> int:
     ws, err = get_worksheet(username, "notifications")
     if err or not ws:
@@ -2145,63 +2222,61 @@ elif page == "Créer un devis":
     st.stop()
 
 # ── CHARGEMENT DONNÉES ─────────────────────────────────────────────────────────
-df_raw, error = get_sheet_data(user)
+PAGES_NEED_MAIN_DF = {
+    "Vue Générale",
+    "Devis",
+    "Factures & Paiements",
+    "Chantiers",
+    "Planning",
+    "Salariés",
+    "Tous les dossiers",
+}
+if page in PAGES_NEED_MAIN_DF:
+    dataset, error, is_empty_sheet = get_main_dataset(user)
+    if error:
+        get_main_dataset.clear()
+        get_sheet_data.clear()
+        st.error("Impossible de se connecter à Google Sheets.")
+        st.info(f"Détail : {error}")
+        if st.button("Réessayer"):
+            st.rerun()
+        st.stop()
 
-if error:
-    get_sheet_data.clear()
-    st.error("Impossible de se connecter à Google Sheets.")
-    st.info(f"Détail : {error}")
-    if st.button("Réessayer"):
-        st.rerun()
-    st.stop()
+    if is_empty_sheet:
+        st.warning("📭 Le Google Sheet est vide ou inaccessible.")
+        st.stop()
 
-if df_raw.empty:
-    st.warning("📭 Le Google Sheet est vide ou inaccessible.")
-    st.stop()
-
-df = df_raw.copy()
-
-# ── DÉTECTION COLONNES ─────────────────────────────────────────────────────────
-COL_CLIENT    = fcol(df, "client")
-COL_CHANTIER  = fcol(df, "objet", "chantier")
-COL_NUM       = fcol(df, "n° devis", "n°", "num")
-COL_MONTANT   = fcol(df, "montant")
-COL_SIGN      = fcol(df, "devis signé", "signé")
-COL_FACT_FIN  = fcol(df, "facture finale", "finale", "final")
-COL_PV        = fcol(df, "pv signé", "pv")
-COL_STATUT    = fcol(df, "statut")
-COL_DATE      = fcol(df, "date creation", "date créa", "date devis", "date creat")
-COL_MODALITE  = fcol(df, "modalit")
-COL_TVA       = fcol(df, "tva")
-COL_RELANCE1  = fcol(df, "relance 1")
-COL_RELANCE2  = fcol(df, "relance 2")
-COL_RELANCE3  = fcol(df, "relance 3")
-COL_ACOMPTE1  = fcol(df, "acompte 1")
-COL_ACOMPTE2  = fcol(df, "acompte 2")
-COL_RESERVE   = fcol(df, "réserve", "reserve", "avec reserve", "sans reserve")
-COL_ADRESSE   = fcol(df, "address", "adresse")
-COL_DATE_DEBUT = fcol(df, "début des travaux", "debut des travaux", "date début", "date debut", "colonne 21")
-COL_DATE_FIN   = fcol(df, "fin des travaux", "date fin", "date de fin")
-COL_EQUIPE     = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
-
-# ── CALCULS ────────────────────────────────────────────────────────────────────
-df["_montant"]       = df[COL_MONTANT].apply(clean_amount) if COL_MONTANT else 0.0
-df["_acompte1"]      = df[COL_ACOMPTE1].apply(clean_amount) if COL_ACOMPTE1 else 0.0
-df["_acompte2"]      = df[COL_ACOMPTE2].apply(clean_amount) if COL_ACOMPTE2 else 0.0
-df["_reste"]         = (df["_montant"] - df["_acompte1"] - df["_acompte2"]).clip(lower=0)
-df["_signe"]         = df[COL_SIGN].apply(is_checked) if COL_SIGN else False
-df["_fact_fin"]      = df[COL_FACT_FIN].apply(is_checked) if COL_FACT_FIN else False
-df["_pv"]            = df[COL_PV].apply(is_checked) if COL_PV else False
-
-total_ca            = df["_montant"].sum()
-nb_devis            = len(df)
-nb_signes           = int(df["_signe"].sum())
-nb_attente          = nb_devis - nb_signes
-nb_fact_ok          = int(df["_fact_fin"].sum())
-ca_signe            = df[df["_signe"]]["_montant"].sum()
-ca_non_s            = df[~df["_signe"]]["_montant"].sum()
-taux_conv           = int((nb_signes / nb_devis) * 100) if nb_devis > 0 else 0
-reste_encaissement  = df[(df["_signe"]) & (~df["_fact_fin"])]["_reste"].sum()
+    df = dataset["df"]
+    COL_CLIENT = dataset["COL_CLIENT"]
+    COL_CHANTIER = dataset["COL_CHANTIER"]
+    COL_NUM = dataset["COL_NUM"]
+    COL_MONTANT = dataset["COL_MONTANT"]
+    COL_SIGN = dataset["COL_SIGN"]
+    COL_FACT_FIN = dataset["COL_FACT_FIN"]
+    COL_PV = dataset["COL_PV"]
+    COL_STATUT = dataset["COL_STATUT"]
+    COL_DATE = dataset["COL_DATE"]
+    COL_MODALITE = dataset["COL_MODALITE"]
+    COL_TVA = dataset["COL_TVA"]
+    COL_RELANCE1 = dataset["COL_RELANCE1"]
+    COL_RELANCE2 = dataset["COL_RELANCE2"]
+    COL_RELANCE3 = dataset["COL_RELANCE3"]
+    COL_ACOMPTE1 = dataset["COL_ACOMPTE1"]
+    COL_ACOMPTE2 = dataset["COL_ACOMPTE2"]
+    COL_RESERVE = dataset["COL_RESERVE"]
+    COL_ADRESSE = dataset["COL_ADRESSE"]
+    COL_DATE_DEBUT = dataset["COL_DATE_DEBUT"]
+    COL_DATE_FIN = dataset["COL_DATE_FIN"]
+    COL_EQUIPE = dataset["COL_EQUIPE"]
+    total_ca = dataset["total_ca"]
+    nb_devis = dataset["nb_devis"]
+    nb_signes = dataset["nb_signes"]
+    nb_attente = dataset["nb_attente"]
+    nb_fact_ok = dataset["nb_fact_ok"]
+    ca_signe = dataset["ca_signe"]
+    ca_non_s = dataset["ca_non_s"]
+    taux_conv = dataset["taux_conv"]
+    reste_encaissement = dataset["reste_encaissement"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
