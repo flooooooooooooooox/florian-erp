@@ -3481,7 +3481,8 @@ with tab_config:
                         st.rerun()
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
-
+        # <--- Il manquait les retours à la ligne ici pour fermer le 'with tab_config' et le 'elif page == "Salariés"'
+        
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
