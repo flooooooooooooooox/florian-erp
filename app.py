@@ -2877,9 +2877,9 @@ if page == "Vue Générale":
                             st.session_state["_prefill_client_search"] = client
                             target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
                             if target_label is not None:
-                            st.session_state["_page_index"] = pages.index(target_label)
-                            # On utilise nav_override au lieu d'écrire directement dans nav_radio (widget actif)
-                            st.session_state["nav_override"] = target_label
+                                st.session_state["_page_index"] = pages.index(target_label)
+                                # On utilise nav_override au lieu d'écrire directement dans nav_radio (widget actif)
+                                st.session_state["nav_override"] = target_label
                         else:
                             st.session_state["nav_override"] = "Espace Clients"
                         st.rerun()
