@@ -2880,7 +2880,10 @@ if page == "Vue Générale":
                             target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
                             if target_label is not None:
                                 st.session_state["_page_index"] = pages.index(target_label)
-                                st.session_state["nav_radio"] = target_label
+                                # Streamlit ne laisse pas toujours forcer la valeur d'un widget via
+                                # `session_state` (ex: clé d'un `st.radio`). On passe donc par un
+                                # mécanisme d'override déjà utilisé pour la navigation.
+                                st.session_state["nav_override"] = target_label
                             else:
                                 # Fallback : si jamais la structure sidebar change
                                 st.session_state["nav_override"] = "Espace Clients"
