@@ -2968,17 +2968,18 @@ elif page == "Devis":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Factures & Paiements":
     page_header("Factures & Paiements", "Suivi des encaissements")
+    df_imp = df[df["_signe"] & ~df["_fact_fin"]]
+    reste_fact = df_imp["_reste"].sum() if "_reste" in df_imp.columns else 0
     render_ceo_hero(
         "Santé financière",
         "Vue CEO sur les encaissements, les factures finales émises et le volume encore à sécuriser.",
-        chips=[f"{nb_fact_ok} factures finales", fmt(reste_encaissement), f"{len(df_imp)} sans facture finale"],
+        chips=[f"{nb_fact_ok} factures finales", fmt(reste_fact), f"{len(df_imp)} sans facture finale"],
     )
 
-    df_imp = df[df["_signe"] & ~df["_fact_fin"]]
     render_kpi_cards([
         {"label": "Factures finales", "value": nb_fact_ok, "delta": "Dossiers totalement facturés", "icon": "◌", "fill_pct": 100 if len(df) == 0 else int((nb_fact_ok / max(len(df), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
         {"label": "Sans facture finale", "value": len(df_imp), "delta": "Potentiel de facturation", "icon": "△", "fill_pct": 100 if len(df) == 0 else int((len(df_imp) / max(len(df), 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
-        {"label": "Reste à facturer", "value": fmt(reste_encaissement), "delta": "Trésorerie à convertir", "icon": "€", "fill_pct": 100, "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
+        {"label": "Reste à facturer", "value": fmt(reste_fact), "delta": "Trésorerie à convertir", "icon": "€", "fill_pct": 100, "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
     ])
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -3066,33 +3067,27 @@ elif page == "Chantiers":
                 f"<span class='ceo-status-badge' style='background:rgba(255,184,77,0.14);color:#ffb84d;border:1px solid rgba(255,184,77,0.26);'>Réserves</span>"
                 if reserve_txt and has_reserve(reserve_txt) else ""
             )
-            st.markdown(
-                f"""
-                <div class="ceo-card">
-                    <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;">
-                        <div style="flex:1;">
-                            <div class="ceo-card-title">{client or 'Client non renseigné'}</div>
-                            <div class="ceo-card-subtitle">{chantier or 'Chantier non renseigné'}</div>
-                            {"<div style='font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;'>" + adresse + "</div>" if adresse else ""}
-                            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-                                <span class="ceo-status-badge" style="background:{status_bg};color:{status_color};border:1px solid {status_color}33;">{status_label}</span>
-                                {reserve_badge}
-                            </div>
-                            <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;">Début : <strong style='color:#e8f0fe;'>{debut or '—'}</strong> · Fin : <strong style='color:#e8f0fe;'>{fin or '—'}</strong></div>
-                            <div style="margin-top:10px;background:rgba(255,255,255,0.06);border-radius:999px;height:10px;overflow:hidden;max-width:320px;">
-                                <div style="width:{progress_pct}%;background:{status_color};height:100%;"></div>
-                            </div>
-                            <div style="margin-top:6px;font-size:0.8rem;color:{status_color};font-weight:700;">Avancement exécutif : {progress_pct}%</div>
-                        </div>
-                        <div style="text-align:right;min-width:170px;">
-                            <div style="font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);font-weight:800;">Budget</div>
-                            <div style="font-size:1.55rem;font-weight:800;color:#f8fbff;margin-top:6px;">{budget}</div>
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                c_left, c_right = st.columns([5, 2])
+                with c_left:
+                    st.markdown(f"**{client or 'Client non renseigné'}**")
+                    st.caption(chantier or "Chantier non renseigné")
+                    if adresse:
+                        st.caption(adresse)
+                    badges_html = (
+                        f"<span class='ceo-status-badge' style='background:{status_bg};color:{status_color};border:1px solid {status_color}33;'>{status_label}</span>"
+                        + (f" {reserve_badge}" if reserve_badge else "")
+                    )
+                    st.markdown(badges_html, unsafe_allow_html=True)
+                    st.caption(f"Début : {debut or '—'} | Fin : {fin or '—'}")
+                    st.progress(progress_pct / 100 if progress_pct else 0)
+                    st.markdown(
+                        f"<div style='margin-top:6px;font-size:0.8rem;color:{status_color};font-weight:700;'>Avancement exécutif : {progress_pct}%</div>",
+                        unsafe_allow_html=True,
+                    )
+                with c_right:
+                    st.markdown("`Budget`")
+                    st.markdown(f"### {budget}")
 
     def has_reserve(val):
         if pd.isna(val) or str(val).strip() == "": return False
