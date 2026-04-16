@@ -1625,7 +1625,7 @@ elif page == "Créer un devis":
     import streamlit.components.v1 as components
     page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user_slug}"
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user_slug}"
 
     def _parse_prix(val):
         try:
