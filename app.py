@@ -2902,11 +2902,11 @@ if page == "Vue Générale":
                 if vg_nb_attente > ALERT_PREVIEW:
                     if not st.session_state["alertes_show_all"]:
                         remaining = vg_nb_attente - ALERT_PREVIEW
-                        if st.button(f"📂 Voir les {remaining} autres", use_container_width=True, key="btn_alertes_more"):
+                        if st.button(f"📂 Voir les {remaining} autres", width="stretch", key="btn_alertes_more"):
                             st.session_state["alertes_show_all"] = True
                             st.rerun()
                     else:
-                        if st.button("🔼 Réduire", use_container_width=True, key="btn_alertes_less"):
+                        if st.button("🔼 Réduire", width="stretch", key="btn_alertes_less"):
                             st.session_state["alertes_show_all"] = False
                             st.rerun()
             else:
@@ -2919,7 +2919,7 @@ if page == "Vue Générale":
             fig_donut = go.Figure(data=[go.Pie(labels=["Signés","En attente"], values=[vg_nb_signes, vg_nb_attente], hole=0.72, marker_colors=["#00d68f","#1e3a5f"], textinfo="none")])
             fig_donut.add_annotation(text=f"{vg_taux_conv}%", x=0.5, y=0.5, font_size=28, font_color=chart_font, font_family="Inter", showarrow=False)
             fig_donut.update_layout(title="Taux de transformation", title_font_color=chart_font, paper_bgcolor="rgba(0,0,0,0)", showlegend=True, legend=dict(bgcolor="rgba(0,0,0,0)", font_color=chart_font), margin=dict(t=40, b=20, l=20, r=20), height=250)
-            st.plotly_chart(fig_donut, use_container_width=True)
+            st.plotly_chart(fig_donut, width="stretch")
     with col_d2:
         with st.container(border=True):
             st.markdown("<div style='font-weight:700;font-size:0.95rem;color:var(--text-main);margin-bottom:16px;'>Résumé financier</div>", unsafe_allow_html=True)
