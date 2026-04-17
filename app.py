@@ -712,6 +712,9 @@ def get_main_dataset(username: str):
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
+def convert_df_to_csv(df_export: pd.DataFrame) -> bytes:
+    return df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+
 def style_relances(row):
     r3_col = next((c for c in row.index if "relance 3" in str(c).lower()), None)
     st_col = next((c for c in row.index if "statut" in str(c).lower()), None)
@@ -2768,6 +2771,88 @@ if page == "Vue Générale":
         {"label": "Reste à Encaisser", "value": fmt(vg_reste), "delta": "Exposition de trésorerie", "icon": "◈", "fill_pct": 100 if vg_ca_signe <= 0 else int((vg_reste / max(vg_ca_signe, 1)) * 100), "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
     ])
 
+    with st.container(border=True):
+        st.markdown("### Prévisions de Trésorerie à 30 jours")
+        if not COL_DATE:
+            st.info("Colonne 'Date' introuvable pour calculer les échéances.")
+        else:
+            df_tres = df.copy()
+            df_tres["_base_date"] = pd.to_datetime(df_tres[COL_DATE], dayfirst=True, errors="coerce")
+            df_tres["_due_date"] = df_tres["_base_date"] + pd.Timedelta(days=30)
+            if COL_DATE_FIN:
+                fin_dt = pd.to_datetime(df_tres[COL_DATE_FIN], dayfirst=True, errors="coerce")
+                df_tres["_due_date"] = fin_dt.fillna(df_tres["_due_date"])
+
+            if COL_STATUT:
+                statuts_ok = {"facturé", "facture", "en facturation", "⏳ en attente", "en attente"}
+                df_tres["_statut_norm"] = (
+                    df_tres[COL_STATUT]
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                )
+                df_tres = df_tres[df_tres["_statut_norm"].isin(statuts_ok)]
+            else:
+                df_tres = df_tres.iloc[0:0]
+
+            today = datetime.now().date()
+            next_30 = today + timedelta(days=30)
+            prev_30_start = today - timedelta(days=30)
+            prev_30_end = today - timedelta(days=1)
+
+            df_tres = df_tres.dropna(subset=["_due_date"]).copy()
+            df_tres["_due_day"] = df_tres["_due_date"].dt.date
+            df_future = df_tres[(df_tres["_due_day"] >= today) & (df_tres["_due_day"] <= next_30)].copy()
+            df_past = df_tres[(df_tres["_due_day"] >= prev_30_start) & (df_tres["_due_day"] <= prev_30_end)].copy()
+
+            total_future = float(df_future["_montant"].sum()) if not df_future.empty else 0.0
+            total_past = float(df_past["_montant"].sum()) if not df_past.empty else 0.0
+            delta_value = total_future - total_past
+            st.metric("Montant total à recevoir (30 jours)", fmt(total_future), delta=f"{delta_value:,.0f} €".replace(",", " "))
+
+            if df_future.empty:
+                st.info("Aucune échéance attendue entre aujourd'hui et les 30 prochains jours.")
+            else:
+                daily = (
+                    df_future.groupby("_due_day")["_montant"]
+                    .sum()
+                    .reset_index()
+                    .sort_values("_due_day")
+                )
+                daily["Cumul"] = daily["_montant"].cumsum()
+
+                fig_tres = go.Figure()
+                fig_tres.add_trace(
+                    go.Bar(
+                        x=daily["_due_day"],
+                        y=daily["_montant"],
+                        name="Entrées TTC / jour",
+                        marker_color="#4f8ef7",
+                    )
+                )
+                fig_tres.add_trace(
+                    go.Scatter(
+                        x=daily["_due_day"],
+                        y=daily["Cumul"],
+                        name="Cumul progressif",
+                        mode="lines+markers",
+                        line=dict(color="#00d68f", width=3, shape="spline"),
+                        marker=dict(size=6),
+                    )
+                )
+                fig_tres.update_layout(
+                    title="Prévision encaissements (30 jours)",
+                    paper_bgcolor=chart_bg,
+                    plot_bgcolor=chart_bg,
+                    font=dict(color=chart_font, family="Inter"),
+                    xaxis=dict(title="", tickformat="%d/%m"),
+                    yaxis=dict(title="Montant TTC (€)", tickformat=",.0f"),
+                    hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                    margin=dict(t=60, b=30, l=20, r=20),
+                )
+                st.plotly_chart(fig_tres, use_container_width=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     cl, cr = st.columns([2, 1])
@@ -3004,6 +3089,120 @@ elif page == "Factures & Paiements":
 
     st.markdown("<br>", unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
+
+    with st.container(border=True):
+        st.markdown("### Export comptable intelligent")
+        if not COL_DATE:
+            st.info("Colonne 'Date' introuvable : export indisponible.")
+        else:
+            mois_fr = [
+                "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+            ]
+            df_export = df.copy()
+            df_export["_date_export"] = pd.to_datetime(df_export[COL_DATE], dayfirst=True, errors="coerce")
+            df_export = df_export.dropna(subset=["_date_export"]).copy()
+
+            if df_export.empty:
+                st.info("Aucune date exploitable pour l'export comptable.")
+            else:
+                years = sorted(df_export["_date_export"].dt.year.dropna().astype(int).unique().tolist(), reverse=True)
+                if not years:
+                    years = [datetime.now().year]
+                current_month = datetime.now().month
+                current_year = datetime.now().year
+
+                col_per_1, col_per_2 = st.columns(2)
+                with col_per_1:
+                    selected_month = st.selectbox(
+                        "Mois",
+                        options=list(range(1, 13)),
+                        format_func=lambda m: mois_fr[m - 1],
+                        index=max(0, min(11, current_month - 1)),
+                        key="export_compta_month",
+                    )
+                with col_per_2:
+                    selected_year = st.selectbox(
+                        "Année",
+                        options=years,
+                        index=years.index(current_year) if current_year in years else 0,
+                        key="export_compta_year",
+                    )
+
+                valid_mask = pd.Series(False, index=df_export.index)
+                if "_pv" in df_export.columns:
+                    valid_mask = valid_mask | df_export["_pv"].astype(bool)
+                if COL_RESERVE:
+                    valid_mask = valid_mask | df_export[COL_RESERVE].apply(is_checked)
+
+                df_export = df_export[
+                    (df_export["_date_export"].dt.month == int(selected_month))
+                    & (df_export["_date_export"].dt.year == int(selected_year))
+                    & valid_mask
+                ].copy()
+
+                if df_export.empty:
+                    st.warning("Aucune ligne validée (PV signé / sans réserve) pour cette période.")
+                else:
+                    def _parse_tva_value(val):
+                        if pd.isna(val) or str(val).strip() == "":
+                            return 0.0, "rate"
+                        s = (
+                            str(val).strip().lower()
+                            .replace("%", "")
+                            .replace("tva", "")
+                            .replace(",", ".")
+                            .replace(" ", "")
+                        )
+                        try:
+                            num = float(s)
+                        except Exception:
+                            return 0.0, "rate"
+                        if num <= 1:
+                            return max(0.0, num), "rate"
+                        if num <= 100:
+                            return max(0.0, num / 100), "rate"
+                        return max(0.0, num), "amount"
+
+                    montant_ttc = df_export["_montant"].apply(clean_amount)
+                    tva_infos = df_export[COL_TVA].apply(_parse_tva_value) if COL_TVA else pd.Series([(0.0, "rate")] * len(df_export), index=df_export.index)
+
+                    tva_amounts = []
+                    ht_amounts = []
+                    for ttc, info in zip(montant_ttc.tolist(), tva_infos.tolist()):
+                        val_tva, mode_tva = info
+                        if mode_tva == "amount":
+                            tva_amt = min(val_tva, max(ttc, 0.0))
+                            ht_amt = max(ttc - tva_amt, 0.0)
+                        else:
+                            rate = max(val_tva, 0.0)
+                            ht_amt = ttc / (1 + rate) if rate > 0 else ttc
+                            tva_amt = ttc - ht_amt
+                        ht_amounts.append(ht_amt)
+                        tva_amounts.append(tva_amt)
+
+                    export_table = pd.DataFrame({
+                        "Date": df_export["_date_export"].dt.strftime("%d/%m/%Y"),
+                        "Numéro": df_export[COL_NUM] if COL_NUM else "",
+                        "Client": df_export[COL_CLIENT] if COL_CLIENT else "",
+                        "Objet": df_export[COL_CHANTIER] if COL_CHANTIER else "",
+                        "Montant HT": ht_amounts,
+                        "TVA": tva_amounts,
+                        "TTC": montant_ttc,
+                    })
+
+                    csv_data = convert_df_to_csv(export_table)
+                    mois_label = mois_fr[int(selected_month) - 1]
+                    mois_file = mois_label.upper().replace("É", "E").replace("È", "E").replace("Ê", "E").replace("Û", "U").replace("Ù", "U").replace("À", "A").replace("Â", "A").replace("Ô", "O").replace("Î", "I").replace("Ï", "I").replace("Ç", "C")
+                    filename = f"export_compta_{mois_file}_{int(selected_year)}.csv"
+                    st.download_button(
+                        label=f"📥 Export Comptable (PV signés - {mois_label} {selected_year})",
+                        data=csv_data,
+                        file_name=filename,
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="btn_export_comptable_intelligent",
+                    )
 
     render_filter_banner("Zone filtres", "Analyse instantanée des paiements par client ou chantier.")
     search_f = st.text_input("🔍 Rechercher", placeholder="Client, chantier...", key="search_f")
