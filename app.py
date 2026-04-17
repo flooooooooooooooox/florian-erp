@@ -2777,23 +2777,71 @@ if page == "Vue Générale":
             st.info("Colonne 'Date' introuvable pour calculer les échéances.")
         else:
             df_tres = df.copy()
-            df_tres["_base_date"] = pd.to_datetime(df_tres[COL_DATE], dayfirst=True, errors="coerce")
+            def _parse_date_multi(series: pd.Series) -> pd.Series:
+                def _normalize_french_literal_date(val: str) -> str:
+                    raw = str(val).strip()
+                    if not raw:
+                        return raw
+                    txt = raw.lower()
+                    txt = (
+                        txt.replace("é", "e")
+                        .replace("è", "e")
+                        .replace("ê", "e")
+                        .replace("à", "a")
+                        .replace("â", "a")
+                        .replace("î", "i")
+                        .replace("ï", "i")
+                        .replace("ô", "o")
+                        .replace("ù", "u")
+                        .replace("û", "u")
+                        .replace("ç", "c")
+                    )
+                    months = {
+                        "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
+                        "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11, "decembre": 12,
+                    }
+                    m = re.match(r"^(\d{1,2})\s+([a-z]+)\s+(\d{4})$", txt)
+                    if not m:
+                        return raw
+                    day = int(m.group(1))
+                    month_name = m.group(2)
+                    year = int(m.group(3))
+                    month_num = months.get(month_name)
+                    if not month_num:
+                        return raw
+                    return f"{day:02d}/{month_num:02d}/{year:04d}"
+
+                s = series.astype(str).str.strip().apply(_normalize_french_literal_date)
+                dt1 = pd.to_datetime(s, dayfirst=True, errors="coerce")
+                dt2 = pd.to_datetime(s, dayfirst=False, errors="coerce")
+                return dt1.fillna(dt2)
+
+            df_tres["_base_date"] = _parse_date_multi(df_tres[COL_DATE])
             df_tres["_due_date"] = df_tres["_base_date"] + pd.Timedelta(days=30)
             if COL_DATE_FIN:
-                fin_dt = pd.to_datetime(df_tres[COL_DATE_FIN], dayfirst=True, errors="coerce")
+                fin_dt = _parse_date_multi(df_tres[COL_DATE_FIN])
                 df_tres["_due_date"] = fin_dt.fillna(df_tres["_due_date"])
 
             if COL_STATUT:
-                statuts_ok = {"facturé", "facture", "en facturation", "⏳ en attente", "en attente"}
                 df_tres["_statut_norm"] = (
                     df_tres[COL_STATUT]
                     .astype(str)
                     .str.strip()
                     .str.lower()
+                    .str.replace("é", "e", regex=False)
+                    .str.replace("è", "e", regex=False)
+                    .str.replace("ê", "e", regex=False)
+                    .str.replace("à", "a", regex=False)
                 )
-                df_tres = df_tres[df_tres["_statut_norm"].isin(statuts_ok)]
+                # Filtre souple: accepte les variantes ("Facturé ✅", "En attente client", etc.)
+                statut_mask = (
+                    df_tres["_statut_norm"].str.contains("factur", na=False)
+                    | df_tres["_statut_norm"].str.contains("en facturation", na=False)
+                    | df_tres["_statut_norm"].str.contains("attente", na=False)
+                )
+                df_tres = df_tres[statut_mask]
             else:
-                df_tres = df_tres.iloc[0:0]
+                st.warning("Colonne 'Statut' non détectée : prévision calculée sans filtre de statut.")
 
             today = datetime.now().date()
             next_30 = today + timedelta(days=30)
