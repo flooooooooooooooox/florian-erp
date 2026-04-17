@@ -4847,6 +4847,8 @@ elif page == "Coordonnées & RGPD":
         st.markdown("**Entreprise** : FLOXIA")
         st.markdown("**Responsable** : Florian")
         st.markdown("**Application** : ERP Streamlit interne")
+        st.markdown("**Email** : flogagnebien611@gmail.com")
+        st.markdown("**Téléphone** : 06 33 79 05 42")
 
     with st.container(border=True):
         st.markdown("### Utilisation des données")
