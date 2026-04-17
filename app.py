@@ -501,17 +501,34 @@ def _dedup_headers(headers):
             out.append(h)
     return out
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_sheet_data(username: str):
+    cache_bucket = st.session_state.setdefault("_offline_sheet_cache", {})
+    st.session_state["_data_source_notice"] = ""
     try:
         sh, err = get_spreadsheet(username)
         if err or not sh:
+            cached_df = cache_bucket.get(username)
+            if isinstance(cached_df, pd.DataFrame) and not cached_df.empty:
+                st.session_state["_data_source_notice"] = "Connexion lente/instable : affichage des dernières données locales."
+                _track_sync_status("suivie", fallback_used=True)
+                return cached_df.copy(), None
             return pd.DataFrame(), err or "Impossible d'ouvrir le Google Sheet."
         try:
             ws = sh.worksheet("suivie")
         except Exception:
             ws = sh.sheet1
-        all_values = ws.get_all_values()
+        all_values = None
+        last_exc = None
+        for _ in range(2):
+            try:
+                all_values = ws.get_all_values()
+                break
+            except Exception as ex:
+                last_exc = ex
+                time.sleep(0.6)
+        if all_values is None and last_exc is not None:
+            raise last_exc
         if not all_values:
             return pd.DataFrame(), None
         raw_headers = all_values[0]
@@ -522,8 +539,15 @@ def get_sheet_data(username: str):
         df = pd.DataFrame(padded, columns=clean_headers)
         df = df.loc[:, ~df.columns.str.startswith("_col_")]
         df = df.replace("", pd.NA).dropna(how="all").fillna("")
+        cache_bucket[username] = df.copy()
+        _track_sync_status("suivie", fallback_used=False)
         return df, None
     except Exception as e:
+        cached_df = cache_bucket.get(username)
+        if isinstance(cached_df, pd.DataFrame) and not cached_df.empty:
+            st.session_state["_data_source_notice"] = "Connexion faible : données locales réutilisées temporairement."
+            _track_sync_status("suivie", fallback_used=True)
+            return cached_df.copy(), None
         return pd.DataFrame(), str(e)
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
@@ -720,10 +744,82 @@ def clear_cache_if_exists(func_name: str):
     if fn and hasattr(fn, "clear"):
         fn.clear()
 
+def _track_sync_status(source_key: str, fallback_used: bool):
+    sync_meta = st.session_state.setdefault("_sync_meta", {})
+    now_str = datetime.now().strftime("%H:%M:%S")
+    item = sync_meta.get(source_key, {})
+    item["last_attempt"] = now_str
+    if fallback_used:
+        item["fallback"] = True
+    else:
+        item["fallback"] = False
+        item["last_success"] = now_str
+    sync_meta[source_key] = item
+    st.session_state["_sync_meta"] = sync_meta
+
+def render_sync_badge():
+    sync_meta = st.session_state.get("_sync_meta", {})
+    if not sync_meta:
+        return
+    fallback_active = any(v.get("fallback") for v in sync_meta.values())
+    latest_success = max([v.get("last_success", "") for v in sync_meta.values()] or [""])
+    if fallback_active:
+        st.caption(f"📶 Connexion faible — données locales (fallback). Dernière synchro: {latest_success or 'n/a'}")
+    else:
+        st.caption(f"✅ Synchro en ligne — dernière mise à jour: {latest_success or 'n/a'}")
+
+def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, retries: int = 2):
+    bucket = st.session_state.setdefault("_offline_tab_values_cache", {})
+    ws, err = get_worksheet(username, tab_name)
+    if err or not ws:
+        cached_vals = bucket.get(cache_slot)
+        if cached_vals is not None:
+            _track_sync_status(cache_slot, fallback_used=True)
+            return None, cached_vals
+        return err or f"Onglet '{tab_name}' inaccessible.", None
+    last_exc = None
+    values = None
+    for _ in range(max(1, retries)):
+        try:
+            values = ws.get_all_values()
+            break
+        except Exception as ex:
+            last_exc = ex
+            time.sleep(0.5)
+    if values is not None:
+        bucket[cache_slot] = values
+        _track_sync_status(cache_slot, fallback_used=False)
+        return None, values
+    cached_vals = bucket.get(cache_slot)
+    if cached_vals is not None:
+        _track_sync_status(cache_slot, fallback_used=True)
+        return None, cached_vals
+    return str(last_exc) if last_exc else f"Lecture impossible sur '{tab_name}'.", None
+
+@st.cache_data(ttl=180, show_spinner=False)
+def build_monthly_ca_aggregates(df_in: pd.DataFrame):
+    if df_in.empty:
+        return pd.DataFrame(columns=["_mois_key", "_mois_label", "CA Total", "CA Signé", "CA En attente", "CA Cumul"])
+    work = df_in.copy()
+    work["_mois_key"] = work["_date"].dt.to_period("M").astype(str)
+    work["_mois_label"] = work["_date"].dt.strftime("%b %Y")
+    month_map = work[["_mois_key", "_mois_label"]].drop_duplicates().sort_values("_mois_key")
+    ca_total_m = work.groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA Total"})
+    ca_signe_m = work[work["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA Signé"})
+    ca_attente_m = work[~work["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA En attente"})
+    merged = month_map.merge(ca_total_m, on="_mois_key", how="left").merge(ca_signe_m, on="_mois_key", how="left").merge(ca_attente_m, on="_mois_key", how="left").fillna(0)
+    merged["CA Cumul"] = merged["CA Total"].cumsum()
+    return merged
+
 @st.cache_data(ttl=120, show_spinner=False)
 def get_main_dataset(username: str):
+    dataset_cache = st.session_state.setdefault("_offline_main_dataset_cache", {})
     df_raw, error = get_sheet_data(username)
     if error:
+        cached_dataset = dataset_cache.get(username)
+        if isinstance(cached_dataset, dict) and cached_dataset.get("df") is not None:
+            st.session_state["_data_source_notice"] = "Mode dégradé : dernière version des données affichée."
+            return cached_dataset, None, False
         return None, error, False
     if df_raw.empty:
         return None, None, True
@@ -758,6 +854,10 @@ def get_main_dataset(username: str):
     df["_signe"] = df[col_sign].apply(is_checked) if col_sign else False
     df["_fact_fin"] = df[col_fact_fin].apply(is_checked) if col_fact_fin else False
     df["_pv"] = df[col_pv].apply(is_checked) if col_pv else False
+    # Pré-calcul des dates pour éviter de reparser à chaque interaction (filtres plus rapides).
+    df["_date_parsed_main"] = parse_flexible_series(df[col_date]) if col_date else pd.NaT
+    df["_date_fin_parsed_main"] = parse_flexible_series(df[col_date_fin]) if col_date_fin else pd.NaT
+    df["_date_debut_parsed_main"] = parse_flexible_series(df[col_date_debut]) if col_date_debut else pd.NaT
 
     nb_signes = int(df["_signe"].sum())
     nb_devis = len(df)
@@ -795,6 +895,7 @@ def get_main_dataset(username: str):
         "taux_conv": int((nb_signes / nb_devis) * 100) if nb_devis > 0 else 0,
         "reste_encaissement": df[(df["_signe"]) & (~df["_fact_fin"])]["_reste"].sum(),
     }
+    dataset_cache[username] = dataset
     return dataset, None, False
 
 def fmt(v):
@@ -841,12 +942,10 @@ def show_table(dataframe, key_suffix=""):
             st.caption(f"Affichage des {LIMIT} premiers sur {total}.")
             if st.button(f"📂 Voir les {total - LIMIT} suivants", key=f"btn_more_{key_suffix}"):
                 st.session_state[f"show_all_{key_suffix}"] = True
-                st.rerun()
         else:
             st.caption(f"{total} dossiers affichés.")
             if st.button("🔼 Réduire", key=f"btn_less_{key_suffix}"):
                 st.session_state[f"show_all_{key_suffix}"] = False
-                st.rerun()
 
 @st.cache_data(ttl=120, show_spinner=False)
 def get_pending_notifications_count(username: str) -> int:
@@ -1069,9 +1168,14 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         send_logs = st.session_state.get("_send_logs", [])
         if send_logs:
             st.caption("Derniers envois (sans données sensibles) :")
-            st.dataframe(pd.DataFrame(send_logs), use_container_width=True, hide_index=True)
+            logs_limit = min(50, len(send_logs))
+            st.dataframe(pd.DataFrame(send_logs[:logs_limit]), use_container_width=True, hide_index=True)
+            if len(send_logs) > logs_limit:
+                st.caption(f"Affichage de {logs_limit} / {len(send_logs)} logs.")
         else:
             st.caption("Aucun envoi loggé dans cette session.")
+
+render_sync_badge()
 
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "Utilisateurs":
@@ -1085,11 +1189,10 @@ elif page == "Dépenses":
 
     @st.cache_data(ttl=90, show_spinner=False)
     def _load_depenses(u):
-        ws, err = get_worksheet(u, "Depenses")
+        err, vals = get_sheet_values_resilient(u, "Depenses", f"{u}:Depenses")
         if err:
             return err, pd.DataFrame()
         try:
-            vals = ws.get_all_values()
             if not vals or len(vals) < 2:
                 return None, pd.DataFrame()
             headers = _dedup_headers(vals[0])
@@ -1155,7 +1258,6 @@ elif page == "Dépenses":
             if st.button("Réinitialiser", key="dep_reset_dates", use_container_width=True):
                 st.session_state.pop("dep_date_debut", None)
                 st.session_state.pop("dep_date_fin", None)
-                st.rerun()
 
     if DC_DATE and (dep_date_debut or dep_date_fin):
         df_dep_filtered["_date_dep"] = parse_flexible_series(df_dep_filtered[DC_DATE])
@@ -1791,11 +1893,10 @@ elif "Notifications" in page:
 
     @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
-        ws, err = get_worksheet(u, "liste")
+        err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
         if err:
             return []
         try:
-            vals = ws.get_all_values()
             if not vals or len(vals) < 2:
                 return []
             headers = [h.strip().lower() for h in vals[0]]
@@ -1809,11 +1910,10 @@ elif "Notifications" in page:
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_notifications(u):
-        ws, err = get_worksheet(u, "notifications")
+        err, vals = get_sheet_values_resilient(u, "notifications", f"{u}:notifications")
         if err:
             return err, pd.DataFrame()
         try:
-            vals = ws.get_all_values()
             if not vals or len(vals) < 2:
                 return None, pd.DataFrame()
             headers = _dedup_headers(vals[0])
@@ -2788,6 +2888,10 @@ if page in PAGES_NEED_MAIN_DF:
     taux_conv = dataset["taux_conv"]
     reste_encaissement = dataset["reste_encaissement"]
 
+    data_notice = st.session_state.get("_data_source_notice", "").strip()
+    if data_notice:
+        st.warning(data_notice)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : VUE GÉNÉRALE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2817,14 +2921,16 @@ if page == "Vue Générale":
             if st.button("Réinitialiser", key="vg_reset_dates", use_container_width=True):
                 st.session_state.pop("vg_date_debut", None)
                 st.session_state.pop("vg_date_fin", None)
-                st.rerun()
 
     # ── Filtrage selon période ─────────────────────────────────────────────
     df_vg = df.copy()
     periode_active = False
 
     if COL_DATE and (date_debut_vg or date_fin_vg):
-        df_vg["_date_parsed"] = parse_flexible_series(df_vg[COL_DATE])
+        if "_date_parsed_main" in df_vg.columns:
+            df_vg["_date_parsed"] = df_vg["_date_parsed_main"]
+        else:
+            df_vg["_date_parsed"] = parse_flexible_series(df_vg[COL_DATE])
         if date_debut_vg:
             df_vg = df_vg[df_vg["_date_parsed"].dt.date >= date_debut_vg]
         if date_fin_vg:
@@ -2873,10 +2979,16 @@ if page == "Vue Générale":
                 key="treso_horizon_days",
             )
             df_tres = df.copy()
-            df_tres["_base_date"] = parse_flexible_series(df_tres[COL_DATE])
+            if "_date_parsed_main" in df_tres.columns:
+                df_tres["_base_date"] = df_tres["_date_parsed_main"]
+            else:
+                df_tres["_base_date"] = parse_flexible_series(df_tres[COL_DATE])
             df_tres["_due_date"] = df_tres["_base_date"] + pd.Timedelta(days=30)
             if COL_DATE_FIN:
-                fin_dt = parse_flexible_series(df_tres[COL_DATE_FIN])
+                if "_date_fin_parsed_main" in df_tres.columns:
+                    fin_dt = df_tres["_date_fin_parsed_main"]
+                else:
+                    fin_dt = parse_flexible_series(df_tres[COL_DATE_FIN])
                 df_tres["_due_date"] = fin_dt.fillna(df_tres["_due_date"])
 
             if COL_STATUT:
@@ -2968,10 +3080,16 @@ if page == "Vue Générale":
                 if periode_active:
                     d2 = df_vg.copy()
                     if "_date_parsed" not in d2.columns:
-                        d2["_date_parsed"] = parse_flexible_series(d2[COL_DATE])
+                        if "_date_parsed_main" in d2.columns:
+                            d2["_date_parsed"] = d2["_date_parsed_main"]
+                        else:
+                            d2["_date_parsed"] = parse_flexible_series(d2[COL_DATE])
                     d2["_date"] = d2["_date_parsed"]
                 else:
-                    d2["_date"] = parse_flexible_series(d2[COL_DATE])
+                    if "_date_parsed_main" in d2.columns:
+                        d2["_date"] = d2["_date_parsed_main"]
+                    else:
+                        d2["_date"] = parse_flexible_series(d2[COL_DATE])
                 d2 = d2.dropna(subset=["_date"])
 
                 if not d2.empty:
@@ -2999,25 +3117,8 @@ if page == "Vue Générale":
                             index=safe_radio_index(_chart_opts, "chart_mode_toggle"),
                         )
 
-                        d2["_mois_key"]   = d2["_date"].dt.to_period("M").astype(str)
-                        d2["_mois_label"] = d2["_date"].dt.strftime("%b %Y")
-
-                        month_map = (
-                            d2[["_mois_key","_mois_label"]]
-                            .drop_duplicates()
-                            .sort_values("_mois_key")
-                        )
-
-                        ca_total_m   = d2.groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA Total"})
-                        ca_signe_m   = d2[d2["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA Signé"})
-                        ca_attente_m = d2[~d2["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant":"CA En attente"})
-
-                        merged = month_map.copy()
-                        merged = merged.merge(ca_total_m, on="_mois_key", how="left")
-                        merged = merged.merge(ca_signe_m, on="_mois_key", how="left")
-                        merged = merged.merge(ca_attente_m, on="_mois_key", how="left")
-                        merged = merged.fillna(0)
-                        merged["CA Cumul"] = merged["CA Total"].cumsum()
+                        monthly_input = d2[["_date", "_montant", "_signe"]].copy()
+                        merged = build_monthly_ca_aggregates(monthly_input)
 
                         x_labels = merged["_mois_label"].tolist()
                         fig = go.Figure()
@@ -3226,7 +3327,10 @@ elif page == "Factures & Paiements":
                 "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
             ]
             df_export = df.copy()
-            df_export["_date_export"] = parse_flexible_series(df_export[COL_DATE])
+            if "_date_parsed_main" in df_export.columns:
+                df_export["_date_export"] = df_export["_date_parsed_main"]
+            else:
+                df_export["_date_export"] = parse_flexible_series(df_export[COL_DATE])
             df_export = df_export.dropna(subset=["_date_export"]).copy()
 
             if df_export.empty:
@@ -3523,8 +3627,14 @@ elif page == "Planning":
     def parse_date_flex(val):
         return parse_flexible_date(val)
 
-    df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
-    df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
+    if "_date_debut_parsed_main" in df.columns and COL_DATE_DEBUT:
+        df_plan["_start"] = df["_date_debut_parsed_main"]
+    else:
+        df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
+    if "_date_fin_parsed_main" in df.columns and COL_DATE_FIN:
+        df_plan["_end"] = df["_date_fin_parsed_main"]
+    else:
+        df_plan["_end"] = df_plan[COL_DATE_FIN].apply(parse_date_flex)
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
 
@@ -3802,11 +3912,10 @@ elif page == "Salariés":
 
     @st.cache_data(ttl=120, show_spinner=False)
     def _load_jours_salaries(u):
-        ws, err = get_worksheet(u, "liste")
+        err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
         if err:
             return {}
         try:
-            vals = ws.get_all_values()
             if not vals or len(vals) < 2:
                 return {}
             headers = [h.strip().lower() for h in vals[0]]
@@ -3832,11 +3941,10 @@ elif page == "Salariés":
     # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
     @st.cache_data(ttl=45, show_spinner=False)
     def _load_planning_raw(u):
-        ws, err = get_worksheet(u, "planning")
+        err, vals = get_sheet_values_resilient(u, "planning", f"{u}:planning")
         if err:
             return err, [], []
         try:
-            vals = ws.get_all_values()
             if not vals:
                 return None, [], []
             return None, vals[0], vals[1:]
@@ -3845,11 +3953,10 @@ elif page == "Salariés":
 
     @st.cache_data(ttl=90, show_spinner=False)
     def _load_liste_raw(u):
-        ws, err = get_worksheet(u, "liste")
+        err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
         if err:
             return err, [], []
         try:
-            vals = ws.get_all_values()
             if not vals:
                 return None, [], []
             return None, vals[0], vals[1:]
@@ -4476,6 +4583,8 @@ elif page == "Retards & Avenants":
 
     @st.cache_data(ttl=90, show_spinner=False)
     def _load_envoie_pv(u):
+        cache_bucket = st.session_state.setdefault("_offline_tab_values_cache", {})
+        cache_key = f"{u}:envoie_pv_external"
         try:
             creds_data = get_user_credentials(u)
             # get_user_credentials retourne (sheet_name, gsa_json)
@@ -4490,6 +4599,8 @@ elif page == "Retards & Avenants":
             vals = ws.get_all_values()
             if not vals or len(vals) < 2:
                 return None, pd.DataFrame()
+            cache_bucket[cache_key] = vals
+            _track_sync_status(cache_key, fallback_used=False)
             headers = _dedup_headers(vals[0])
             rows = vals[1:]
             n = len(headers)
@@ -4498,10 +4609,40 @@ elif page == "Retards & Avenants":
             df_pv = df_pv.replace("", pd.NA).dropna(how="all").fillna("")
             return None, df_pv
         except gspread.exceptions.WorksheetNotFound:
+            vals = cache_bucket.get(cache_key)
+            if vals:
+                _track_sync_status(cache_key, fallback_used=True)
+                headers = _dedup_headers(vals[0]) if vals else []
+                rows = vals[1:] if vals else []
+                n = len(headers)
+                padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+                df_pv = pd.DataFrame(padded, columns=headers) if headers else pd.DataFrame()
+                df_pv = df_pv.replace("", pd.NA).dropna(how="all").fillna("") if not df_pv.empty else df_pv
+                return None, df_pv
             return "Onglet 'envoie pv' introuvable.", pd.DataFrame()
         except gspread.exceptions.SpreadsheetNotFound:
+            vals = cache_bucket.get(cache_key)
+            if vals:
+                _track_sync_status(cache_key, fallback_used=True)
+                headers = _dedup_headers(vals[0]) if vals else []
+                rows = vals[1:] if vals else []
+                n = len(headers)
+                padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+                df_pv = pd.DataFrame(padded, columns=headers) if headers else pd.DataFrame()
+                df_pv = df_pv.replace("", pd.NA).dropna(how="all").fillna("") if not df_pv.empty else df_pv
+                return None, df_pv
             return "Sheet 'Automatisation des relances devis par dates' introuvable.", pd.DataFrame()
         except Exception as e:
+            vals = cache_bucket.get(cache_key)
+            if vals:
+                _track_sync_status(cache_key, fallback_used=True)
+                headers = _dedup_headers(vals[0]) if vals else []
+                rows = vals[1:] if vals else []
+                n = len(headers)
+                padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+                df_pv = pd.DataFrame(padded, columns=headers) if headers else pd.DataFrame()
+                df_pv = df_pv.replace("", pd.NA).dropna(how="all").fillna("") if not df_pv.empty else df_pv
+                return None, df_pv
             return str(e), pd.DataFrame()
 
     err_pv, df_pv = _load_envoie_pv(user)
@@ -4714,6 +4855,14 @@ elif page == "Coordonnées & RGPD":
                 df_logs["details"] = df_logs["details"].apply(
                     lambda d: json.dumps(d, ensure_ascii=False) if isinstance(d, dict) else str(d)
                 )
-            st.dataframe(df_logs, use_container_width=True, hide_index=True)
+            logs_rows_to_show = st.selectbox(
+                "Lignes du journal à afficher",
+                [25, 50, 100, 150],
+                index=1,
+                key="rgpd_logs_limit",
+            )
+            st.dataframe(df_logs.head(logs_rows_to_show), use_container_width=True, hide_index=True)
+            if len(df_logs) > logs_rows_to_show:
+                st.caption(f"Affichage de {logs_rows_to_show} / {len(df_logs)} lignes.")
         else:
             st.info("Aucune activité enregistrée pour le moment.")
