@@ -549,6 +549,94 @@ def fcol(df, *keywords):
                 return c
     return None
 
+def _normalize_date_text(value) -> str:
+    raw = str(value).strip()
+    if not raw or raw.lower() in ("nan", "none", "nat", "null"):
+        return ""
+    txt = (
+        raw.lower()
+        .replace(",", " ")
+        .replace(".", " ")
+        .replace("_", " ")
+        .replace("-", "/")
+    )
+    txt = re.sub(r"\s+", " ", txt).strip()
+    txt = (
+        txt.replace("é", "e")
+        .replace("è", "e")
+        .replace("ê", "e")
+        .replace("ë", "e")
+        .replace("à", "a")
+        .replace("â", "a")
+        .replace("î", "i")
+        .replace("ï", "i")
+        .replace("ô", "o")
+        .replace("ù", "u")
+        .replace("û", "u")
+        .replace("ü", "u")
+        .replace("ç", "c")
+    )
+    txt = txt.replace("1er ", "1 ")
+    month_map = {
+        "janvier": "january", "janv": "january",
+        "fevrier": "february", "fevr": "february", "fev": "february",
+        "mars": "march",
+        "avril": "april", "avr": "april",
+        "mai": "may",
+        "juin": "june",
+        "juillet": "july", "juil": "july",
+        "aout": "august",
+        "septembre": "september", "sept": "september",
+        "octobre": "october", "oct": "october",
+        "novembre": "november", "nov": "november",
+        "decembre": "december", "dec": "december",
+    }
+    for fr, en in month_map.items():
+        txt = re.sub(rf"\b{fr}\b", en, txt)
+    return txt
+
+def parse_flexible_date(value):
+    s = _normalize_date_text(value)
+    if not s:
+        return pd.NaT
+    # Formats partiels / placeholders: on complète au 1er du mois.
+    m = re.match(r"^(\d{4})/(\d{1,2})/(yyyy|yy|dd)$", s)
+    if m:
+        return pd.to_datetime(f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/01", format="%Y/%m/%d", errors="coerce")
+    m = re.match(r"^(\d{4})/(\d{1,2})$", s)
+    if m:
+        return pd.to_datetime(f"{int(m.group(1)):04d}/{int(m.group(2)):02d}/01", format="%Y/%m/%d", errors="coerce")
+    m = re.match(r"^(\d{1,2})/(\d{4})$", s)
+    if m:
+        return pd.to_datetime(f"{int(m.group(2)):04d}/{int(m.group(1)):02d}/01", format="%Y/%m/%d", errors="coerce")
+    m = re.match(r"^([a-z]{3,12})\s+(\d{4})$", s)
+    if m:
+        return pd.to_datetime(f"01 {m.group(1)} {m.group(2)}", format="%d %B %Y", errors="coerce")
+    m = re.match(r"^(\d{4})\s+([a-z]{3,12})$", s)
+    if m:
+        return pd.to_datetime(f"01 {m.group(2)} {m.group(1)}", format="%d %B %Y", errors="coerce")
+    m = re.match(r"^(\d{4})$", s)
+    if m:
+        return pd.to_datetime(f"{int(m.group(1)):04d}/01/01", format="%Y/%m/%d", errors="coerce")
+    # Essais explicites pour couvrir un maximum de formats usuels.
+    for fmt in [
+        "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y",
+        "%Y/%m/%d %H:%M", "%d/%m/%Y %H:%M", "%m/%d/%Y %H:%M",
+        "%Y/%m/%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S",
+        "%d %B %Y", "%B %d %Y", "%d %b %Y", "%b %d %Y",
+    ]:
+        try:
+            return pd.to_datetime(s, format=fmt, errors="raise")
+        except Exception:
+            pass
+    dt1 = pd.to_datetime(s, dayfirst=True, errors="coerce")
+    if not pd.isna(dt1):
+        return dt1
+    return pd.to_datetime(s, dayfirst=False, errors="coerce")
+
+def parse_flexible_series(series: pd.Series) -> pd.Series:
+    return series.apply(parse_flexible_date)
+
 def safe_slug(value: str) -> str:
     raw = str(value or "").strip()
     cleaned = re.sub(r"[^A-Za-z0-9_-]", "", raw)
@@ -594,8 +682,8 @@ def post_n8n(endpoint: str, payload: dict):
 def compute_chantier_progress(start_val, end_val, is_finished=False):
     if is_finished:
         return 100
-    start_dt = pd.to_datetime(start_val, errors="coerce")
-    end_dt = pd.to_datetime(end_val, errors="coerce")
+    start_dt = parse_flexible_date(start_val)
+    end_dt = parse_flexible_date(end_val)
     if pd.isna(start_dt) or pd.isna(end_dt):
         return 0
     start_date = start_dt.date()
@@ -1070,7 +1158,7 @@ elif page == "Dépenses":
                 st.rerun()
 
     if DC_DATE and (dep_date_debut or dep_date_fin):
-        df_dep_filtered["_date_dep"] = pd.to_datetime(df_dep_filtered[DC_DATE], errors="coerce")
+        df_dep_filtered["_date_dep"] = parse_flexible_series(df_dep_filtered[DC_DATE])
         if dep_date_debut:
             df_dep_filtered = df_dep_filtered[df_dep_filtered["_date_dep"].dt.date >= dep_date_debut]
         if dep_date_fin:
@@ -1100,7 +1188,7 @@ elif page == "Dépenses":
     ca_ref["_montant"] = ca_ref[col_mont_ref].apply(clean_amount) if col_mont_ref else 0.0
     ca_ref["_signe"]   = ca_ref[col_sign_ref].apply(is_checked)  if col_sign_ref else False
     if periode_dep and col_date_ref and (dep_date_debut or dep_date_fin):
-        ca_ref["_date_parsed"] = pd.to_datetime(ca_ref[col_date_ref], dayfirst=True, errors="coerce")
+        ca_ref["_date_parsed"] = parse_flexible_series(ca_ref[col_date_ref])
         if dep_date_debut:
             ca_ref = ca_ref[ca_ref["_date_parsed"].dt.date >= dep_date_debut]
         if dep_date_fin:
@@ -2736,7 +2824,7 @@ if page == "Vue Générale":
     periode_active = False
 
     if COL_DATE and (date_debut_vg or date_fin_vg):
-        df_vg["_date_parsed"] = pd.to_datetime(df_vg[COL_DATE], dayfirst=True, errors="coerce")
+        df_vg["_date_parsed"] = parse_flexible_series(df_vg[COL_DATE])
         if date_debut_vg:
             df_vg = df_vg[df_vg["_date_parsed"].dt.date >= date_debut_vg]
         if date_fin_vg:
@@ -2777,49 +2865,10 @@ if page == "Vue Générale":
             st.info("Colonne 'Date' introuvable pour calculer les échéances.")
         else:
             df_tres = df.copy()
-            def _parse_date_multi(series: pd.Series) -> pd.Series:
-                def _normalize_french_literal_date(val: str) -> str:
-                    raw = str(val).strip()
-                    if not raw:
-                        return raw
-                    txt = raw.lower()
-                    txt = (
-                        txt.replace("é", "e")
-                        .replace("è", "e")
-                        .replace("ê", "e")
-                        .replace("à", "a")
-                        .replace("â", "a")
-                        .replace("î", "i")
-                        .replace("ï", "i")
-                        .replace("ô", "o")
-                        .replace("ù", "u")
-                        .replace("û", "u")
-                        .replace("ç", "c")
-                    )
-                    months = {
-                        "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
-                        "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11, "decembre": 12,
-                    }
-                    m = re.match(r"^(\d{1,2})\s+([a-z]+)\s+(\d{4})$", txt)
-                    if not m:
-                        return raw
-                    day = int(m.group(1))
-                    month_name = m.group(2)
-                    year = int(m.group(3))
-                    month_num = months.get(month_name)
-                    if not month_num:
-                        return raw
-                    return f"{day:02d}/{month_num:02d}/{year:04d}"
-
-                s = series.astype(str).str.strip().apply(_normalize_french_literal_date)
-                dt1 = pd.to_datetime(s, dayfirst=True, errors="coerce")
-                dt2 = pd.to_datetime(s, dayfirst=False, errors="coerce")
-                return dt1.fillna(dt2)
-
-            df_tres["_base_date"] = _parse_date_multi(df_tres[COL_DATE])
+            df_tres["_base_date"] = parse_flexible_series(df_tres[COL_DATE])
             df_tres["_due_date"] = df_tres["_base_date"] + pd.Timedelta(days=30)
             if COL_DATE_FIN:
-                fin_dt = _parse_date_multi(df_tres[COL_DATE_FIN])
+                fin_dt = parse_flexible_series(df_tres[COL_DATE_FIN])
                 df_tres["_due_date"] = fin_dt.fillna(df_tres["_due_date"])
 
             if COL_STATUT:
@@ -2911,10 +2960,10 @@ if page == "Vue Générale":
                 if periode_active:
                     d2 = df_vg.copy()
                     if "_date_parsed" not in d2.columns:
-                        d2["_date_parsed"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
+                        d2["_date_parsed"] = parse_flexible_series(d2[COL_DATE])
                     d2["_date"] = d2["_date_parsed"]
                 else:
-                    d2["_date"] = pd.to_datetime(d2[COL_DATE], dayfirst=True, errors="coerce")
+                    d2["_date"] = parse_flexible_series(d2[COL_DATE])
                 d2 = d2.dropna(subset=["_date"])
 
                 if not d2.empty:
@@ -3148,7 +3197,7 @@ elif page == "Factures & Paiements":
                 "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
             ]
             df_export = df.copy()
-            df_export["_date_export"] = pd.to_datetime(df_export[COL_DATE], dayfirst=True, errors="coerce")
+            df_export["_date_export"] = parse_flexible_series(df_export[COL_DATE])
             df_export = df_export.dropna(subset=["_date_export"]).copy()
 
             if df_export.empty:
@@ -3443,13 +3492,7 @@ elif page == "Planning":
     df_plan = df[cols_utiles].copy()
 
     def parse_date_flex(val):
-        s = str(val).strip()
-        if not s or s.lower() in ("nan", "none", ""): return pd.NaT
-        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"]:
-            try: return pd.to_datetime(s, format=fmt)
-            except: pass
-        try: return pd.to_datetime(s, dayfirst=True)
-        except: return pd.NaT
+        return parse_flexible_date(val)
 
     df_plan["_start"] = df_plan[COL_DATE_DEBUT].apply(parse_date_flex)
     df_plan["_end"]   = df_plan[COL_DATE_FIN].apply(parse_date_flex)
@@ -3895,18 +3938,10 @@ elif page == "Salariés":
             st.stop()
 
         def parse_date_s(val):
-            s = str(val).strip()
-            if not s or s.lower() in ("nan", "none", ""):
+            dt = parse_flexible_date(val)
+            if pd.isna(dt):
                 return None
-            for fmt_d in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]:
-                try:
-                    return pd.to_datetime(s, format=fmt_d).date()
-                except Exception:
-                    pass
-            try:
-                return pd.to_datetime(s, dayfirst=True).date()
-            except Exception:
-                return None
+            return dt.date()
 
         def parse_time_s(val):
             if val is None:
