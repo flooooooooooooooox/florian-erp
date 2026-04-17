@@ -10,7 +10,7 @@ import json
 import os
 import calendar
 import requests
-import r
+import re
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
 from activity_log import log_activity, read_activity_logs
