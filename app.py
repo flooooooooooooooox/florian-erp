@@ -4876,23 +4876,3 @@ elif page == "Coordonnées & RGPD":
         st.markdown("- Vérifie les informations client avant tout envoi ou toute relance.")
         st.markdown("- Déconnecte-toi en fin de session sur un poste partagé.")
 
-    with st.container(border=True):
-        st.markdown("### Journal d'activité")
-        activity_rows = read_activity_logs(limit=150)
-        if activity_rows:
-            df_logs = pd.DataFrame(activity_rows)
-            if "details" in df_logs.columns:
-                df_logs["details"] = df_logs["details"].apply(
-                    lambda d: json.dumps(d, ensure_ascii=False) if isinstance(d, dict) else str(d)
-                )
-            logs_rows_to_show = st.selectbox(
-                "Lignes du journal à afficher",
-                [25, 50, 100, 150],
-                index=1,
-                key="rgpd_logs_limit",
-            )
-            st.dataframe(df_logs.head(logs_rows_to_show), use_container_width=True, hide_index=True)
-            if len(df_logs) > logs_rows_to_show:
-                st.caption(f"Affichage de {logs_rows_to_show} / {len(df_logs)} lignes.")
-        else:
-            st.info("Aucune activité enregistrée pour le moment.")
