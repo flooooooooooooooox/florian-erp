@@ -2864,6 +2864,14 @@ if page == "Vue Générale":
         if not COL_DATE:
             st.info("Colonne 'Date' introuvable pour calculer les échéances.")
         else:
+            horizon_days = st.slider(
+                "Durée de la prévision (jours)",
+                min_value=7,
+                max_value=120,
+                value=30,
+                step=1,
+                key="treso_horizon_days",
+            )
             df_tres = df.copy()
             df_tres["_base_date"] = parse_flexible_series(df_tres[COL_DATE])
             df_tres["_due_date"] = df_tres["_base_date"] + pd.Timedelta(days=30)
@@ -2893,8 +2901,8 @@ if page == "Vue Générale":
                 st.warning("Colonne 'Statut' non détectée : prévision calculée sans filtre de statut.")
 
             today = datetime.now().date()
-            next_30 = today + timedelta(days=30)
-            prev_30_start = today - timedelta(days=30)
+            next_30 = today + timedelta(days=int(horizon_days))
+            prev_30_start = today - timedelta(days=int(horizon_days))
             prev_30_end = today - timedelta(days=1)
 
             df_tres = df_tres.dropna(subset=["_due_date"]).copy()
@@ -2905,10 +2913,10 @@ if page == "Vue Générale":
             total_future = float(df_future["_montant"].sum()) if not df_future.empty else 0.0
             total_past = float(df_past["_montant"].sum()) if not df_past.empty else 0.0
             delta_value = total_future - total_past
-            st.metric("Montant total à recevoir (30 jours)", fmt(total_future), delta=f"{delta_value:,.0f} €".replace(",", " "))
+            st.metric(f"Montant total à recevoir ({horizon_days} jours)", fmt(total_future), delta=f"{delta_value:,.0f} €".replace(",", " "))
 
             if df_future.empty:
-                st.info("Aucune échéance attendue entre aujourd'hui et les 30 prochains jours.")
+                st.info(f"Aucune échéance attendue entre aujourd'hui et les {horizon_days} prochains jours.")
             else:
                 daily = (
                     df_future.groupby("_due_day")["_montant"]
@@ -2938,7 +2946,7 @@ if page == "Vue Générale":
                     )
                 )
                 fig_tres.update_layout(
-                    title="Prévision encaissements (30 jours)",
+                    title=f"Prévision encaissements ({horizon_days} jours)",
                     paper_bgcolor=chart_bg,
                     plot_bgcolor=chart_bg,
                     font=dict(color=chart_font, family="Inter"),
@@ -3009,6 +3017,7 @@ if page == "Vue Générale":
                         merged = merged.merge(ca_signe_m, on="_mois_key", how="left")
                         merged = merged.merge(ca_attente_m, on="_mois_key", how="left")
                         merged = merged.fillna(0)
+                        merged["CA Cumul"] = merged["CA Total"].cumsum()
 
                         x_labels = merged["_mois_label"].tolist()
                         fig = go.Figure()
@@ -3016,11 +3025,31 @@ if page == "Vue Générale":
                         if chart_mode == "Barres empilées":
                             fig.add_trace(go.Bar(x=x_labels, y=merged["CA En attente"], name="En attente ⏳", marker_color="#1e3a5f", marker_line_width=0))
                             fig.add_trace(go.Bar(x=x_labels, y=merged["CA Signé"], name="Signé", marker_color="#00d68f", marker_line_width=0))
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=x_labels,
+                                    y=merged["CA Cumul"],
+                                    name="Cumul progressif",
+                                    mode="lines+markers",
+                                    line=dict(color="#b794f6", width=3, shape="spline"),
+                                    marker=dict(size=6, color="#b794f6"),
+                                )
+                            )
                             fig.update_layout(barmode="stack", bargap=0.3)
                         else:
                             fig.add_trace(go.Scatter(x=x_labels, y=merged["CA Total"], name="CA Total", mode="lines+markers", line=dict(color="#4f8ef7", width=2.5, shape="spline"), marker=dict(size=7, color="#4f8ef7", line=dict(color="#fff", width=1.5)), fill="tozeroy", fillcolor="rgba(79,142,247,0.07)"))
                             fig.add_trace(go.Scatter(x=x_labels, y=merged["CA Signé"], name="CA Signé", mode="lines+markers", line=dict(color="#00d68f", width=2.5, shape="spline"), marker=dict(size=7, color="#00d68f", line=dict(color="#fff", width=1.5)), fill="tozeroy", fillcolor="rgba(0,214,143,0.07)"))
                             fig.add_trace(go.Scatter(x=x_labels, y=merged["CA En attente"], name="CA En attente", mode="lines+markers", line=dict(color="#ffb84d", width=2, shape="spline", dash="dot"), marker=dict(size=5, color="#ffb84d")))
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=x_labels,
+                                    y=merged["CA Cumul"],
+                                    name="Cumul progressif",
+                                    mode="lines+markers",
+                                    line=dict(color="#b794f6", width=3, shape="spline"),
+                                    marker=dict(size=6, color="#b794f6"),
+                                )
+                            )
 
                         fig.update_layout(
                             title=dict(text="📈 Évolution du CA par mois", font=dict(size=14, color=chart_font, family="Inter")),
