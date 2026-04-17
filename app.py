@@ -974,7 +974,7 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         st.code(
             "\n".join([
                 f"reponse: https://n8n.florianai.fr/webhook/reponse-{user_slug}",
-                f"devis:    https://n8n.florianai.fr/webhook-test/{user_slug}",
+                f"devis:    https://n8n.florianai.fr/webhook/{user_slug}",
                 f"retard:   https://n8n.florianai.fr/webhook/retard-{user_slug}",
             ])
         )
@@ -2025,7 +2025,7 @@ elif page == "Créer un devis":
     import streamlit.components.v1 as components
     page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook-test/{user_slug}"
+    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user_slug}"
 
     def _parse_prix(val):
         try:
@@ -3144,9 +3144,14 @@ elif page == "Factures & Paiements":
                 if df_export.empty:
                     st.warning("Aucune ligne validée (PV signé / sans réserve) pour cette période.")
                 else:
-                    def _parse_tva_value(val):
+                    # Priorité à la nouvelle colonne TVA_choisi (taux), sinon fallback sur la TVA existante.
+                    col_tva_export = fcol(df_export, "tva_choisi", "tva choisi")
+                    if not col_tva_export:
+                        col_tva_export = COL_TVA
+
+                    def _parse_tva_rate(val):
                         if pd.isna(val) or str(val).strip() == "":
-                            return 0.0, "rate"
+                            return 0.0
                         s = (
                             str(val).strip().lower()
                             .replace("%", "")
@@ -3157,27 +3162,25 @@ elif page == "Factures & Paiements":
                         try:
                             num = float(s)
                         except Exception:
-                            return 0.0, "rate"
+                            return 0.0
                         if num <= 1:
-                            return max(0.0, num), "rate"
+                            return max(0.0, num)
                         if num <= 100:
-                            return max(0.0, num / 100), "rate"
-                        return max(0.0, num), "amount"
+                            return max(0.0, num / 100)
+                        return 0.0
 
                     montant_ttc = df_export["_montant"].apply(clean_amount)
-                    tva_infos = df_export[COL_TVA].apply(_parse_tva_value) if COL_TVA else pd.Series([(0.0, "rate")] * len(df_export), index=df_export.index)
+                    tva_rates = (
+                        df_export[col_tva_export].apply(_parse_tva_rate)
+                        if col_tva_export else pd.Series([0.0] * len(df_export), index=df_export.index)
+                    )
 
                     tva_amounts = []
                     ht_amounts = []
-                    for ttc, info in zip(montant_ttc.tolist(), tva_infos.tolist()):
-                        val_tva, mode_tva = info
-                        if mode_tva == "amount":
-                            tva_amt = min(val_tva, max(ttc, 0.0))
-                            ht_amt = max(ttc - tva_amt, 0.0)
-                        else:
-                            rate = max(val_tva, 0.0)
-                            ht_amt = ttc / (1 + rate) if rate > 0 else ttc
-                            tva_amt = ttc - ht_amt
+                    for ttc, rate in zip(montant_ttc.tolist(), tva_rates.tolist()):
+                        rate = max(rate, 0.0)
+                        ht_amt = ttc / (1 + rate) if rate > 0 else ttc
+                        tva_amt = ttc - ht_amt
                         ht_amounts.append(ht_amt)
                         tva_amounts.append(tva_amt)
 
