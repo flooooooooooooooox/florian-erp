@@ -3249,16 +3249,46 @@ if page == "Vue Générale":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Devis":
     page_header("Gestion des Devis", f"{nb_devis} devis au total")
+    df_devis_scope = df.copy()
+    devis_nb_total = len(df_devis_scope)
+    devis_nb_signes = int(df_devis_scope["_signe"].sum()) if devis_nb_total > 0 else 0
+    devis_taux_conv = int((devis_nb_signes / devis_nb_total) * 100) if devis_nb_total > 0 else 0
     render_ceo_hero(
         "Pipeline commercial",
         "Lecture rapide du pipe devis, du stock en attente de signature et de la valeur déjà convertie.",
-        chips=[f"{nb_devis} devis", f"{taux_conv}% conversion", fmt(total_ca)],
+        chips=[f"{devis_nb_total} devis", f"{devis_taux_conv}% conversion", fmt(df_devis_scope['_montant'].sum())],
     )
 
+    with st.expander("📅 Filtrer le taux de transformation par période", expanded=False):
+        cd1, cd2, cd3 = st.columns([2, 2, 1])
+        with cd1:
+            devis_date_debut = st.date_input("Du", value=None, key="devis_date_debut")
+        with cd2:
+            devis_date_fin = st.date_input("Au", value=None, key="devis_date_fin")
+        with cd3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Réinitialiser", key="devis_reset_dates", use_container_width=True):
+                st.session_state.pop("devis_date_debut", None)
+                st.session_state.pop("devis_date_fin", None)
+
+    if COL_DATE and (devis_date_debut or devis_date_fin):
+        if "_date_parsed_main" in df_devis_scope.columns:
+            df_devis_scope["_date_devis"] = df_devis_scope["_date_parsed_main"]
+        else:
+            df_devis_scope["_date_devis"] = parse_flexible_series(df_devis_scope[COL_DATE])
+        if devis_date_debut:
+            df_devis_scope = df_devis_scope[df_devis_scope["_date_devis"].dt.date >= devis_date_debut]
+        if devis_date_fin:
+            df_devis_scope = df_devis_scope[df_devis_scope["_date_devis"].dt.date <= devis_date_fin]
+        devis_nb_total = len(df_devis_scope)
+        devis_nb_signes = int(df_devis_scope["_signe"].sum()) if devis_nb_total > 0 else 0
+        devis_taux_conv = int((devis_nb_signes / devis_nb_total) * 100) if devis_nb_total > 0 else 0
+        st.info(f"📅 Taux de transformation calculé sur {devis_nb_total} devis (période filtrée).")
+
     render_kpi_cards([
-        {"label": "Total devis", "value": nb_devis, "delta": "Volume commercial total", "icon": "◉", "fill_pct": 100, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
-        {"label": "Transformation", "value": f"{taux_conv} %", "delta": "Taux de signature", "icon": "↗", "fill_pct": taux_conv, "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
-        {"label": "Volume global", "value": fmt(total_ca), "delta": "Valeur cumulée des devis", "icon": "€", "fill_pct": 100, "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Total devis", "value": devis_nb_total, "delta": "Volume commercial total", "icon": "◉", "fill_pct": 100, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
+        {"label": "Transformation", "value": f"{devis_taux_conv} %", "delta": "Taux de signature", "icon": "↗", "fill_pct": devis_taux_conv, "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "Volume global", "value": fmt(df_devis_scope["_montant"].sum()), "delta": "Valeur cumulée des devis", "icon": "€", "fill_pct": 100, "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
     ])
 
     st.markdown("<br>", unsafe_allow_html=True)
