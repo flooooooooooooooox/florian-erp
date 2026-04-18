@@ -2239,7 +2239,7 @@ elif page == "Créer un devis":
                 article = row_d.get("article", row_d.get("sous-prestation", "")).strip()
                 prix    = row_d.get("prix vente ht", row_d.get("total ht", "")).strip()
                 desc    = row_d.get("description", "").strip()
-                cat     = row_d.get("catégorie", row_d.get("categorie", "")).strip()
+                cat     = "Divers"
                 items.append({"article": article, "description": desc,
                                "prix_ht": prix, "categorie": cat, "source": "catalogue"})
             return items
@@ -2424,7 +2424,7 @@ elif page == "Créer un devis":
                     found = next((it for it in catalogue_items if it["article"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": "",
-                                      "categorie": found["categorie"], "_prev_sel": sel,
+                                      "categorie": "Divers", "_prev_sel": sel,
                                       "prix_ht": _parse_prix(found["prix_ht"]),
                                       "qte": 1.0})
                         st.rerun()
