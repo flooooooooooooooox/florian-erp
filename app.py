@@ -2239,7 +2239,7 @@ elif page == "Créer un devis":
                 article = row_d.get("article", row_d.get("sous-prestation", "")).strip()
                 prix    = row_d.get("prix vente ht", row_d.get("total ht", "")).strip()
                 desc    = row_d.get("description", "").strip()
-                cat     = "Divers"
+                cat     = row_d.get("catégorie", row_d.get("categorie", "")).strip()
                 items.append({"article": article, "description": desc,
                                "prix_ht": prix, "categorie": cat, "source": "catalogue"})
             return items
@@ -2424,7 +2424,7 @@ elif page == "Créer un devis":
                     found = next((it for it in catalogue_items if it["article"] == sel), None)
                     if found and sel != ligne.get("_prev_sel"):
                         ligne.update({"article": found["article"], "description": "",
-                                      "categorie": "Divers", "_prev_sel": sel,
+                                      "categorie": found["categorie"], "_prev_sel": sel,
                                       "prix_ht": _parse_prix(found["prix_ht"]),
                                       "qte": 1.0})
                         st.rerun()
@@ -2531,6 +2531,10 @@ elif page == "Créer un devis":
         return errs
 
     def _build_payload():
+        non_catalogue_payload_lines = [l for l in lignes if l.get("article", "").strip() and l.get("source") != "catalogue"]
+        catalogue_payload_lines = [l for l in lignes if l.get("article", "").strip() and l.get("source") == "catalogue"]
+        payload_lines = non_catalogue_payload_lines + catalogue_payload_lines
+
         return {
             "nom_complet":         client_nom.strip(),
             "adresse":             client_adresse.strip(),
@@ -2552,13 +2556,18 @@ elif page == "Créer un devis":
             "prestations": [
                 {
                     "libelle":     l["article"].strip(),
-                    "description": l["description"].strip(),
-                    "quantite":    _get_qte(i, l),
-                    "HT":          round(_get_prix(i, l) * _get_qte(i, l), 2),
-                    "TVA":         round(_get_prix(i, l) * _get_qte(i, l) * tva_taux, 2),
-                    "TTC":         round(_get_prix(i, l) * _get_qte(i, l) * (1 + tva_taux), 2),
+                    "description": (
+                        ("Divers - " + l["description"].strip()) if (l.get("source") == "catalogue" and l["description"].strip())
+                        else ("Divers" if l.get("source") == "catalogue" else l["description"].strip())
+                    ),
+                    "categorie":   ("Divers" if l.get("source") == "catalogue" else l.get("categorie", "").strip()),
+                    "quantite":    float(l["qte"]),
+                    "HT":          round(float(l["prix_ht"]) * float(l["qte"]), 2),
+                    "TVA":         round(float(l["prix_ht"]) * float(l["qte"]) * tva_taux, 2),
+                    "TTC":         round(float(l["prix_ht"]) * float(l["qte"]) * (1 + tva_taux), 2),
+                    "source_ligne": l.get("source", "libre"),
                 }
-                for i, l in enumerate(lignes) if l["article"].strip()
+                for l in payload_lines
             ],
             "totalHT":  round(total_ht, 2),
             "TVA":      round(total_tva, 2),
@@ -2579,19 +2588,32 @@ elif page == "Créer un devis":
         st.markdown("---")
 
         lignes_html = ""
+
+        non_catalogue_lines = []
+        catalogue_lines = []
         for i, l in enumerate(lignes):
             if not l["article"].strip():
                 continue
+            if l.get("source") == "catalogue":
+                catalogue_lines.append((i, l))
+            else:
+                non_catalogue_lines.append((i, l))
+
+        preview_rows = non_catalogue_lines + catalogue_lines
+        for disp_idx, (i, l) in enumerate(preview_rows, start=1):
             prix       = _get_prix(i, l)
             qte        = _get_qte(i, l)
             total_ht_l = round(qte * prix, 2)
             tva_l      = round(total_ht_l * tva_taux, 2)
             ttc_l      = round(total_ht_l + tva_l, 2)
-            bg         = "#f8fafc" if i % 2 == 0 else "#ffffff"
-            desc_part  = f"<br><span style='color:#64748b;font-size:8px;'>{l['description']}</span>" if l.get("description","").strip() else ""
+            bg         = "#f8fafc" if disp_idx % 2 == 1 else "#ffffff"
+            desc_txt   = l.get("description", "").strip()
+            if l.get("source") == "catalogue":
+                desc_txt = "Divers" if not desc_txt else f"Divers - {desc_txt}"
+            desc_part  = f"<br><span style='color:#64748b;font-size:8px;'>{desc_txt}</span>" if desc_txt else ""
             lignes_html += f"""
             <tr style="background:{bg};">
-              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{i+1}</td>
+              <td style="padding:5px 6px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b;">{disp_idx}</td>
               <td style="padding:5px 10px;border-bottom:1px solid #e2e8f0;color:#1e293b;">
                 <strong style="font-size:9px;">{l['article']}</strong>{desc_part}
               </td>
