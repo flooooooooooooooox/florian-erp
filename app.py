@@ -1160,9 +1160,9 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         st.caption("Endpoints actifs pour ce compte :")
         st.code(
             "\n".join([
-                f"reponse: https://n8n.florianai.fr/webhook/reponse-{user_slug}",
-                f"devis:    https://n8n.florianai.fr/webhook/{user_slug}",
-                f"retard:   https://n8n.florianai.fr/webhook/retard-{user_slug}",
+                f"reponse: https://client1.florianai.fr/webhook/reponse-{user_slug}",
+                f"devis:    https://client1.florianai.fr/webhook/{user_slug}",
+                f"retard:   https://client1.florianai.fr/webhook/retard-{user_slug}",
             ])
         )
         send_logs = st.session_state.get("_send_logs", [])
@@ -1889,7 +1889,7 @@ elif page == "Éditeur Google Sheet":
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
 
-    WEBHOOK_REPONSE = f"https://n8n.florianai.fr/webhook/reponse-{user_slug}"
+    WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
 
     @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
@@ -2213,7 +2213,7 @@ elif page == "Créer un devis":
     import streamlit.components.v1 as components
     page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
-    WEBHOOK_URL = f"https://n8n.florianai.fr/webhook/{user_slug}"
+    WEBHOOK_URL = f"https://client1.florianai.fr/webhook/{user_slug}"
 
     def _parse_prix(val):
         try:
@@ -4665,7 +4665,7 @@ elif page == "Retards & Avenants":
     page_header("Retards & Avenants", "Signalement de retard chantier")
     # ... reste du code
 
-    WEBHOOK_RETARD = f"https://n8n.florianai.fr/webhook/retard-{user_slug}"
+    WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook/retard-{user_slug}"
 
     @st.cache_data(ttl=90, show_spinner=False)
     def _load_envoie_pv(u):
