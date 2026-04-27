@@ -1951,7 +1951,7 @@ elif "Notifications" in page:
         heure_fin,
         tranches_personnalisees,
     ):
-        ws_liste, err_liste = get_worksheet(u, "liste")
+        return True, None
         if err_liste or not ws_liste:
             return False, f"Impossible d'ouvrir l'onglet liste : {err_liste or 'inconnu'}"
 
