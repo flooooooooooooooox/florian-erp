@@ -1160,7 +1160,7 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         st.caption("Endpoints actifs pour ce compte :")
         st.code(
             "\n".join([
-                f"reponse: https://client1.florianai.fr/webhook/reponse-{user_slug}",
+                f"reponse: https://client1.florianai.fr/webhook-test/reponse-{user_slug}",
                 f"devis:    https://client1.florianai.fr/webhook/{user_slug}",
                 f"retard:   https://client1.florianai.fr/webhook/retard-{user_slug}",
             ])
