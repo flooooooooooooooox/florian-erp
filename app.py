@@ -2206,8 +2206,8 @@ elif "Notifications" in page:
                                     st.error(f"Erreur n8n : {resp.status_code}")
                             except Exception as ex:
                                 st.error(f"Erreur : {ex}")
-      st.markdown("---")
-st.markdown("## 🧾 E-Reporting B2C")
+    st.markdown("---")
+    st.markdown("## 🧾 E-Reporting B2C")
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _load_ereporting(u):
