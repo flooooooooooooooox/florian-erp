@@ -1160,6 +1160,7 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         st.caption("Endpoints actifs pour ce compte :")
         st.code(
             "\n".join([
+                f"reponse:  https://client1.florianai.fr/webhook-test/reponse-{user_slug}",
                 f"reponse:  https://client1.florianai.fr/webhook/reponse-{user_slug}",
                 f"devis:    https://client1.florianai.fr/webhook/{user_slug}",
                 f"retard:   https://client1.florianai.fr/webhook/retard-{user_slug}",
@@ -1889,6 +1890,7 @@ elif page == "Éditeur Google Sheet":
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
 
+    WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook-test/reponse-{user_slug}"
     WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
 
     @st.cache_data(ttl=180, show_spinner=False)
@@ -2206,113 +2208,6 @@ elif "Notifications" in page:
                                     st.error(f"Erreur n8n : {resp.status_code}")
                             except Exception as ex:
                                 st.error(f"Erreur : {ex}")
-    st.markdown("---")
-    st.markdown("## 🧾 E-Reporting B2C")
-
-@st.cache_data(ttl=60, show_spinner=False)
-def _load_ereporting(u):
-    err, vals = get_sheet_values_resilient(u, "E-Reporting B2C", f"{u}:ereporting")
-    if err:
-        return err, pd.DataFrame()
-    try:
-        if not vals or len(vals) < 2:
-            return None, pd.DataFrame()
-        headers = _dedup_headers(vals[0])
-        rows = vals[1:]
-        n = len(headers)
-        padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
-        df_er = pd.DataFrame(padded, columns=headers)
-        df_er = df_er.replace("", pd.NA).dropna(how="all").fillna("")
-        return None, df_er
-    except Exception as e:
-        return str(e), pd.DataFrame()
-
-err_er, df_er = _load_ereporting(user)
-
-if err_er:
-    st.error(f"Onglet 'E-Reporting B2C' indisponible : {err_er}")
-else:
-    # Filtrer uniquement "À envoyer"
-    df_er_attente = df_er[df_er.get("statut_reporting", pd.Series(dtype=str)).astype(str).str.strip() == "À envoyer"] if "statut_reporting" in df_er.columns else df_er
-
-    col_er1, col_er2 = st.columns(2)
-    col_er1.metric("À déclarer", len(df_er_attente))
-    col_er2.metric("Total TTC à déclarer", fmt(df_er_attente["montant_TTC"].apply(clean_amount).sum()) if "montant_TTC" in df_er_attente.columns else "—")
-
-    if st.button("Actualiser E-Reporting", key="btn_refresh_er"):
-        _load_ereporting.clear()
-        st.rerun()
-
-    st.markdown("---")
-
-    MOYENS_PAIEMENT = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Prélèvement"]
-
-    for idx, (row_idx, row) in enumerate(df_er_attente.iterrows()):
-        num     = str(row.get("numero_facture", "")).strip()
-        client  = str(row.get("nom_client", "")).strip()
-        adresse = str(row.get("adresse_client", "")).strip()
-        montant = str(row.get("montant_TTC", "")).strip()
-        date_f  = str(row.get("date_facture", "")).strip()
-        desc    = str(row.get("description", "")).strip()
-        tva     = str(row.get("taux_tva", "")).strip()
-
-        with st.container(border=True):
-            st.markdown(f"""
-            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-              <div>
-                <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;">{num or 'Sans numéro'}</span>
-                <strong style="margin-left:8px;">{client}</strong>
-              </div>
-              <div style="font-size:0.8rem;color:#64748b;">{date_f}</div>
-            </div>
-            <div style="color:#475569;font-size:0.85rem;">{desc} — {adresse}</div>
-            <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-top:4px;">{montant} € TTC — TVA {tva}%</div>
-            """, unsafe_allow_html=True)
-
-            c1, c2, c3 = st.columns([2, 2, 1])
-            with c1:
-                date_paie = st.date_input(
-                    "Date de paiement",
-                    value=datetime.today(),
-                    key=f"er_date_{idx}"
-                )
-            with c2:
-                moyen_paie = st.selectbox(
-                    "Moyen de paiement",
-                    MOYENS_PAIEMENT,
-                    key=f"er_moyen_{idx}"
-                )
-            with c3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("✅ Confirmer", key=f"er_confirm_{idx}", use_container_width=True, type="primary"):
-                    try:
-                        ws_er, err_ws = get_worksheet(user, "E-Reporting B2C")
-                        if err_ws:
-                            st.error(f"Erreur : {err_ws}")
-                        else:
-                            all_vals_er = ws_er.get_all_values()
-                            headers_er  = [h.strip() for h in all_vals_er[0]]
-
-                            # Trouver les index des colonnes
-                            try:
-                                idx_date_p  = headers_er.index("date_paiement") + 1
-                                idx_moyen_p = headers_er.index("moyen_paiement") + 1
-                                idx_statut  = headers_er.index("statut_reporting") + 1
-                                idx_date_env = headers_er.index("date_envoi_reporting") + 1
-                            except ValueError as ve:
-                                st.error(f"Colonne introuvable : {ve}")
-                                st.stop()
-
-                            sheet_row = row_idx + 2
-                            ws_er.update_cell(sheet_row, idx_date_p,   date_paie.strftime("%Y-%m-%d"))
-                            ws_er.update_cell(sheet_row, idx_moyen_p,  moyen_paie)
-                            ws_er.update_cell(sheet_row, idx_statut,   "Prêt à envoyer")
-
-                            _load_ereporting.clear()
-                            st.success(f"✅ Paiement enregistré pour {client} — {montant} €")
-                            st.rerun()
-                    except Exception as ex:
-                        st.error(f"Erreur : {ex}")          
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -4130,7 +4025,7 @@ elif page == "Salariés":
             return result
         except Exception:
             return {}
-        
+
     # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
     @st.cache_data(ttl=45, show_spinner=False)
     def _load_planning_raw(u):
@@ -4731,7 +4626,7 @@ elif page == "Salariés":
                             if h.strip().lower() == nom_s.strip().lower():
                                 col_sal_pl = i
                                 break
-                        
+
                         if col_sal_pl is None:
                             col_sal_pl = len(headers_pl_cur)
                             ws_pl.update_cell(1, col_sal_pl + 1, nom_s)
@@ -4745,7 +4640,7 @@ elif page == "Salariés":
                             if len(row) > col_sal_pl and f"semaine_{num_semaine}:" in row[col_sal_pl]:
                                 target_row = row_i
                                 break
-                        
+
                         if target_row:
                             ws_pl.update_cell(target_row, col_sal_pl + 1, cell_val)
                         else:
@@ -4758,7 +4653,7 @@ elif page == "Salariés":
                             target=nom_s,
                             details={"type": "planning_semaine", "semaine": num_semaine, "horaires": new_overrides},
                         )
-                        
+
                         _load_planning_raw.clear()
                         st.success(f"✅ Horaires S{num_semaine} sauvegardés.")
                         st.rerun()
