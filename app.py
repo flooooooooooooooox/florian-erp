@@ -507,6 +507,19 @@ def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
     except Exception as e:
         return None, str(e)
 
+def list_all_spreadsheets(username: str):
+    """Liste tous les Google Sheets accessibles par le compte de service."""
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return None, "Credentials non configurés."
+    try:
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        files = gc.list_spreadsheet_files()
+        return [f["name"] for f in files], None
+    except Exception as e:
+        return None, str(e)
+
 def _dedup_headers(headers):
     seen, out = {}, []
     for i, h in enumerate(headers):
@@ -2263,6 +2276,17 @@ elif "Notifications" in page:
                 retry_key="retry_ereporting_source",
             )
             st.caption("Colonnes attendues : date_facture, numero_facture, nom_client, montant_TTC, statut_reporting — feuille 'Feuille 1' du fichier 'e-repporting'")
+            with st.expander("🔍 Diagnostic — fichiers accessibles par le compte de service", expanded=True):
+                if st.button("Lister les fichiers Google Sheets disponibles", key="btn_er_diag"):
+                    names, diag_err = list_all_spreadsheets(user)
+                    if diag_err:
+                        st.error(f"Erreur : {diag_err}")
+                    elif not names:
+                        st.warning("Aucun fichier trouvé. Le compte de service n'a accès à aucun Google Sheet.")
+                    else:
+                        st.success(f"{len(names)} fichier(s) trouvé(s) :")
+                        for n in names:
+                            st.code(n)
             st.stop()
 
         if st.button("Actualiser", key="btn_refresh_ereport"):
