@@ -489,6 +489,24 @@ def get_worksheet(username: str, tab_name: str):
     except Exception as e:
         return None, str(e)
 
+def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
+    """Ouvre la feuille dans le fichier 'e-repporting' (fichier séparé)."""
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return None, "Credentials non configurés."
+    try:
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open("e-repporting")
+        ws = sh.worksheet(tab_name)
+        return ws, None
+    except gspread.exceptions.SpreadsheetNotFound:
+        return None, "Fichier 'e-repporting' introuvable (vérifie le partage avec le compte de service)."
+    except gspread.exceptions.WorksheetNotFound:
+        return None, f"Onglet '{tab_name}' introuvable dans 'e-repporting'."
+    except Exception as e:
+        return None, str(e)
+
 def _dedup_headers(headers):
     seen, out = {}, []
     for i, h in enumerate(headers):
@@ -2219,10 +2237,11 @@ elif "Notifications" in page:
 
         @st.cache_data(ttl=60, show_spinner=False)
         def _load_ereporting(u):
-            err, vals = get_sheet_values_resilient(u, "e-reporting", f"{u}:e-reporting")
-            if err:
-                return err, pd.DataFrame()
+            ws_er, err = get_worksheet_ereporting(u, "Feuille 1")
+            if err or not ws_er:
+                return err or "Impossible d'ouvrir le fichier e-repporting.", pd.DataFrame()
             try:
+                vals = ws_er.get_all_values()
                 if not vals or len(vals) < 2:
                     return None, pd.DataFrame()
                 headers = _dedup_headers(vals[0])
@@ -2243,7 +2262,7 @@ elif "Notifications" in page:
                 clear_fn=_load_ereporting.clear,
                 retry_key="retry_ereporting_source",
             )
-            st.caption("Colonnes attendues : date_facture, numero_facture, nom_client, montant_TTC, statut_reporting (col N), date_paiement (col L), moyen_paiement (col M)")
+            st.caption("Colonnes attendues : date_facture, numero_facture, nom_client, montant_TTC, statut_reporting — feuille 'Feuille 1' du fichier 'e-repporting'")
             st.stop()
 
         if st.button("Actualiser", key="btn_refresh_ereport"):
@@ -2289,7 +2308,7 @@ elif "Notifications" in page:
 
             if st.button("Valider", key="btn_er_valider", type="primary"):
                 try:
-                    ws_er, err_ws_er = get_worksheet(user, "e-reporting")
+                    ws_er, err_ws_er = get_worksheet_ereporting(user, "Feuille 1")
                     if err_ws_er or not ws_er:
                         st.error(f"Impossible d'ouvrir l'onglet 'e-reporting' : {err_ws_er}")
                     else:
