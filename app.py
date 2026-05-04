@@ -530,7 +530,7 @@ def _dedup_headers(headers):
             out.append(h)
     return out
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_sheet_data(username: str):
     cache_bucket = st.session_state.setdefault("_offline_sheet_cache", {})
     st.session_state["_data_source_notice"] = ""
@@ -825,7 +825,7 @@ def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, re
         return None, cached_vals
     return str(last_exc) if last_exc else f"Lecture impossible sur '{tab_name}'.", None
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def build_monthly_ca_aggregates(df_in: pd.DataFrame):
     if df_in.empty:
         return pd.DataFrame(columns=["_mois_key", "_mois_label", "CA Total", "CA Signé", "CA En attente", "CA Cumul"])
@@ -1177,7 +1177,6 @@ with st.sidebar:
     with col_r:
         if st.button("Actualiser", use_container_width=True, help="Actualiser"):
             st.cache_data.clear()
-            st.session_state.pop("_vg_sync_time", None)
             st.rerun()
     with col_l:
         if st.button("🚪", use_container_width=True, help="Déconnexion"):
@@ -3054,8 +3053,7 @@ PAGES_NEED_MAIN_DF = {
     "Tous les dossiers",
 }
 if page in PAGES_NEED_MAIN_DF:
-    with st.spinner("Chargement des données..."):
-        dataset, error, is_empty_sheet = get_main_dataset(user)
+    dataset, error, is_empty_sheet = get_main_dataset(user)
     if error:
         show_data_source_error(
             f"Impossible de se connecter à Google Sheets. Détail : {error}",
@@ -3108,10 +3106,7 @@ if page in PAGES_NEED_MAIN_DF:
 # PAGE : VUE GÉNÉRALE
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "Vue Générale":
-    # Heure figée au chargement — évite un re-render inutile à chaque clic
-    if "_vg_sync_time" not in st.session_state:
-        st.session_state["_vg_sync_time"] = datetime.now().strftime('%d/%m/%Y a %H:%M')
-    page_header("Tableau de Bord", f"Synchronise le {st.session_state['_vg_sync_time']}")
+    page_header("Tableau de Bord", f"Synchronisé le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
     render_ceo_hero(
         "Pilotage exécutif",
         "Vision consolidée du business : revenus sécurisés, conversion commerciale, encaissements et zones de friction. "
@@ -3394,35 +3389,75 @@ if page == "Vue Générale":
             df_alertes_display = df_alertes_all if st.session_state["alertes_show_all"] else df_alertes_all.head(ALERT_PREVIEW)
 
             if len(df_alertes_all) > 0:
+                # Calcul ancienneté — utilise les dates pré-parsées si dispo
+                _today_alerte = datetime.now().date()
+                def _age_devis(row):
+                    if "_date_parsed_main" in row.index:
+                        dt = row["_date_parsed_main"]
+                    elif COL_DATE:
+                        dt = parse_flexible_date(row.get(COL_DATE, ""))
+                    else:
+                        return None
+                    if pd.isna(dt):
+                        return None
+                    return (_today_alerte - dt.date()).days
+
                 for idx, (_, row) in enumerate(df_alertes_display.iterrows()):
-                    client = str(row[COL_CLIENT]) if COL_CLIENT else "Inconnu"
+                    client  = str(row[COL_CLIENT]) if COL_CLIENT else "Inconnu"
                     montant = fmt(row["_montant"])
+                    age     = _age_devis(row)
+
+                    # Code couleur selon ancienneté
+                    if age is None:
+                        age_label = ""
+                        border_color = "rgba(255,184,77,0.25)"
+                        bg_color     = "rgba(255,184,77,0.06)"
+                        age_color    = "var(--text-muted)"
+                        urgence_icon = "📋"
+                    elif age >= 30:
+                        age_label    = f"🔴 {age}j — Urgent"
+                        border_color = "rgba(255,92,122,0.45)"
+                        bg_color     = "rgba(255,92,122,0.10)"
+                        age_color    = "#ff5c7a"
+                        urgence_icon = "🚨"
+                    elif age >= 14:
+                        age_label    = f"🟠 {age}j — À relancer"
+                        border_color = "rgba(255,184,77,0.45)"
+                        bg_color     = "rgba(255,184,77,0.10)"
+                        age_color    = "#ffb84d"
+                        urgence_icon = "⚠️"
+                    else:
+                        age_label    = f"🟢 {age}j"
+                        border_color = "rgba(0,214,143,0.20)"
+                        bg_color     = "rgba(0,214,143,0.05)"
+                        age_color    = "#00d68f"
+                        urgence_icon = "📋"
 
                     btn_col, card_col = st.columns([0.08, 0.92])
                     with card_col:
                         st.markdown(f"""
-                        <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:4px;">
-                            <div style="font-size:1.1rem; flex-shrink:0;">Dossier</div>
-                            <div style="flex:1; min-width:0;">
-                                <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{client}</div>
-                                <div style="font-size:0.78rem; color:var(--text-muted);">{montant}</div>
+                        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+                            background:{bg_color};border:1px solid {border_color};
+                            border-radius:8px;margin-bottom:4px;">
+                            <div style="font-size:1.1rem;flex-shrink:0;">{urgence_icon}</div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{client}</div>
+                                <div style="display:flex;gap:8px;align-items:center;margin-top:2px;">
+                                    <span style="font-size:0.78rem;color:var(--text-muted);">{montant}</span>
+                                    {f'<span style="font-size:0.75rem;font-weight:700;color:{age_color};">{age_label}</span>' if age_label else ""}
+                                </div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                     with btn_col:
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
-                            # La sidebar affiche des labels décorés (ex: "⌂ Espace Clients").
-                            # On retrouve donc l'index via `page_key_map` plutôt qu'en dur.
                             target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
                             if target_label is not None:
                                 st.session_state["_page_index"] = pages.index(target_label)
-                                # Streamlit ne laisse pas toujours forcer la valeur d'un widget via
-                                # `session_state` (ex: clé d'un `st.radio`). On passe donc par un
-                                # mécanisme d'override déjà utilisé pour la navigation.
                                 st.session_state["nav_override"] = target_label
                             else:
-                                # Fallback : si jamais la structure sidebar change
                                 st.session_state["nav_override"] = "Espace Clients"
                             st.rerun()
 
@@ -3458,6 +3493,160 @@ if page == "Vue Générale":
                 ("Chantiers terminés (PV)", f"{int(df_vg['_pv'].sum())}", "#00d68f"),
             ]:
                 st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
+
+    # ── Export PDF bilan ───────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("📄 Exporter le bilan en PDF", expanded=False):
+        _periode_label = label_periode if periode_active else "Toutes périodes"
+        _date_export   = datetime.now().strftime("%d/%m/%Y à %H:%M")
+        _nb_urgents    = int(df_alertes_all[
+            df_alertes_all.apply(
+                lambda r: (
+                    ((_today_alerte - r["_date_parsed_main"].date()).days >= 14)
+                    if "_date_parsed_main" in r.index and not pd.isna(r["_date_parsed_main"])
+                    else False
+                ),
+                axis=1,
+            )
+        ].shape[0]) if "_date_parsed_main" in df_alertes_all.columns else 0
+
+        # Lignes du tableau devis en attente
+        _lignes_attente_html = ""
+        for _, r in df_alertes_all.head(20).iterrows():
+            _cli = str(r[COL_CLIENT]).strip() if COL_CLIENT else "—"
+            _mnt = fmt(r["_montant"])
+            _dt  = r.get("_date_parsed_main", pd.NaT)
+            if not pd.isna(_dt):
+                _age = (_today_alerte - _dt.date()).days
+                _age_str = f"{_age}j"
+                _age_col = "#ff5c7a" if _age >= 30 else ("#ffb84d" if _age >= 14 else "#00d68f")
+            else:
+                _age_str, _age_col = "—", "#94a3b8"
+            _lignes_attente_html += f"""
+            <tr>
+              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;">{_cli}</td>
+              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">{_mnt}</td>
+              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;color:{_age_col};font-weight:700;">{_age_str}</td>
+            </tr>"""
+
+        _pdf_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  body {{ font-family:'Segoe UI',Arial,sans-serif; font-size:9px; color:#1e293b; background:#fff; padding:20px; }}
+  header {{ display:flex; justify-content:space-between; align-items:flex-start;
+            border-bottom:3px solid #1d4ed8; padding-bottom:12px; margin-bottom:16px; }}
+  .logo {{ width:40px;height:40px;background:#1d4ed8;border-radius:8px;
+           display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900; }}
+  .company {{ font-size:8px; color:#475569; line-height:1.6; text-align:right; }}
+  .company strong {{ font-size:11px; color:#1d4ed8; display:block; }}
+  h1 {{ font-size:18px; font-weight:800; color:#0f172a; margin-bottom:2px; }}
+  .subtitle {{ font-size:8px; color:#64748b; }}
+  .kpi-grid {{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 0; }}
+  .kpi {{ background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+          padding:10px 12px; border-left:3px solid; }}
+  .kpi-label {{ font-size:7px; font-weight:700; text-transform:uppercase;
+                letter-spacing:.06em; color:#64748b; margin-bottom:4px; }}
+  .kpi-value {{ font-size:15px; font-weight:800; letter-spacing:-.02em; }}
+  .kpi-delta {{ font-size:7px; color:#94a3b8; margin-top:2px; }}
+  .section {{ margin-top:14px; }}
+  .section-title {{ font-size:8px; font-weight:800; text-transform:uppercase;
+                    letter-spacing:.08em; color:#1d4ed8; border-bottom:1px solid #e2e8f0;
+                    padding-bottom:4px; margin-bottom:8px; }}
+  table {{ width:100%; border-collapse:collapse; font-size:8.5px; }}
+  thead th {{ background:#1d4ed8; color:#fff; padding:5px 8px; text-align:left;
+              font-size:7.5px; font-weight:700; text-transform:uppercase; }}
+  .two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }}
+  .card {{ background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; }}
+  .row {{ display:flex; justify-content:space-between; padding:4px 0;
+          border-bottom:1px solid #e2e8f0; font-size:8px; }}
+  .row span:last-child {{ font-weight:700; }}
+  footer {{ margin-top:16px; padding-top:8px; border-top:1px solid #e2e8f0;
+            font-size:7px; color:#94a3b8; text-align:center; }}
+  .alert-box {{ background:#fff7ed; border:1px solid #fed7aa; border-left:3px solid #f97316;
+                border-radius:6px; padding:8px 12px; margin-top:10px; font-size:8px; color:#9a3412; }}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Bilan Floxia ERP</h1>
+    <div class="subtitle">Période : {_periode_label} &nbsp;·&nbsp; Généré le {_date_export}</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <div class="company">
+      <strong>FLOXIA</strong>
+      ERP Bâtiment<br>Florian
+    </div>
+    <div class="logo">FA</div>
+  </div>
+</header>
+
+<div class="kpi-grid">
+  <div class="kpi" style="border-left-color:#00d68f;">
+    <div class="kpi-label">CA Sécurisé</div>
+    <div class="kpi-value" style="color:#00d68f;">{fmt(vg_ca_signe)}</div>
+    <div class="kpi-delta">{vg_nb_signes} devis signés</div>
+  </div>
+  <div class="kpi" style="border-left-color:#ffb84d;">
+    <div class="kpi-label">CA En Négociation</div>
+    <div class="kpi-value" style="color:#ffb84d;">{fmt(vg_ca_non_s)}</div>
+    <div class="kpi-delta">{vg_nb_attente} en cours</div>
+  </div>
+  <div class="kpi" style="border-left-color:#4f8ef7;">
+    <div class="kpi-label">Taux Conversion</div>
+    <div class="kpi-value" style="color:#4f8ef7;">{vg_taux_conv}%</div>
+    <div class="kpi-delta">{vg_nb_signes} / {vg_nb_devis} transformés</div>
+  </div>
+  <div class="kpi" style="border-left-color:#ff5c7a;">
+    <div class="kpi-label">Reste à Encaisser</div>
+    <div class="kpi-value" style="color:#ff5c7a;">{fmt(vg_reste)}</div>
+    <div class="kpi-delta">Exposition trésorerie</div>
+  </div>
+</div>
+
+{"<div class='alert-box'>⚠️ " + str(_nb_urgents) + " devis en attente depuis +14 jours sans signature — relance recommandée.</div>" if _nb_urgents > 0 else ""}
+
+<div class="two-col">
+  <div class="card">
+    <div class="section-title">Résumé financier</div>
+    <div class="row"><span style="color:#64748b;">CA Total émis</span><span style="color:#4f8ef7;">{fmt(vg_total_ca)}</span></div>
+    <div class="row"><span style="color:#64748b;">CA Sécurisé</span><span style="color:#00d68f;">{fmt(vg_ca_signe)}</span></div>
+    <div class="row"><span style="color:#64748b;">CA En attente</span><span style="color:#ffb84d;">{fmt(vg_ca_non_s)}</span></div>
+    <div class="row"><span style="color:#64748b;">Reste à encaisser</span><span style="color:#ff5c7a;">{fmt(vg_reste)}</span></div>
+    <div class="row"><span style="color:#64748b;">Chantiers (PV signés)</span><span style="color:#00d68f;">{int(df_vg['_pv'].sum())}</span></div>
+    <div class="row"><span style="color:#64748b;">Factures émises</span><span style="color:#00d68f;">{vg_nb_fact_ok}</span></div>
+  </div>
+  <div class="card">
+    <div class="section-title">Devis en attente ({len(df_alertes_all)})</div>
+    <table>
+      <thead><tr><th>Client</th><th style="text-align:right;">Montant</th><th style="text-align:center;">Âge</th></tr></thead>
+      <tbody>{_lignes_attente_html if _lignes_attente_html else '<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8;">Aucun devis en attente</td></tr>'}</tbody>
+    </table>
+    {"<div style='font-size:7px;color:#94a3b8;margin-top:4px;'>Affichage limité aux 20 premiers</div>" if len(df_alertes_all) > 20 else ""}
+  </div>
+</div>
+
+<footer>
+  FLOXIA — Bilan généré automatiquement par Floxia ERP · {_date_export} · Confidentiel
+</footer>
+</body></html>"""
+
+        import base64
+        _b64 = base64.b64encode(_pdf_html.encode("utf-8")).decode()
+        _filename = f"bilan_floxia_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+
+        st.markdown("Le bilan s'ouvre dans le navigateur — utilise **Fichier → Imprimer → Enregistrer en PDF** pour le sauvegarder.")
+        st.download_button(
+            label="📥 Télécharger le bilan (HTML → PDF via navigateur)",
+            data=_pdf_html.encode("utf-8"),
+            file_name=_filename,
+            mime="text/html",
+            use_container_width=True,
+            key="btn_export_bilan_pdf",
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
@@ -3723,22 +3912,9 @@ elif page == "Chantiers":
     )
 
     df["_statut_ch"] = df["_pv"].apply(lambda x: "Terminé" if x else "En cours")
-    # Utilise les dates déjà parsées dans le dataset — évite un re-parsing coûteux
-    _today_ch = datetime.now().date()
-    def _progress_fast(start_dt, end_dt, is_finished):
-        if is_finished:
-            return 100
-        if pd.isna(start_dt) or pd.isna(end_dt):
-            return 0
-        s, e = start_dt.date(), end_dt.date()
-        if e < s or _today_ch <= s:
-            return 0
-        if _today_ch >= e:
-            return 100
-        return min(100, max(0, int(round((_today_ch - s).days / max((e - s).days, 1) * 100))))
     df["_progress_ch"] = [
-        _progress_fast(sd, ed, pv)
-        for sd, ed, pv in zip(df["_date_debut_parsed_main"], df["_date_fin_parsed_main"], df["_pv"])
+        compute_chantier_progress(start_val, end_val, is_finished=pv_done)
+        for start_val, end_val, pv_done in zip(df[COL_DATE_DEBUT], df[COL_DATE_FIN], df["_pv"])
     ]
     status_meta = [chantier_status_meta(p, done) for p, done in zip(df["_progress_ch"], df["_pv"])]
     df["_status_label"] = [m[0] for m in status_meta]
@@ -3902,10 +4078,9 @@ elif page == "Planning":
         df_plan["_salarie"] = ""
     df_plan["_heure_deb"] = df_plan[COL_HEURE_DEB_P].apply(clean_time_val) if COL_HEURE_DEB_P else ""
     df_plan["_heure_fin"] = df_plan[COL_HEURE_FIN_P].apply(clean_time_val) if COL_HEURE_FIN_P else ""
-    _today_plan = datetime.now().date()
     df_plan["_progress_pct"] = [
-        (100 if _today_plan >= e.date() else (0 if _today_plan <= s.date() else min(100, max(0, int(round((_today_plan - s.date()).days / max((e.date() - s.date()).days, 1) * 100))))))
-        for s, e in zip(df_plan["_start"], df_plan["_end"])
+        compute_chantier_progress(start_val, end_val)
+        for start_val, end_val in zip(df_plan["_start"], df_plan["_end"])
     ]
     plan_status_meta = [chantier_status_meta(p, False if p < 100 else True) for p in df_plan["_progress_pct"]]
     df_plan["_status_label"] = [m[0] for m in plan_status_meta]
