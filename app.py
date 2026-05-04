@@ -477,6 +477,22 @@ def get_spreadsheet(username: str):
     except Exception as e:
         return None, str(e)
 
+@st.cache_resource(show_spinner=False)
+def _get_ereporting_spreadsheet(username: str):
+    """Client gspread mis en cache pour le fichier e-repporting — évite le handshake OAuth à chaque action."""
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return None, "Credentials non configurés."
+    try:
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open("e-repporting ")
+        return sh, None
+    except gspread.exceptions.SpreadsheetNotFound:
+        return None, "Fichier 'e-repporting' introuvable (vérifie le partage avec le compte de service)."
+    except Exception as e:
+        return None, str(e)
+
 def get_worksheet(username: str, tab_name: str):
     sh, err = get_spreadsheet(username)
     if err or not sh:
@@ -490,33 +506,15 @@ def get_worksheet(username: str, tab_name: str):
         return None, str(e)
 
 def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
-    """Ouvre la feuille dans le fichier 'e-repporting' (fichier séparé)."""
-    _, gsa_json = get_user_credentials(username)
-    if not gsa_json:
-        return None, "Credentials non configurés."
+    """Ouvre la feuille dans le fichier 'e-repporting' (client gspread mis en cache)."""
+    sh, err = _get_ereporting_spreadsheet(username)
+    if err or not sh:
+        return None, err or "Impossible d'ouvrir le fichier e-repporting."
     try:
-        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-        gc = gspread.authorize(creds)
-        sh = gc.open("e-repporting ")
         ws = sh.worksheet(tab_name)
         return ws, None
-    except gspread.exceptions.SpreadsheetNotFound:
-        return None, "Fichier 'e-repporting' introuvable (vérifie le partage avec le compte de service)."
     except gspread.exceptions.WorksheetNotFound:
         return None, f"Onglet '{tab_name}' introuvable dans 'e-repporting'."
-    except Exception as e:
-        return None, str(e)
-
-def list_all_spreadsheets(username: str):
-    """Liste tous les Google Sheets accessibles par le compte de service."""
-    _, gsa_json = get_user_credentials(username)
-    if not gsa_json:
-        return None, "Credentials non configurés."
-    try:
-        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-        gc = gspread.authorize(creds)
-        files = gc.list_spreadsheet_files()
-        return [f["name"] for f in files], None
     except Exception as e:
         return None, str(e)
 
@@ -532,7 +530,7 @@ def _dedup_headers(headers):
             out.append(h)
     return out
 
-@st.cache_data(ttl=180, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_sheet_data(username: str):
     cache_bucket = st.session_state.setdefault("_offline_sheet_cache", {})
     st.session_state["_data_source_notice"] = ""
@@ -557,7 +555,7 @@ def get_sheet_data(username: str):
                 break
             except Exception as ex:
                 last_exc = ex
-                time.sleep(0.6)
+                time.sleep(0.15)
         if all_values is None and last_exc is not None:
             raise last_exc
         if not all_values:
@@ -816,7 +814,7 @@ def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, re
             break
         except Exception as ex:
             last_exc = ex
-            time.sleep(0.5)
+            time.sleep(0.15)
     if values is not None:
         bucket[cache_slot] = values
         _track_sync_status(cache_slot, fallback_used=False)
@@ -827,7 +825,7 @@ def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, re
         return None, cached_vals
     return str(last_exc) if last_exc else f"Lecture impossible sur '{tab_name}'.", None
 
-@st.cache_data(ttl=180, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def build_monthly_ca_aggregates(df_in: pd.DataFrame):
     if df_in.empty:
         return pd.DataFrame(columns=["_mois_key", "_mois_label", "CA Total", "CA Signé", "CA En attente", "CA Cumul"])
@@ -842,7 +840,7 @@ def build_monthly_ca_aggregates(df_in: pd.DataFrame):
     merged["CA Cumul"] = merged["CA Total"].cumsum()
     return merged
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_main_dataset(username: str):
     dataset_cache = st.session_state.setdefault("_offline_main_dataset_cache", {})
     df_raw, error = get_sheet_data(username)
@@ -978,7 +976,7 @@ def show_table(dataframe, key_suffix=""):
             if st.button("🔼 Réduire", key=f"btn_less_{key_suffix}"):
                 st.session_state[f"show_all_{key_suffix}"] = False
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_pending_notifications_count(username: str) -> int:
     ws, err = get_worksheet(username, "notifications")
     if err or not ws:
@@ -1219,7 +1217,7 @@ if page == "Utilisateurs":
 elif page == "Dépenses":
     page_header("Dépenses", "Suivi des charges et TVA récupérable")
 
-    @st.cache_data(ttl=90, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_depenses(u):
         err, vals = get_sheet_values_resilient(u, "Depenses", f"{u}:Depenses")
         if err:
@@ -1575,7 +1573,7 @@ elif page == "Éditeur Google Sheet":
         PRESTA_COLS = ["categorie", "Type de poste", "Sous-prestation", "Description", "Prix MO HT", "Prix Fourn. HT", "Marge (%)", "Quantité", "Total HT"]
         st.caption("Colonnes Feuille 1 attendues : categorie | Type de poste | Sous-prestation | Description | Prix MO HT | Prix Fourn. HT | Marge (%) | Quantité | Total HT")
 
-        @st.cache_data(ttl=30, show_spinner=False)
+        @st.cache_data(ttl=60, show_spinner=False)
         def load_presta(u):
             ws, err = get_worksheet(u, "Feuille 1")
             if err:
@@ -1774,7 +1772,7 @@ elif page == "Éditeur Google Sheet":
     if editor_tab == "Catalogue":
         CATA_COLS = ["Catégorie","Article","Description","Prix Achat HT","% Marge","Prix Vente HT"]
 
-        @st.cache_data(ttl=30, show_spinner=False)
+        @st.cache_data(ttl=60, show_spinner=False)
         def load_catalogue(u):
             ws, err = get_worksheet(u, "catalogue")
             if err: return err, pd.DataFrame()
@@ -2170,6 +2168,7 @@ elif "Notifications" in page:
                             if ws_del:
                                 ws_del.delete_rows(row_idx + 2)
                                 _load_notifications.clear()
+                                get_pending_notifications_count.clear()
                                 st.success("Notification supprimée.")
                                 st.rerun()
                         except Exception as ex:
@@ -2238,6 +2237,7 @@ elif "Notifications" in page:
                                         },
                                     )
                                     _load_notifications.clear()
+                                    get_pending_notifications_count.clear()
                                     st.success(f"Planification envoyée à n8n pour {client}.")
                                     st.rerun()
                                 else:
@@ -2275,18 +2275,6 @@ elif "Notifications" in page:
                 clear_fn=_load_ereporting.clear,
                 retry_key="retry_ereporting_source",
             )
-            st.caption("Colonnes attendues : date_facture, numero_facture, nom_client, montant_TTC, statut_reporting — feuille 'Feuille 1' du fichier 'e-repporting'")
-            with st.expander("🔍 Diagnostic — fichiers accessibles par le compte de service", expanded=True):
-                if st.button("Lister les fichiers Google Sheets disponibles", key="btn_er_diag"):
-                    names, diag_err = list_all_spreadsheets(user)
-                    if diag_err:
-                        st.error(f"Erreur : {diag_err}")
-                    elif not names:
-                        st.warning("Aucun fichier trouvé. Le compte de service n'a accès à aucun Google Sheet.")
-                    else:
-                        st.success(f"{len(names)} fichier(s) trouvé(s) :")
-                        for n in names:
-                            st.code(n)
             st.stop()
 
         if st.button("Actualiser", key="btn_refresh_ereport"):
@@ -4162,7 +4150,7 @@ elif page == "Salariés":
     JOURS_DICO = {"Lun": 0, "Mar": 1, "Mer": 2, "Jeu": 3, "Ven": 4, "Sam": 5, "Dim": 6}
     JOURS_LIST = list(JOURS_DICO.keys())
 
-    @st.cache_data(ttl=120, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_jours_salaries(u):
         err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
         if err:
@@ -4191,7 +4179,7 @@ elif page == "Salariés":
             return {}
 
     # ── Chargement planning (overrides) — NIVEAU SUPÉRIEUR ────────────────
-    @st.cache_data(ttl=45, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_planning_raw(u):
         err, vals = get_sheet_values_resilient(u, "planning", f"{u}:planning")
         if err:
@@ -4203,7 +4191,7 @@ elif page == "Salariés":
         except Exception as e:
             return str(e), [], []
 
-    @st.cache_data(ttl=90, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_liste_raw(u):
         err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
         if err:
@@ -4833,7 +4821,7 @@ elif page == "Retards & Avenants":
 
     WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook/retard-{user_slug}"
 
-    @st.cache_data(ttl=90, show_spinner=False)
+    @st.cache_data(ttl=60, show_spinner=False)
     def _load_envoie_pv(u):
         cache_bucket = st.session_state.setdefault("_offline_tab_values_cache", {})
         cache_key = f"{u}:envoie_pv_external"
