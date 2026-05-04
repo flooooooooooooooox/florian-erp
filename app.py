@@ -1096,26 +1096,6 @@ with st.sidebar:
     if pending_badge > 0:
         notif_label = f"🔴 Notifications ({pending_badge})"
 
-    # ── Recherche globale inter-pages ──────────────────────────────────────
-    _search_global = st.text_input(
-        "🔍 Recherche rapide",
-        placeholder="Client, chantier, numéro...",
-        key="sidebar_global_search",
-        label_visibility="collapsed",
-    )
-    if _search_global and _search_global.strip():
-        _q = _search_global.strip()
-        # On redirige vers "Tous les dossiers" et on pré-remplit la recherche
-        st.session_state["_global_search_query"] = _q
-        target_label = next((p for p in pages if page_key_map.get(p) == "Tous les dossiers"), None)
-        if target_label is not None:
-            st.session_state["_page_index"] = pages.index(target_label)
-            st.session_state["nav_override"] = target_label
-            # Vide le champ après redirection pour éviter de reboucler
-            st.session_state["sidebar_global_search"] = ""
-            st.rerun()
-    st.markdown("<hr style='margin: 6px 0 10px;'>", unsafe_allow_html=True)
-
     st.markdown("<div class='ceo-section-title' style='padding:0 2px;'>Navigation Executive</div>", unsafe_allow_html=True)
     page_items = [
         ("Vue Générale", "◈ Vue Générale"),
