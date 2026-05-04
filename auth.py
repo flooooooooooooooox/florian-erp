@@ -58,24 +58,49 @@ def _sb_admin_headers() -> dict:
         "Prefer":        "return=representation",
     }
 
+def _sb_available() -> bool:
+    """Vérifie rapidement si Supabase est joignable (timeout 3s)."""
+    url = _sb_url()
+    if not url or not _sb_key():
+        return False
+    try:
+        r = requests.get(
+            f"{url}/rest/v1/users?select=username&limit=1",
+            headers=_sb_headers(),
+            timeout=3,
+        )
+        return r.status_code < 500
+    except Exception:
+        return False
+
 def _sb_get(username: str):
     """Récupère un user depuis Supabase."""
     r = requests.get(
         f"{_sb_url()}/rest/v1/users?username=eq.{username}&select=*",
         headers=_sb_headers(),
-        timeout=10,
+        timeout=8,
     )
     data = r.json()
     return data[0] if data else None
 
 def _sb_all_users() -> list:
-    """Récupère tous les users."""
-    r = requests.get(
-        f"{_sb_url()}/rest/v1/users?select=*&order=created_at.asc",
-        headers=_sb_headers(),
-        timeout=10,
-    )
-    return r.json() if r.ok else []
+    """Récupère tous les users. Retourne [] si Supabase est inaccessible."""
+    url = _sb_url()
+    if not url or not _sb_key():
+        return []
+    try:
+        r = requests.get(
+            f"{url}/rest/v1/users?select=*&order=created_at.asc",
+            headers=_sb_headers(),
+            timeout=8,
+        )
+        return r.json() if r.ok else []
+    except requests.exceptions.ConnectionError:
+        return []
+    except requests.exceptions.Timeout:
+        return []
+    except Exception:
+        return []
 
 def _sb_insert(user: dict) -> bool:
     """Insère un nouveau user."""
@@ -405,51 +430,64 @@ def admin_panel():
     c1.markdown("**florian** *(admin)*")
     c2.caption(f"Sheet : `{st.secrets.get('SHEET_NAME','—')}` — credentials dans Streamlit Secrets")
 
-    try:
-        users = _sb_all_users()
-        for u in users:
-            uname = u.get("username", "")
-            if uname == "florian":
-                continue
-            c1, c2, c3 = st.columns([3, 4, 1])
-            c1.markdown(f"**{uname}**")
-            current_rights = get_allowed_pages(uname, u)
-            rights_count = len(current_rights or AVAILABLE_PAGES)
-            c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}` — Accès : {rights_count} onglets")
-            if c3.button("🗑️", key=f"del_{uname}"):
-                if _sb_delete(uname):
-                    ok_rights_cleanup, status_cleanup, detail_cleanup = _sb_delete_user_rights(uname)
-                    if not ok_rights_cleanup and not _uses_missing_rights_table(status_cleanup, detail_cleanup):
-                        st.warning(f"Droits Supabase non nettoyés pour {uname}.")
-                    _delete_local_rights(uname)
-                    st.success(f"✅ User **{uname}** supprimé.")
-                    st.rerun()
-                else:
-                    st.error("Erreur lors de la suppression.")
-
-            with st.expander(f"Droits d'accès : {uname}", expanded=False):
-                selected_pages = st.multiselect(
-                    "Onglets autorisés",
-                    AVAILABLE_PAGES,
-                    default=[p for p in current_rights if p in AVAILABLE_PAGES],
-                    key=f"rights_{uname}",
-                )
-                if st.button("Enregistrer les droits", key=f"save_rights_{uname}", use_container_width=True):
-                    if len(selected_pages) == 0:
-                        st.error("Sélectionne au moins un onglet.")
+    sb_ok = _sb_available()
+    if not sb_ok:
+        st.warning(
+            "⚠️ Supabase est inaccessible depuis ce serveur. "
+            "Les utilisateurs existants ne peuvent pas être chargés. "
+            "Vérifie la connexion réseau du serveur ou la config `SUPABASE_URL` dans les secrets Streamlit."
+        )
+        with st.expander("🔍 Diagnostic", expanded=True):
+            url = _sb_url()
+            key = _sb_key()
+            st.markdown(f"- **SUPABASE_URL** : `{url or '❌ vide'}`")
+            st.markdown(f"- **SUPABASE_KEY** : `{'✅ configurée' if key else '❌ vide'}`")
+            st.caption("Si l'URL et la clé sont correctes, le problème est réseau (DNS, firewall, proxy). Redémarre l'app ou vérifie que le serveur accède bien à internet.")
+    else:
+        try:
+            users = _sb_all_users()
+            for u in users:
+                uname = u.get("username", "")
+                if uname == "florian":
+                    continue
+                c1, c2, c3 = st.columns([3, 4, 1])
+                c1.markdown(f"**{uname}**")
+                current_rights = get_allowed_pages(uname, u)
+                rights_count = len(current_rights or AVAILABLE_PAGES)
+                c2.caption(f"`{u.get('role','viewer')}` — Sheet : `{u.get('sheet_name','—')}` — Accès : {rights_count} onglets")
+                if c3.button("🗑️", key=f"del_{uname}"):
+                    if _sb_delete(uname):
+                        ok_rights_cleanup, status_cleanup, detail_cleanup = _sb_delete_user_rights(uname)
+                        if not ok_rights_cleanup and not _uses_missing_rights_table(status_cleanup, detail_cleanup):
+                            st.warning(f"Droits Supabase non nettoyés pour {uname}.")
+                        _delete_local_rights(uname)
+                        st.success(f"✅ User **{uname}** supprimé.")
+                        st.rerun()
                     else:
-                        ok_rights, status_code, detail = set_allowed_pages(uname, selected_pages)
-                        if ok_rights:
-                            if detail == "fallback_local":
-                                st.success(f"Droits mis à jour pour {uname} (stockage local temporaire).")
-                            else:
-                                st.success(f"Droits mis à jour pour {uname}.")
-                            st.rerun()
+                        st.error("Erreur lors de la suppression.")
+
+                with st.expander(f"Droits d'accès : {uname}", expanded=False):
+                    selected_pages = st.multiselect(
+                        "Onglets autorisés",
+                        AVAILABLE_PAGES,
+                        default=[p for p in current_rights if p in AVAILABLE_PAGES],
+                        key=f"rights_{uname}",
+                    )
+                    if st.button("Enregistrer les droits", key=f"save_rights_{uname}", use_container_width=True):
+                        if len(selected_pages) == 0:
+                            st.error("Sélectionne au moins un onglet.")
                         else:
-                            # Détail tronqué pour éviter l'affichage d'infos trop longues.
-                            st.error(f"Impossible de mettre à jour les droits. (HTTP {status_code}) {detail[:300]}")
-    except Exception as e:
-        st.error(f"Erreur chargement users : {e}")
+                            ok_rights, status_code, detail = set_allowed_pages(uname, selected_pages)
+                            if ok_rights:
+                                if detail == "fallback_local":
+                                    st.success(f"Droits mis à jour pour {uname} (stockage local temporaire).")
+                                else:
+                                    st.success(f"Droits mis à jour pour {uname}.")
+                                st.rerun()
+                            else:
+                                st.error(f"Impossible de mettre à jour les droits. (HTTP {status_code}) {detail[:300]}")
+        except Exception as e:
+            st.error(f"Erreur inattendue lors du chargement des utilisateurs : {e}")
 
     st.divider()
 
