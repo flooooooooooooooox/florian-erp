@@ -1096,6 +1096,26 @@ with st.sidebar:
     if pending_badge > 0:
         notif_label = f"🔴 Notifications ({pending_badge})"
 
+    # ── Recherche globale inter-pages ──────────────────────────────────────
+    _search_global = st.text_input(
+        "🔍 Recherche rapide",
+        placeholder="Client, chantier, numéro...",
+        key="sidebar_global_search",
+        label_visibility="collapsed",
+    )
+    if _search_global and _search_global.strip():
+        _q = _search_global.strip()
+        # On redirige vers "Tous les dossiers" et on pré-remplit la recherche
+        st.session_state["_global_search_query"] = _q
+        target_label = next((p for p in pages if page_key_map.get(p) == "Tous les dossiers"), None)
+        if target_label is not None:
+            st.session_state["_page_index"] = pages.index(target_label)
+            st.session_state["nav_override"] = target_label
+            # Vide le champ après redirection pour éviter de reboucler
+            st.session_state["sidebar_global_search"] = ""
+            st.rerun()
+    st.markdown("<hr style='margin: 6px 0 10px;'>", unsafe_allow_html=True)
+
     st.markdown("<div class='ceo-section-title' style='padding:0 2px;'>Navigation Executive</div>", unsafe_allow_html=True)
     page_items = [
         ("Vue Générale", "◈ Vue Générale"),
@@ -3175,6 +3195,62 @@ if page == "Vue Générale":
         {"label": "Reste à Encaisser", "value": fmt(vg_reste), "delta": "Exposition de trésorerie", "icon": "◈", "fill_pct": 100 if vg_ca_signe <= 0 else int((vg_reste / max(vg_ca_signe, 1)) * 100), "accent": "#ff5c7a", "accent_bg": "rgba(255,92,122,0.18)", "delta_color": "#ff5c7a"},
     ])
 
+    # ── Alerte chantiers dépassés (PV non signé + date fin dépassée) ───────
+    if COL_DATE_FIN and "_date_fin_parsed_main" in df.columns:
+        _today_alerte_ch = datetime.now().date()
+        _df_depasses = df[
+            (~df["_pv"]) &
+            (df["_signe"]) &
+            (df["_date_fin_parsed_main"].notna()) &
+            (df["_date_fin_parsed_main"].dt.date < _today_alerte_ch)
+        ].copy()
+        if not _df_depasses.empty:
+            _df_depasses["_retard_jours"] = _df_depasses["_date_fin_parsed_main"].apply(
+                lambda d: (_today_alerte_ch - d.date()).days if not pd.isna(d) else 0
+            )
+            _nb_dep = len(_df_depasses)
+            _ca_dep = _df_depasses["_montant"].sum()
+            st.markdown(f"""
+            <div style="margin:14px 0 4px;padding:14px 18px;
+                background:linear-gradient(135deg,rgba(255,92,122,0.10),rgba(255,92,122,0.04));
+                border:1px solid rgba(255,92,122,0.40);border-left:4px solid #ff5c7a;
+                border-radius:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:800;font-size:0.95rem;color:#ff5c7a;margin-bottom:4px;">
+                    ⚠️ {_nb_dep} chantier(s) dépassé(s) sans PV signé
+                  </div>
+                  <div style="font-size:0.82rem;color:var(--text-muted);">
+                    La date de fin est passée — {fmt(_ca_dep)} de CA en attente de clôture
+                  </div>
+                </div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            with st.expander(f"Voir les {_nb_dep} chantier(s) concerné(s)", expanded=False):
+                for _, _row_dep in _df_depasses.sort_values("_retard_jours", ascending=False).iterrows():
+                    _cli_dep   = str(_row_dep[COL_CLIENT]).strip() if COL_CLIENT else "—"
+                    _obj_dep   = str(_row_dep[COL_CHANTIER]).strip() if COL_CHANTIER else ""
+                    _mnt_dep   = fmt(_row_dep["_montant"])
+                    _ret_dep   = int(_row_dep["_retard_jours"])
+                    _fin_dep   = _row_dep["_date_fin_parsed_main"].strftime("%d/%m/%Y")
+                    _ret_color = "#ff5c7a" if _ret_dep >= 14 else "#ffb84d"
+                    st.markdown(f"""
+                    <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+                        background:rgba(255,92,122,0.05);border:1px solid rgba(255,92,122,0.20);
+                        border-radius:8px;margin-bottom:4px;">
+                      <div style="flex:1;">
+                        <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);">{_cli_dep}</div>
+                        {f"<div style='font-size:0.78rem;color:var(--text-muted);'>{_obj_dep}</div>" if _obj_dep else ""}
+                        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px;">Date fin prévue : {_fin_dep}</div>
+                      </div>
+                      <div style="text-align:right;flex-shrink:0;">
+                        <div style="font-weight:700;font-size:0.88rem;color:{_ret_color};">+{_ret_dep}j de retard</div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);">{_mnt_dep}</div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
     with st.container(border=True):
         st.markdown("### Prévisions de Trésorerie à 30 jours")
         if not COL_DATE:
@@ -3389,75 +3465,35 @@ if page == "Vue Générale":
             df_alertes_display = df_alertes_all if st.session_state["alertes_show_all"] else df_alertes_all.head(ALERT_PREVIEW)
 
             if len(df_alertes_all) > 0:
-                # Calcul ancienneté — utilise les dates pré-parsées si dispo
-                _today_alerte = datetime.now().date()
-                def _age_devis(row):
-                    if "_date_parsed_main" in row.index:
-                        dt = row["_date_parsed_main"]
-                    elif COL_DATE:
-                        dt = parse_flexible_date(row.get(COL_DATE, ""))
-                    else:
-                        return None
-                    if pd.isna(dt):
-                        return None
-                    return (_today_alerte - dt.date()).days
-
                 for idx, (_, row) in enumerate(df_alertes_display.iterrows()):
-                    client  = str(row[COL_CLIENT]) if COL_CLIENT else "Inconnu"
+                    client = str(row[COL_CLIENT]) if COL_CLIENT else "Inconnu"
                     montant = fmt(row["_montant"])
-                    age     = _age_devis(row)
-
-                    # Code couleur selon ancienneté
-                    if age is None:
-                        age_label = ""
-                        border_color = "rgba(255,184,77,0.25)"
-                        bg_color     = "rgba(255,184,77,0.06)"
-                        age_color    = "var(--text-muted)"
-                        urgence_icon = "📋"
-                    elif age >= 30:
-                        age_label    = f"🔴 {age}j — Urgent"
-                        border_color = "rgba(255,92,122,0.45)"
-                        bg_color     = "rgba(255,92,122,0.10)"
-                        age_color    = "#ff5c7a"
-                        urgence_icon = "🚨"
-                    elif age >= 14:
-                        age_label    = f"🟠 {age}j — À relancer"
-                        border_color = "rgba(255,184,77,0.45)"
-                        bg_color     = "rgba(255,184,77,0.10)"
-                        age_color    = "#ffb84d"
-                        urgence_icon = "⚠️"
-                    else:
-                        age_label    = f"🟢 {age}j"
-                        border_color = "rgba(0,214,143,0.20)"
-                        bg_color     = "rgba(0,214,143,0.05)"
-                        age_color    = "#00d68f"
-                        urgence_icon = "📋"
 
                     btn_col, card_col = st.columns([0.08, 0.92])
                     with card_col:
                         st.markdown(f"""
-                        <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
-                            background:{bg_color};border:1px solid {border_color};
-                            border-radius:8px;margin-bottom:4px;">
-                            <div style="font-size:1.1rem;flex-shrink:0;">{urgence_icon}</div>
-                            <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);
-                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{client}</div>
-                                <div style="display:flex;gap:8px;align-items:center;margin-top:2px;">
-                                    <span style="font-size:0.78rem;color:var(--text-muted);">{montant}</span>
-                                    {f'<span style="font-size:0.75rem;font-weight:700;color:{age_color};">{age_label}</span>' if age_label else ""}
-                                </div>
+                        <div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:rgba(255,184,77,0.06); border:1px solid rgba(255,184,77,0.15); border-radius:8px; margin-bottom:4px;">
+                            <div style="font-size:1.1rem; flex-shrink:0;">Dossier</div>
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{client}</div>
+                                <div style="font-size:0.78rem; color:var(--text-muted);">{montant}</div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                     with btn_col:
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
+                            # La sidebar affiche des labels décorés (ex: "⌂ Espace Clients").
+                            # On retrouve donc l'index via `page_key_map` plutôt qu'en dur.
                             target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
                             if target_label is not None:
                                 st.session_state["_page_index"] = pages.index(target_label)
+                                # Streamlit ne laisse pas toujours forcer la valeur d'un widget via
+                                # `session_state` (ex: clé d'un `st.radio`). On passe donc par un
+                                # mécanisme d'override déjà utilisé pour la navigation.
                                 st.session_state["nav_override"] = target_label
                             else:
+                                # Fallback : si jamais la structure sidebar change
                                 st.session_state["nav_override"] = "Espace Clients"
                             st.rerun()
 
@@ -3493,160 +3529,6 @@ if page == "Vue Générale":
                 ("Chantiers terminés (PV)", f"{int(df_vg['_pv'].sum())}", "#00d68f"),
             ]:
                 st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);'><span style='color:var(--text-muted);font-size:0.85rem;'>{label}</span><span style='color:{color};font-weight:700;font-size:0.95rem;'>{val}</span></div>", unsafe_allow_html=True)
-
-    # ── Export PDF bilan ───────────────────────────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.expander("📄 Exporter le bilan en PDF", expanded=False):
-        _periode_label = label_periode if periode_active else "Toutes périodes"
-        _date_export   = datetime.now().strftime("%d/%m/%Y à %H:%M")
-        _nb_urgents    = int(df_alertes_all[
-            df_alertes_all.apply(
-                lambda r: (
-                    ((_today_alerte - r["_date_parsed_main"].date()).days >= 14)
-                    if "_date_parsed_main" in r.index and not pd.isna(r["_date_parsed_main"])
-                    else False
-                ),
-                axis=1,
-            )
-        ].shape[0]) if "_date_parsed_main" in df_alertes_all.columns else 0
-
-        # Lignes du tableau devis en attente
-        _lignes_attente_html = ""
-        for _, r in df_alertes_all.head(20).iterrows():
-            _cli = str(r[COL_CLIENT]).strip() if COL_CLIENT else "—"
-            _mnt = fmt(r["_montant"])
-            _dt  = r.get("_date_parsed_main", pd.NaT)
-            if not pd.isna(_dt):
-                _age = (_today_alerte - _dt.date()).days
-                _age_str = f"{_age}j"
-                _age_col = "#ff5c7a" if _age >= 30 else ("#ffb84d" if _age >= 14 else "#00d68f")
-            else:
-                _age_str, _age_col = "—", "#94a3b8"
-            _lignes_attente_html += f"""
-            <tr>
-              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;">{_cli}</td>
-              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">{_mnt}</td>
-              <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;color:{_age_col};font-weight:700;">{_age_str}</td>
-            </tr>"""
-
-        _pdf_html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  body {{ font-family:'Segoe UI',Arial,sans-serif; font-size:9px; color:#1e293b; background:#fff; padding:20px; }}
-  header {{ display:flex; justify-content:space-between; align-items:flex-start;
-            border-bottom:3px solid #1d4ed8; padding-bottom:12px; margin-bottom:16px; }}
-  .logo {{ width:40px;height:40px;background:#1d4ed8;border-radius:8px;
-           display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900; }}
-  .company {{ font-size:8px; color:#475569; line-height:1.6; text-align:right; }}
-  .company strong {{ font-size:11px; color:#1d4ed8; display:block; }}
-  h1 {{ font-size:18px; font-weight:800; color:#0f172a; margin-bottom:2px; }}
-  .subtitle {{ font-size:8px; color:#64748b; }}
-  .kpi-grid {{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 0; }}
-  .kpi {{ background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
-          padding:10px 12px; border-left:3px solid; }}
-  .kpi-label {{ font-size:7px; font-weight:700; text-transform:uppercase;
-                letter-spacing:.06em; color:#64748b; margin-bottom:4px; }}
-  .kpi-value {{ font-size:15px; font-weight:800; letter-spacing:-.02em; }}
-  .kpi-delta {{ font-size:7px; color:#94a3b8; margin-top:2px; }}
-  .section {{ margin-top:14px; }}
-  .section-title {{ font-size:8px; font-weight:800; text-transform:uppercase;
-                    letter-spacing:.08em; color:#1d4ed8; border-bottom:1px solid #e2e8f0;
-                    padding-bottom:4px; margin-bottom:8px; }}
-  table {{ width:100%; border-collapse:collapse; font-size:8.5px; }}
-  thead th {{ background:#1d4ed8; color:#fff; padding:5px 8px; text-align:left;
-              font-size:7.5px; font-weight:700; text-transform:uppercase; }}
-  .two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }}
-  .card {{ background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; }}
-  .row {{ display:flex; justify-content:space-between; padding:4px 0;
-          border-bottom:1px solid #e2e8f0; font-size:8px; }}
-  .row span:last-child {{ font-weight:700; }}
-  footer {{ margin-top:16px; padding-top:8px; border-top:1px solid #e2e8f0;
-            font-size:7px; color:#94a3b8; text-align:center; }}
-  .alert-box {{ background:#fff7ed; border:1px solid #fed7aa; border-left:3px solid #f97316;
-                border-radius:6px; padding:8px 12px; margin-top:10px; font-size:8px; color:#9a3412; }}
-</style>
-</head>
-<body>
-<header>
-  <div>
-    <h1>Bilan Floxia ERP</h1>
-    <div class="subtitle">Période : {_periode_label} &nbsp;·&nbsp; Généré le {_date_export}</div>
-  </div>
-  <div style="display:flex;gap:10px;align-items:center;">
-    <div class="company">
-      <strong>FLOXIA</strong>
-      ERP Bâtiment<br>Florian
-    </div>
-    <div class="logo">FA</div>
-  </div>
-</header>
-
-<div class="kpi-grid">
-  <div class="kpi" style="border-left-color:#00d68f;">
-    <div class="kpi-label">CA Sécurisé</div>
-    <div class="kpi-value" style="color:#00d68f;">{fmt(vg_ca_signe)}</div>
-    <div class="kpi-delta">{vg_nb_signes} devis signés</div>
-  </div>
-  <div class="kpi" style="border-left-color:#ffb84d;">
-    <div class="kpi-label">CA En Négociation</div>
-    <div class="kpi-value" style="color:#ffb84d;">{fmt(vg_ca_non_s)}</div>
-    <div class="kpi-delta">{vg_nb_attente} en cours</div>
-  </div>
-  <div class="kpi" style="border-left-color:#4f8ef7;">
-    <div class="kpi-label">Taux Conversion</div>
-    <div class="kpi-value" style="color:#4f8ef7;">{vg_taux_conv}%</div>
-    <div class="kpi-delta">{vg_nb_signes} / {vg_nb_devis} transformés</div>
-  </div>
-  <div class="kpi" style="border-left-color:#ff5c7a;">
-    <div class="kpi-label">Reste à Encaisser</div>
-    <div class="kpi-value" style="color:#ff5c7a;">{fmt(vg_reste)}</div>
-    <div class="kpi-delta">Exposition trésorerie</div>
-  </div>
-</div>
-
-{"<div class='alert-box'>⚠️ " + str(_nb_urgents) + " devis en attente depuis +14 jours sans signature — relance recommandée.</div>" if _nb_urgents > 0 else ""}
-
-<div class="two-col">
-  <div class="card">
-    <div class="section-title">Résumé financier</div>
-    <div class="row"><span style="color:#64748b;">CA Total émis</span><span style="color:#4f8ef7;">{fmt(vg_total_ca)}</span></div>
-    <div class="row"><span style="color:#64748b;">CA Sécurisé</span><span style="color:#00d68f;">{fmt(vg_ca_signe)}</span></div>
-    <div class="row"><span style="color:#64748b;">CA En attente</span><span style="color:#ffb84d;">{fmt(vg_ca_non_s)}</span></div>
-    <div class="row"><span style="color:#64748b;">Reste à encaisser</span><span style="color:#ff5c7a;">{fmt(vg_reste)}</span></div>
-    <div class="row"><span style="color:#64748b;">Chantiers (PV signés)</span><span style="color:#00d68f;">{int(df_vg['_pv'].sum())}</span></div>
-    <div class="row"><span style="color:#64748b;">Factures émises</span><span style="color:#00d68f;">{vg_nb_fact_ok}</span></div>
-  </div>
-  <div class="card">
-    <div class="section-title">Devis en attente ({len(df_alertes_all)})</div>
-    <table>
-      <thead><tr><th>Client</th><th style="text-align:right;">Montant</th><th style="text-align:center;">Âge</th></tr></thead>
-      <tbody>{_lignes_attente_html if _lignes_attente_html else '<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8;">Aucun devis en attente</td></tr>'}</tbody>
-    </table>
-    {"<div style='font-size:7px;color:#94a3b8;margin-top:4px;'>Affichage limité aux 20 premiers</div>" if len(df_alertes_all) > 20 else ""}
-  </div>
-</div>
-
-<footer>
-  FLOXIA — Bilan généré automatiquement par Floxia ERP · {_date_export} · Confidentiel
-</footer>
-</body></html>"""
-
-        import base64
-        _b64 = base64.b64encode(_pdf_html.encode("utf-8")).decode()
-        _filename = f"bilan_floxia_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
-
-        st.markdown("Le bilan s'ouvre dans le navigateur — utilise **Fichier → Imprimer → Enregistrer en PDF** pour le sauvegarder.")
-        st.download_button(
-            label="📥 Télécharger le bilan (HTML → PDF via navigateur)",
-            data=_pdf_html.encode("utf-8"),
-            file_name=_filename,
-            mime="text/html",
-            use_container_width=True,
-            key="btn_export_bilan_pdf",
-        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : DEVIS
@@ -4288,6 +4170,13 @@ elif page == "Planning":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Tous les dossiers":
     page_header("Tous les dossiers", "Recherche globale et vue consolidée")
+
+    # Pré-remplissage depuis la recherche globale sidebar
+    _prefill_search_all = st.session_state.pop("_global_search_query", "")
+    if _prefill_search_all and "search_all_dossiers" not in st.session_state:
+        st.session_state["search_all_dossiers"] = _prefill_search_all
+    elif _prefill_search_all:
+        st.session_state["search_all_dossiers"] = _prefill_search_all
 
     search_all = st.text_input(
         "🔍 Rechercher dans tous les dossiers",
