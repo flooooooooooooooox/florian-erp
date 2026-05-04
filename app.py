@@ -2009,52 +2009,57 @@ elif "Notifications" in page:
         return True, None
 
     salaries = _load_salaries(user)
-    err_n, df_notif = _load_notifications(user)
 
-    if err_n:
-        show_data_source_error(
-            f"Onglet 'notifications' indisponible : {err_n}",
-            clear_fn=_load_notifications.clear,
-            retry_key="retry_notif_source",
-        )
-        st.caption("Colonnes attendues : date_reception, numero_devis, nom_client, objet, montant, statut")
-        st.stop()
+    tab_sig, tab_ereport = st.tabs(["✍️ Signature", "📊 E-Reporting"])
 
-    df_attente = df_notif[df_notif.get("statut", pd.Series(dtype=str)).astype(str).str.strip() == "en_attente"] if "statut" in df_notif.columns else df_notif
-    nb_attente_notif = len(df_attente)
+    # ── SOUS-ONGLET : SIGNATURE ───────────────────────────────────────────────
+    with tab_sig:
+        err_n, df_notif = _load_notifications(user)
 
-    col_n1, col_n2 = st.columns(2)
-    col_n1.metric("En attente de planification", nb_attente_notif)
-    col_n2.metric("Planifiés", len(df_notif) - nb_attente_notif)
+        if err_n:
+            show_data_source_error(
+                f"Onglet 'notifications' indisponible : {err_n}",
+                clear_fn=_load_notifications.clear,
+                retry_key="retry_notif_source",
+            )
+            st.caption("Colonnes attendues : date_reception, numero_devis, nom_client, objet, montant, statut")
+            st.stop()
 
-    if st.button("Actualiser", key="btn_refresh_notif"):
-        _load_notifications.clear()
-        st.rerun()
+        df_attente = df_notif[df_notif.get("statut", pd.Series(dtype=str)).astype(str).str.strip() == "en_attente"] if "statut" in df_notif.columns else df_notif
+        nb_attente_notif = len(df_attente)
 
-    st.markdown("---")
+        col_n1, col_n2 = st.columns(2)
+        col_n1.metric("En attente de planification", nb_attente_notif)
+        col_n2.metric("Planifiés", len(df_notif) - nb_attente_notif)
 
-    if nb_attente_notif == 0:
-        st.success("Aucune notification en attente.")
-    else:
-        for idx, (row_idx, row) in enumerate(df_attente.iterrows()):
-            numero  = str(row.get("numero_devis", "")).strip()
-            client  = str(row.get("nom_client", "")).strip()
-            objet   = str(row.get("objet", "")).strip()
-            montant = str(row.get("montant", "")).strip()
-            date_r  = str(row.get("date_reception", "")).strip()
+        if st.button("Actualiser", key="btn_refresh_notif"):
+            _load_notifications.clear()
+            st.rerun()
 
-            with st.container(border=True):
-                st.markdown(f"""
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                  <div>
-                    <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;">{numero}</span>
-                    <strong style="margin-left:8px;font-size:0.95rem;">{client}</strong>
-                  </div>
-                  <div style="font-size:0.8rem;color:#64748b;">{date_r}</div>
-                </div>
-                <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">{objet}</div>
-                <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">{montant} €</div>
-                """, unsafe_allow_html=True)
+        st.markdown("---")
+
+        if nb_attente_notif == 0:
+            st.success("Aucune notification en attente.")
+        else:
+            for idx, (row_idx, row) in enumerate(df_attente.iterrows()):
+                numero  = str(row.get("numero_devis", "")).strip()
+                client  = str(row.get("nom_client", "")).strip()
+                objet   = str(row.get("objet", "")).strip()
+                montant = str(row.get("montant", "")).strip()
+                date_r  = str(row.get("date_reception", "")).strip()
+
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                      <div>
+                        <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;">{numero}</span>
+                        <strong style="margin-left:8px;font-size:0.95rem;">{client}</strong>
+                      </div>
+                      <div style="font-size:0.8rem;color:#64748b;">{date_r}</div>
+                    </div>
+                    <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">{objet}</div>
+                    <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">{montant} €</div>
+                    """, unsafe_allow_html=True)
 
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
@@ -2208,6 +2213,122 @@ elif "Notifications" in page:
                                     st.error(f"Erreur n8n : {resp.status_code}")
                             except Exception as ex:
                                 st.error(f"Erreur : {ex}")
+
+    # ── SOUS-ONGLET : E-REPORTING ─────────────────────────────────────────────
+    with tab_ereport:
+
+        @st.cache_data(ttl=60, show_spinner=False)
+        def _load_ereporting(u):
+            err, vals = get_sheet_values_resilient(u, "e-reporting", f"{u}:e-reporting")
+            if err:
+                return err, pd.DataFrame()
+            try:
+                if not vals or len(vals) < 2:
+                    return None, pd.DataFrame()
+                headers = _dedup_headers(vals[0])
+                rows = vals[1:]
+                n = len(headers)
+                padded = [r + [""] * (n - len(r)) if len(r) < n else r[:n] for r in rows]
+                df_er = pd.DataFrame(padded, columns=headers)
+                df_er = df_er.replace("", pd.NA).dropna(how="all").fillna("")
+                return None, df_er
+            except Exception as e:
+                return str(e), pd.DataFrame()
+
+        err_er, df_er = _load_ereporting(user)
+
+        if err_er:
+            show_data_source_error(
+                f"Onglet 'e-reporting' indisponible : {err_er}",
+                clear_fn=_load_ereporting.clear,
+                retry_key="retry_ereporting_source",
+            )
+            st.caption("Colonnes attendues : date_facture, numero_facture, nom_client, montant_TTC, statut_reporting (col N), date_paiement (col L), moyen_paiement (col M)")
+            st.stop()
+
+        if st.button("Actualiser", key="btn_refresh_ereport"):
+            _load_ereporting.clear()
+            st.rerun()
+
+        # Filtrer uniquement "À envoyer"
+        COLS_DISPLAY = ["date_facture", "numero_facture", "nom_client", "montant_TTC", "statut_reporting"]
+
+        if "statut_reporting" in df_er.columns:
+            df_a_envoyer = df_er[
+                df_er["statut_reporting"].astype(str).str.strip() == "À envoyer"
+            ].copy()
+        else:
+            df_a_envoyer = pd.DataFrame()
+
+        st.markdown("#### Factures à déclarer")
+
+        if df_a_envoyer.empty:
+            st.success("Aucune facture avec statut 'À envoyer'.")
+        else:
+            cols_present = [c for c in COLS_DISPLAY if c in df_a_envoyer.columns]
+            st.dataframe(df_a_envoyer[cols_present], use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("#### Valider un paiement")
+
+        if df_a_envoyer.empty or "numero_facture" not in df_a_envoyer.columns:
+            st.info("Aucune facture disponible à valider.")
+        else:
+            numeros_dispo = df_a_envoyer["numero_facture"].astype(str).str.strip().tolist()
+
+            er_col1, er_col2 = st.columns(2)
+            with er_col1:
+                sel_facture = st.selectbox("Facture à valider", numeros_dispo, key="er_sel_facture")
+                date_paiement_er = st.date_input("Date de paiement", value=datetime.today().date(), key="er_date_paiement")
+            with er_col2:
+                moyen_paiement_er = st.selectbox(
+                    "Moyen de paiement",
+                    ["cb", "virement", "espèces", "chèque"],
+                    key="er_moyen_paiement",
+                )
+
+            if st.button("Valider", key="btn_er_valider", type="primary"):
+                try:
+                    ws_er, err_ws_er = get_worksheet(user, "e-reporting")
+                    if err_ws_er or not ws_er:
+                        st.error(f"Impossible d'ouvrir l'onglet 'e-reporting' : {err_ws_er}")
+                    else:
+                        all_er_vals = ws_er.get_all_values()
+                        if not all_er_vals or len(all_er_vals) < 2:
+                            st.error("La feuille 'e-reporting' est vide ou mal formatée.")
+                        else:
+                            headers_er = [h.strip() for h in all_er_vals[0]]
+                            # Chercher la colonne numero_facture pour identifier la ligne
+                            try:
+                                num_col_idx = headers_er.index("numero_facture")
+                            except ValueError:
+                                # fallback : cherche approximatif
+                                num_col_idx = next(
+                                    (i for i, h in enumerate(headers_er) if "facture" in h.lower() and "num" in h.lower()),
+                                    None,
+                                )
+
+                            target_sheet_row = None
+                            if num_col_idx is not None:
+                                for i, row_vals_er in enumerate(all_er_vals[1:], start=2):
+                                    cell_val = row_vals_er[num_col_idx].strip() if len(row_vals_er) > num_col_idx else ""
+                                    if cell_val == sel_facture:
+                                        target_sheet_row = i
+                                        break
+
+                            if target_sheet_row is None:
+                                st.error(f"Facture '{sel_facture}' introuvable dans la feuille.")
+                            else:
+                                # Col L = 12, Col M = 13, Col N = 14
+                                ws_er.update_cell(target_sheet_row, 12, date_paiement_er.strftime("%d/%m/%Y"))
+                                ws_er.update_cell(target_sheet_row, 13, moyen_paiement_er)
+                                ws_er.update_cell(target_sheet_row, 14, "ok")
+                                _load_ereporting.clear()
+                                st.success(f"✅ Facture **{sel_facture}** mise à jour.")
+                                st.rerun()
+                except Exception as ex_er:
+                    st.error(f"Erreur lors de la mise à jour : {ex_er}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : CRÉER UN DEVIS
 # ══════════════════════════════════════════════════════════════════════════════
