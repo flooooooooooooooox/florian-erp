@@ -497,7 +497,7 @@ def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
     try:
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
         gc = gspread.authorize(creds)
-        sh = gc.open("e-repporting")
+        sh = gc.open("e-repporting ")
         ws = sh.worksheet(tab_name)
         return ws, None
     except gspread.exceptions.SpreadsheetNotFound:
