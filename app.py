@@ -3957,7 +3957,7 @@ elif page == "Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    _plan_opts = ["Calendrier mensuel", "Liste"]
+    _plan_opts = ["Calendrier mensuel", "Liste", "Gantt interactif"]
     view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio", label_visibility="collapsed")
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -4145,6 +4145,353 @@ elif page == "Planning":
                     </div>
                   </div>
                 </div>""", unsafe_allow_html=True)
+    # ══ GANTT INTERACTIF ═════════════════════════════════════════════════
+    elif view_mode == "Gantt interactif":
+        import json as _json
+
+        if df_plan.empty:
+            st.info("Aucun chantier planifié.")
+        else:
+            # ── Filtres ────────────────────────────────────────────────
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                search_gantt = st.text_input("🔍 Filtrer", placeholder="Client, chantier...", key="gantt_search")
+            with col_g2:
+                sal_list_gantt = ["Tous"] + sorted([s for s in df_plan["_salarie"].unique() if s], key=str.lower)
+                sal_filter_gantt = st.selectbox("Salarié", sal_list_gantt, key="gantt_sal_filter")
+
+            df_gantt = df_plan.copy()
+            if search_gantt:
+                mask_g = pd.Series([False] * len(df_gantt), index=df_gantt.index)
+                for col_g in [COL_CLIENT, COL_CHANTIER]:
+                    if col_g:
+                        mask_g |= df_gantt[col_g].astype(str).str.contains(search_gantt, case=False, na=False)
+                df_gantt = df_gantt[mask_g]
+            if sal_filter_gantt != "Tous":
+                df_gantt = df_gantt[df_gantt["_salarie"] == sal_filter_gantt]
+
+            if df_gantt.empty:
+                st.info("Aucun chantier ne correspond aux filtres.")
+            else:
+                # ── Préparation données ────────────────────────────────
+                today_g = datetime.now().date()
+                tasks = []
+                for _, row in df_gantt.iterrows():
+                    def _gv(col):
+                        if not col or col not in row.index: return ""
+                        v = str(row[col]).strip()
+                        return "" if v.lower() in ("nan","none","") else v
+
+                    client_g  = _gv(COL_CLIENT)
+                    chant_g   = _gv(COL_CHANTIER)
+                    num_g     = _gv(COL_NUM)
+                    sal_g     = row["_salarie"] or "—"
+                    prog_g    = int(row.get("_progress_pct", 0))
+                    start_g   = row["_start"].date()
+                    end_g     = row["_end"].date()
+                    termine_g = end_g < today_g
+                    label_g   = client_g or chant_g or num_g or "Chantier"
+                    tasks.append({
+                        "id": num_g or str(len(tasks)),
+                        "label": label_g,
+                        "client": client_g,
+                        "chantier": chant_g,
+                        "salarie": sal_g,
+                        "start": start_g.isoformat(),
+                        "end": end_g.isoformat(),
+                        "progress": prog_g,
+                        "termine": termine_g,
+                        "num": num_g,
+                    })
+
+                tasks_json = _json.dumps(tasks, ensure_ascii=False)
+                today_iso  = today_g.isoformat()
+
+                gantt_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: 'Inter', 'Segoe UI', sans-serif; background: #080f1a; color: #e8f0fe; overflow-x: auto; }}
+  #gantt-wrapper {{ min-width: 900px; padding: 12px; }}
+  #controls {{ display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }}
+  #controls button {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: all 0.15s; }}
+  #controls button:hover {{ background: #1e3a5f; border-color: #4f8ef7; color: #4f8ef7; }}
+  #controls button.active {{ background: #4f8ef7; color: #fff; border-color: #4f8ef7; }}
+  #controls label {{ font-size: 0.8rem; color: #6b84a3; }}
+  #gantt-container {{ display: flex; }}
+  #task-labels {{ flex-shrink: 0; width: 200px; padding-top: 32px; }}
+  .task-row-label {{ height: 44px; display: flex; align-items: center; padding: 0 10px; font-size: 0.78rem; font-weight: 600; color: #e8f0fe; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background 0.12s; }}
+  .task-row-label:hover {{ background: rgba(79,142,247,0.08); }}
+  #chart-area {{ flex: 1; overflow-x: auto; position: relative; }}
+  #header-row {{ display: flex; height: 32px; position: sticky; top: 0; z-index: 10; background: #0f1e30; border-bottom: 1px solid rgba(255,255,255,0.08); }}
+  .day-header {{ flex-shrink: 0; text-align: center; font-size: 0.65rem; color: #6b84a3; border-right: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; font-weight: 600; }}
+  .day-header.today {{ color: #ffb84d; font-weight: 800; }}
+  .day-header.weekend {{ background: rgba(255,255,255,0.02); }}
+  #bars-container {{ position: relative; }}
+  .task-bar-row {{ height: 44px; display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); position: relative; }}
+  .task-bar-row:hover {{ background: rgba(79,142,247,0.04); }}
+  .day-cell {{ flex-shrink: 0; height: 100%; border-right: 1px solid rgba(255,255,255,0.03); }}
+  .day-cell.weekend {{ background: rgba(255,255,255,0.015); }}
+  .day-cell.today-col {{ background: rgba(255,184,77,0.06); border-right: 2px solid rgba(255,184,77,0.4); }}
+  .task-bar {{ position: absolute; height: 26px; border-radius: 5px; display: flex; align-items: center; padding: 0 8px; font-size: 0.7rem; font-weight: 700; color: #fff; cursor: pointer; transition: filter 0.15s, transform 0.1s; white-space: nowrap; overflow: hidden; z-index: 2; top: 9px; }}
+  .task-bar:hover {{ filter: brightness(1.15); transform: scaleY(1.05); }}
+  .task-bar .bar-progress {{ position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; opacity: 0.35; pointer-events: none; }}
+  .task-bar .bar-label {{ position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }}
+  #today-line {{ position: absolute; top: 0; bottom: 0; width: 2px; background: #ffb84d; z-index: 5; pointer-events: none; opacity: 0.7; }}
+  #tooltip {{ position: fixed; background: #132238; border: 1px solid rgba(79,142,247,0.3); border-radius: 10px; padding: 12px 16px; font-size: 0.78rem; color: #e8f0fe; pointer-events: none; z-index: 1000; max-width: 260px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); display: none; line-height: 1.7; }}
+  #tooltip .tt-title {{ font-weight: 800; font-size: 0.88rem; color: #4f8ef7; margin-bottom: 6px; }}
+  #tooltip .tt-row {{ display: flex; justify-content: space-between; gap: 12px; }}
+  #tooltip .tt-label {{ color: #6b84a3; }}
+  #tooltip .tt-val {{ font-weight: 600; }}
+  .legend {{ display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }}
+  .legend-item {{ display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #6b84a3; }}
+  .legend-dot {{ width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }}
+</style>
+</head>
+<body>
+<div id="gantt-wrapper">
+  <div id="controls">
+    <label>Zoom :</label>
+    <button onclick="setZoom(14)" id="z14">2 sem</button>
+    <button onclick="setZoom(30)" id="z30" class="active">1 mois</button>
+    <button onclick="setZoom(60)" id="z60">2 mois</button>
+    <button onclick="setZoom(90)" id="z90">3 mois</button>
+    <button onclick="goToday()">📍 Aujourd'hui</button>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#00d68f;"></div>Terminé</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7;"></div>En cours</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffb84d;"></div>À démarrer</div>
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(255,184,77,0.7);width:2px;height:12px;border-radius:1px;"></div>Aujourd'hui</div>
+  </div>
+  <div id="gantt-container">
+    <div id="task-labels"></div>
+    <div id="chart-area">
+      <div id="header-row"></div>
+      <div id="bars-container"></div>
+      <div id="today-line"></div>
+    </div>
+  </div>
+</div>
+<div id="tooltip"></div>
+<script>
+const TASKS = {tasks_json};
+const TODAY = new Date("{today_iso}");
+TODAY.setHours(0,0,0,0);
+let DAY_W = 28;
+let visibleDays = 30;
+
+function parseDate(s) {{
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}}
+
+function addDays(date, n) {{
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}}
+
+function dateDiff(a, b) {{
+  return Math.round((b - a) / 86400000);
+}}
+
+function fmtDate(d) {{
+  return d.toLocaleDateString('fr-FR', {{day:'2-digit', month:'short'}});
+}}
+
+let startDate;
+
+function setZoom(days) {{
+  visibleDays = days;
+  DAY_W = Math.max(18, Math.min(40, Math.floor(800 / days)));
+  document.querySelectorAll('#controls button[id^="z"]').forEach(b => b.classList.remove('active'));
+  const zBtn = document.getElementById('z' + days);
+  if (zBtn) zBtn.classList.add('active');
+  render();
+}}
+
+function goToday() {{
+  startDate = addDays(TODAY, -7);
+  render();
+}}
+
+function render() {{
+  if (!startDate) startDate = addDays(TODAY, -7);
+  const endDate = addDays(startDate, visibleDays);
+  const days = [];
+  for (let d = new Date(startDate); d < endDate; d = addDays(d, 1)) {{
+    days.push(new Date(d));
+  }}
+
+  // Header
+  const hdr = document.getElementById('header-row');
+  hdr.innerHTML = '';
+  hdr.style.width = (days.length * DAY_W) + 'px';
+  days.forEach(d => {{
+    const el = document.createElement('div');
+    el.className = 'day-header' +
+      (d.getDay() === 0 || d.getDay() === 6 ? ' weekend' : '') +
+      (+d === +TODAY ? ' today' : '');
+    el.style.width = DAY_W + 'px';
+    const isFirst = d.getDate() === 1 || d === days[0];
+    if (DAY_W >= 28 || isFirst) {{
+      el.textContent = d.getDate() === 1
+        ? d.toLocaleDateString('fr-FR', {{month:'short', day:'numeric'}})
+        : d.getDate();
+    }} else {{
+      el.textContent = '';
+    }}
+    hdr.appendChild(el);
+  }});
+
+  // Labels
+  const labels = document.getElementById('task-labels');
+  labels.innerHTML = '';
+  TASKS.forEach((t, i) => {{
+    const el = document.createElement('div');
+    el.className = 'task-row-label';
+    el.title = (t.client || '') + (t.chantier ? ' — ' + t.chantier : '');
+    el.textContent = t.label;
+    labels.appendChild(el);
+  }});
+
+  // Bars
+  const bc = document.getElementById('bars-container');
+  bc.innerHTML = '';
+  bc.style.width = (days.length * DAY_W) + 'px';
+  bc.style.position = 'relative';
+
+  TASKS.forEach((t, i) => {{
+    const row = document.createElement('div');
+    row.className = 'task-bar-row';
+    row.style.width = (days.length * DAY_W) + 'px';
+
+    // Day cells (background)
+    days.forEach(d => {{
+      const cell = document.createElement('div');
+      cell.className = 'day-cell' +
+        (d.getDay() === 0 || d.getDay() === 6 ? ' weekend' : '') +
+        (+d === +TODAY ? ' today-col' : '');
+      cell.style.width = DAY_W + 'px';
+      row.appendChild(cell);
+    }});
+
+    // Bar
+    const tStart = parseDate(t.start);
+    const tEnd   = parseDate(t.end);
+    const offsetDays = dateDiff(startDate, tStart);
+    const durDays    = dateDiff(tStart, tEnd) + 1;
+
+    if (tEnd >= startDate && tStart <= endDate) {{
+      const clampStart = Math.max(0, offsetDays);
+      const clampEnd   = Math.min(days.length, offsetDays + durDays);
+      const barW = (clampEnd - clampStart) * DAY_W;
+      const barL = clampStart * DAY_W;
+
+      if (barW > 0) {{
+        const color = t.termine ? '#00d68f' : (t.progress > 0 ? '#4f8ef7' : '#ffb84d');
+        const bar = document.createElement('div');
+        bar.className = 'task-bar';
+        bar.style.left = barL + 'px';
+        bar.style.width = barW + 'px';
+        bar.style.background = color;
+        bar.style.opacity = '0.92';
+
+        // Progress fill
+        const prog = document.createElement('div');
+        prog.className = 'bar-progress';
+        prog.style.width = t.progress + '%';
+        prog.style.background = '#fff';
+        bar.appendChild(prog);
+
+        // Label
+        const lbl = document.createElement('div');
+        lbl.className = 'bar-label';
+        lbl.textContent = barW > 40 ? t.label : '';
+        bar.appendChild(lbl);
+
+        // Tooltip
+        bar.addEventListener('mouseenter', (e) => showTip(e, t));
+        bar.addEventListener('mousemove',  (e) => moveTip(e));
+        bar.addEventListener('mouseleave', hideTip);
+
+        row.appendChild(bar);
+      }}
+    }}
+    bc.appendChild(row);
+  }});
+
+  // Today line
+  const todayOffset = dateDiff(startDate, TODAY);
+  const tl = document.getElementById('today-line');
+  if (todayOffset >= 0 && todayOffset <= days.length) {{
+    tl.style.left = (todayOffset * DAY_W) + 'px';
+    tl.style.display = 'block';
+    tl.style.height = (TASKS.length * 44) + 'px';
+  }} else {{
+    tl.style.display = 'none';
+  }}
+}}
+
+function showTip(e, t) {{
+  const tip = document.getElementById('tooltip');
+  tip.innerHTML = `
+    <div class="tt-title">${{t.label}}</div>
+    ${{t.chantier ? `<div class="tt-row"><span class="tt-label">Chantier</span><span class="tt-val">${{t.chantier}}</span></div>` : ''}}
+    ${{t.salarie && t.salarie !== '—' ? `<div class="tt-row"><span class="tt-label">Salarié</span><span class="tt-val">${{t.salarie}}</span></div>` : ''}}
+    <div class="tt-row"><span class="tt-label">Début</span><span class="tt-val">${{new Date(t.start + 'T00:00').toLocaleDateString('fr-FR')}}</span></div>
+    <div class="tt-row"><span class="tt-label">Fin</span><span class="tt-val">${{new Date(t.end + 'T00:00').toLocaleDateString('fr-FR')}}</span></div>
+    <div class="tt-row"><span class="tt-label">Avancement</span><span class="tt-val" style="color:#4f8ef7">${{t.progress}}%</span></div>
+    <div class="tt-row"><span class="tt-label">Statut</span><span class="tt-val" style="color:${{t.termine ? '#00d68f' : '#ffb84d'}}">${{t.termine ? 'Terminé' : t.progress > 0 ? 'En cours' : 'À démarrer'}}</span></div>
+  `;
+  tip.style.display = 'block';
+  moveTip(e);
+}}
+
+function moveTip(e) {{
+  const tip = document.getElementById('tooltip');
+  tip.style.left = (e.clientX + 16) + 'px';
+  tip.style.top  = (e.clientY - 10) + 'px';
+}}
+
+function hideTip() {{
+  document.getElementById('tooltip').style.display = 'none';
+}}
+
+// Drag to scroll
+let isDragging = false, dragStartX = 0, dragStartDate;
+const chartArea = document.getElementById('chart-area');
+chartArea.style.cursor = 'grab';
+chartArea.addEventListener('mousedown', e => {{
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartDate = new Date(startDate);
+  chartArea.style.cursor = 'grabbing';
+}});
+document.addEventListener('mousemove', e => {{
+  if (!isDragging) return;
+  const dx = e.clientX - dragStartX;
+  const daysDelta = -Math.round(dx / DAY_W);
+  startDate = addDays(dragStartDate, daysDelta);
+  render();
+}});
+document.addEventListener('mouseup', () => {{
+  isDragging = false;
+  chartArea.style.cursor = 'grab';
+}});
+
+// Init
+goToday();
+</script>
+</body>
+</html>"""
+
+                components.html(gantt_html, height=max(400, len(tasks) * 44 + 120), scrolling=True)
+
+                st.caption(f"💡 Glisse pour naviguer dans le temps · Survole une barre pour les détails · {len(tasks)} chantier(s) affichés")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
