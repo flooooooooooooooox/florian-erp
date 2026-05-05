@@ -4291,14 +4291,15 @@ elif page == "Planning":
   .tt-prog-fill {{ height: 100%; border-radius: 99px; background: #4f8ef7; }}
 
   /* Modal fiche détail */
-  #modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }}
+  #modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 20px; box-sizing: border-box; }}
   #modal-overlay.open {{ display: flex; }}
-  #modal {{ background: #0f1e30; border: 1px solid rgba(79,142,247,0.3); border-radius: 18px; padding: 28px 32px; max-width: 480px; width: 90%; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }}
+  #modal {{ background: #0f1e30; border: 1px solid rgba(79,142,247,0.3); border-radius: 18px; padding: 28px 32px; max-width: 480px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }}
   #modal-close {{ position: absolute; top: 16px; right: 18px; background: none; border: none; color: #6b84a3; font-size: 1.3rem; cursor: pointer; line-height: 1; }}
   #modal-close:hover {{ color: #ff5c7a; }}
   #modal-title {{ font-size: 1.2rem; font-weight: 800; color: #4f8ef7; margin-bottom: 18px; padding-right: 24px; }}
   .modal-badge {{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 16px; }}
-  .modal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }}
+  .modal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }}
+  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: #e8f0fe; word-break: break-word; }}
   .modal-field {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; }}
   .modal-field-label {{ font-size: 0.65rem; font-weight: 700; color: #6b84a3; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }}
   .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: #e8f0fe; }}
