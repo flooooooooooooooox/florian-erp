@@ -4146,13 +4146,13 @@ elif page == "Planning":
                   </div>
                 </div>""", unsafe_allow_html=True)
     # ══ GANTT INTERACTIF ═════════════════════════════════════════════════
+    # ══ GANTT INTERACTIF ═════════════════════════════════════════════════
     elif view_mode == "Gantt interactif":
         import json as _json
 
         if df_plan.empty:
             st.info("Aucun chantier planifié.")
         else:
-            # ── Filtres ────────────────────────────────────────────────
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 search_gantt = st.text_input("🔍 Filtrer", placeholder="Client, chantier...", key="gantt_search")
@@ -4173,8 +4173,19 @@ elif page == "Planning":
             if df_gantt.empty:
                 st.info("Aucun chantier ne correspond aux filtres.")
             else:
-                # ── Préparation données ────────────────────────────────
                 today_g = datetime.now().date()
+
+                # Palette couleurs par catégorie
+                CATEGORY_COLORS = [
+                    "#4f8ef7","#a78bfa","#f472b6","#34d399","#fb923c",
+                    "#38bdf8","#e879f9","#facc15","#f87171","#2dd4bf",
+                ]
+                categories = sorted(set(
+                    str(row.get(COL_CHANTIER, "")).strip()[:20] if COL_CHANTIER else "Autre"
+                    for _, row in df_gantt.iterrows()
+                ))
+                cat_color_map = {c: CATEGORY_COLORS[i % len(CATEGORY_COLORS)] for i, c in enumerate(categories)}
+
                 tasks = []
                 for _, row in df_gantt.iterrows():
                     def _gv(col):
@@ -4186,23 +4197,38 @@ elif page == "Planning":
                     chant_g   = _gv(COL_CHANTIER)
                     num_g     = _gv(COL_NUM)
                     sal_g     = row["_salarie"] or "—"
+                    montant_g = _gv(COL_MONTANT)
+                    adresse_g = _gv(COL_ADRESSE)
                     prog_g    = int(row.get("_progress_pct", 0))
                     start_g   = row["_start"].date()
                     end_g     = row["_end"].date()
                     termine_g = end_g < today_g
                     label_g   = client_g or chant_g or num_g or "Chantier"
+                    cat_key   = chant_g[:20] if chant_g else "Autre"
+                    color_g   = "#00d68f" if termine_g else cat_color_map.get(cat_key, "#4f8ef7")
+                    duree_g   = (end_g - start_g).days + 1
+
                     tasks.append({
-                        "id": num_g or str(len(tasks)),
-                        "label": label_g,
-                        "client": client_g,
+                        "id":       num_g or str(len(tasks)),
+                        "label":    label_g,
+                        "client":   client_g,
                         "chantier": chant_g,
-                        "salarie": sal_g,
-                        "start": start_g.isoformat(),
-                        "end": end_g.isoformat(),
+                        "salarie":  sal_g,
+                        "montant":  montant_g,
+                        "adresse":  adresse_g,
+                        "start":    start_g.isoformat(),
+                        "end":      end_g.isoformat(),
                         "progress": prog_g,
-                        "termine": termine_g,
-                        "num": num_g,
+                        "termine":  termine_g,
+                        "num":      num_g,
+                        "color":    color_g,
+                        "duree":    duree_g,
                     })
+
+                # Légende catégories
+                legend_items = ""
+                for cat, color in cat_color_map.items():
+                    legend_items += f'<div class="legend-item"><div class="legend-dot" style="background:{color};"></div><span>{cat[:18]}</span></div>'
 
                 tasks_json = _json.dumps(tasks, ensure_ascii=False)
                 today_iso  = today_g.isoformat()
@@ -4213,45 +4239,79 @@ elif page == "Planning":
 <meta charset="UTF-8">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: 'Inter', 'Segoe UI', sans-serif; background: #080f1a; color: #e8f0fe; overflow-x: auto; }}
+  body {{ font-family: 'Inter', 'Segoe UI', sans-serif; background: #080f1a; color: #e8f0fe; overflow-x: auto; user-select: none; }}
   #gantt-wrapper {{ min-width: 900px; padding: 12px; }}
-  #controls {{ display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }}
-  #controls button {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: all 0.15s; }}
+  #controls {{ display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }}
+  #controls button {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
   #controls button:hover {{ background: #1e3a5f; border-color: #4f8ef7; color: #4f8ef7; }}
   #controls button.active {{ background: #4f8ef7; color: #fff; border-color: #4f8ef7; }}
-  #controls label {{ font-size: 0.8rem; color: #6b84a3; }}
+  #controls label {{ font-size: 0.78rem; color: #6b84a3; font-weight: 600; }}
+  .legend {{ display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }}
+  .legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: #6b84a3; }}
+  .legend-dot {{ width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }}
+  .legend-sep {{ width: 1px; height: 14px; background: rgba(255,255,255,0.1); margin: 0 4px; }}
   #gantt-container {{ display: flex; }}
-  #task-labels {{ flex-shrink: 0; width: 200px; padding-top: 32px; }}
-  .task-row-label {{ height: 44px; display: flex; align-items: center; padding: 0 10px; font-size: 0.78rem; font-weight: 600; color: #e8f0fe; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background 0.12s; }}
+  #task-labels {{ flex-shrink: 0; width: 210px; }}
+  .label-header {{ height: 48px; display: flex; align-items: flex-end; padding: 0 10px 8px; font-size: 0.7rem; color: #3d5473; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid rgba(255,255,255,0.06); }}
+  .task-row-label {{ height: 48px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: background 0.12s; gap: 8px; }}
   .task-row-label:hover {{ background: rgba(79,142,247,0.08); }}
-  #chart-area {{ flex: 1; overflow-x: auto; position: relative; }}
-  #header-row {{ display: flex; height: 32px; position: sticky; top: 0; z-index: 10; background: #0f1e30; border-bottom: 1px solid rgba(255,255,255,0.08); }}
-  .day-header {{ flex-shrink: 0; text-align: center; font-size: 0.65rem; color: #6b84a3; border-right: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; font-weight: 600; }}
-  .day-header.today {{ color: #ffb84d; font-weight: 800; }}
-  .day-header.weekend {{ background: rgba(255,255,255,0.02); }}
+  .label-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
+  .label-text {{ flex: 1; overflow: hidden; }}
+  .label-main {{ font-size: 0.78rem; font-weight: 600; color: #e8f0fe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .label-sub  {{ font-size: 0.65rem; color: #6b84a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  #chart-area {{ flex: 1; overflow-x: hidden; position: relative; cursor: grab; }}
+  #chart-area.dragging {{ cursor: grabbing; }}
+  #header-row {{ display: flex; height: 48px; background: #0f1e30; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 10; }}
+  .month-header {{ position: absolute; top: 0; height: 20px; display: flex; align-items: center; padding: 0 8px; font-size: 0.7rem; font-weight: 700; color: #4f8ef7; border-right: 1px solid rgba(79,142,247,0.2); white-space: nowrap; overflow: hidden; }}
+  .day-header {{ position: absolute; bottom: 0; height: 28px; text-align: center; font-size: 0.62rem; color: #6b84a3; border-right: 1px solid rgba(255,255,255,0.03); display: flex; align-items: center; justify-content: center; font-weight: 600; }}
+  .day-header.today-h {{ color: #ffb84d; font-weight: 800; }}
+  .day-header.weekend-h {{ color: #3d5473; }}
   #bars-container {{ position: relative; }}
-  .task-bar-row {{ height: 44px; display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); position: relative; }}
+  .task-bar-row {{ height: 48px; display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); position: relative; transition: background 0.1s; }}
   .task-bar-row:hover {{ background: rgba(79,142,247,0.04); }}
-  .day-cell {{ flex-shrink: 0; height: 100%; border-right: 1px solid rgba(255,255,255,0.03); }}
-  .day-cell.weekend {{ background: rgba(255,255,255,0.015); }}
-  .day-cell.today-col {{ background: rgba(255,184,77,0.06); border-right: 2px solid rgba(255,184,77,0.4); }}
-  .task-bar {{ position: absolute; height: 26px; border-radius: 5px; display: flex; align-items: center; padding: 0 8px; font-size: 0.7rem; font-weight: 700; color: #fff; cursor: pointer; transition: filter 0.15s, transform 0.1s; white-space: nowrap; overflow: hidden; z-index: 2; top: 9px; }}
-  .task-bar:hover {{ filter: brightness(1.15); transform: scaleY(1.05); }}
-  .task-bar .bar-progress {{ position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; opacity: 0.35; pointer-events: none; }}
-  .task-bar .bar-label {{ position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }}
-  #today-line {{ position: absolute; top: 0; bottom: 0; width: 2px; background: #ffb84d; z-index: 5; pointer-events: none; opacity: 0.7; }}
-  #tooltip {{ position: fixed; background: #132238; border: 1px solid rgba(79,142,247,0.3); border-radius: 10px; padding: 12px 16px; font-size: 0.78rem; color: #e8f0fe; pointer-events: none; z-index: 1000; max-width: 260px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); display: none; line-height: 1.7; }}
-  #tooltip .tt-title {{ font-weight: 800; font-size: 0.88rem; color: #4f8ef7; margin-bottom: 6px; }}
-  #tooltip .tt-row {{ display: flex; justify-content: space-between; gap: 12px; }}
-  #tooltip .tt-label {{ color: #6b84a3; }}
-  #tooltip .tt-val {{ font-weight: 600; }}
-  .legend {{ display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }}
-  .legend-item {{ display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #6b84a3; }}
-  .legend-dot {{ width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }}
+  .bg-cell {{ position: absolute; top: 0; bottom: 0; }}
+  .bg-weekend {{ background: rgba(255,255,255,0.015); }}
+  .bg-today {{ background: rgba(255,184,77,0.07); border-right: 2px solid rgba(255,184,77,0.5); }}
+  .task-bar {{ position: absolute; height: 28px; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 0.72rem; font-weight: 700; color: #fff; cursor: pointer; z-index: 2; top: 10px; transition: filter 0.15s, box-shadow 0.15s; overflow: hidden; }}
+  .task-bar:hover {{ filter: brightness(1.18); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }}
+  .task-bar:active {{ transform: scale(0.99); }}
+  .bar-progress-fill {{ position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: rgba(255,255,255,0.22); pointer-events: none; }}
+  .bar-label {{ position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }}
+  .bar-num {{ font-size: 0.6rem; opacity: 0.75; margin-left: 4px; }}
+  #today-vline {{ position: absolute; top: 0; width: 2px; background: linear-gradient(180deg, #ffb84d, rgba(255,184,77,0.2)); z-index: 5; pointer-events: none; }}
+  #tooltip {{ position: fixed; background: #0f1e30; border: 1px solid rgba(79,142,247,0.35); border-radius: 12px; padding: 14px 18px; font-size: 0.78rem; color: #e8f0fe; pointer-events: none; z-index: 9999; max-width: 280px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); display: none; line-height: 1.8; }}
+  .tt-title {{ font-weight: 800; font-size: 0.9rem; color: #4f8ef7; margin-bottom: 8px; border-bottom: 1px solid rgba(79,142,247,0.2); padding-bottom: 6px; }}
+  .tt-row {{ display: flex; justify-content: space-between; gap: 16px; }}
+  .tt-lbl {{ color: #6b84a3; font-size: 0.72rem; }}
+  .tt-val {{ font-weight: 600; font-size: 0.75rem; color: #e8f0fe; text-align: right; }}
+  .tt-prog {{ display: flex; align-items: center; gap: 8px; margin-top: 6px; }}
+  .tt-prog-bar {{ flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; }}
+  .tt-prog-fill {{ height: 100%; border-radius: 99px; background: #4f8ef7; }}
+
+  /* Modal fiche détail */
+  #modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }}
+  #modal-overlay.open {{ display: flex; }}
+  #modal {{ background: #0f1e30; border: 1px solid rgba(79,142,247,0.3); border-radius: 18px; padding: 28px 32px; max-width: 480px; width: 90%; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }}
+  #modal-close {{ position: absolute; top: 16px; right: 18px; background: none; border: none; color: #6b84a3; font-size: 1.3rem; cursor: pointer; line-height: 1; }}
+  #modal-close:hover {{ color: #ff5c7a; }}
+  #modal-title {{ font-size: 1.2rem; font-weight: 800; color: #4f8ef7; margin-bottom: 18px; padding-right: 24px; }}
+  .modal-badge {{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 16px; }}
+  .modal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }}
+  .modal-field {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; }}
+  .modal-field-label {{ font-size: 0.65rem; font-weight: 700; color: #6b84a3; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }}
+  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: #e8f0fe; }}
+  .modal-prog-wrap {{ margin-top: 4px; }}
+  .modal-prog-track {{ height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; margin-top: 6px; }}
+  .modal-prog-fill {{ height: 100%; border-radius: 99px; }}
+
+  /* Export button */
+  #export-btn {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
+  #export-btn:hover {{ border-color: #00d68f; color: #00d68f; }}
 </style>
 </head>
 <body>
 <div id="gantt-wrapper">
+
   <div id="controls">
     <label>Zoom :</label>
     <button onclick="setZoom(14)" id="z14">2 sem</button>
@@ -4259,54 +4319,64 @@ elif page == "Planning":
     <button onclick="setZoom(60)" id="z60">2 mois</button>
     <button onclick="setZoom(90)" id="z90">3 mois</button>
     <button onclick="goToday()">📍 Aujourd'hui</button>
+    <button id="export-btn" onclick="exportPNG()">📷 Export PNG</button>
   </div>
+
   <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:#00d68f;"></div>Terminé</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7;"></div>En cours</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ffb84d;"></div>À démarrer</div>
-    <div class="legend-item"><div class="legend-dot" style="background:rgba(255,184,77,0.7);width:2px;height:12px;border-radius:1px;"></div>Aujourd'hui</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#00d68f;"></div><span>Terminé</span></div>
+    <div class="legend-sep"></div>
+    {legend_items}
+    <div class="legend-sep"></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffb84d;width:2px;height:12px;border-radius:1px;"></div><span>Aujourd'hui</span></div>
   </div>
+
   <div id="gantt-container">
-    <div id="task-labels"></div>
+    <div id="task-labels">
+      <div class="label-header">Chantier</div>
+    </div>
     <div id="chart-area">
       <div id="header-row"></div>
-      <div id="bars-container"></div>
-      <div id="today-line"></div>
+      <div id="bars-container">
+        <div id="today-vline"></div>
+      </div>
     </div>
   </div>
 </div>
+
+<!-- Tooltip -->
 <div id="tooltip"></div>
+
+<!-- Modal fiche détail -->
+<div id="modal-overlay">
+  <div id="modal">
+    <button id="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-title"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
 <script>
 const TASKS = {tasks_json};
 const TODAY = new Date("{today_iso}");
 TODAY.setHours(0,0,0,0);
 let DAY_W = 28;
 let visibleDays = 30;
+let startDate;
 
 function parseDate(s) {{
   const [y,m,d] = s.split('-').map(Number);
   return new Date(y, m-1, d);
 }}
-
 function addDays(date, n) {{
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
+  const d = new Date(date); d.setDate(d.getDate() + n); return d;
 }}
-
 function dateDiff(a, b) {{
   return Math.round((b - a) / 86400000);
 }}
 
-function fmtDate(d) {{
-  return d.toLocaleDateString('fr-FR', {{day:'2-digit', month:'short'}});
-}}
-
-let startDate;
-
 function setZoom(days) {{
   visibleDays = days;
-  DAY_W = Math.max(18, Math.min(40, Math.floor(800 / days)));
+  DAY_W = Math.max(16, Math.min(48, Math.floor(820 / days)));
   document.querySelectorAll('#controls button[id^="z"]').forEach(b => b.classList.remove('active'));
   const zBtn = document.getElementById('z' + days);
   if (zBtn) zBtn.classList.add('active');
@@ -4314,109 +4384,143 @@ function setZoom(days) {{
 }}
 
 function goToday() {{
-  startDate = addDays(TODAY, -7);
+  startDate = addDays(TODAY, -Math.floor(visibleDays * 0.25));
   render();
 }}
 
 function render() {{
   if (!startDate) startDate = addDays(TODAY, -7);
-  const endDate = addDays(startDate, visibleDays);
   const days = [];
-  for (let d = new Date(startDate); d < endDate; d = addDays(d, 1)) {{
-    days.push(new Date(d));
-  }}
+  for (let i = 0; i < visibleDays; i++) days.push(addDays(startDate, i));
+  const totalW = days.length * DAY_W;
 
-  // Header
+  // ── Header (mois + jours) ──────────────────────────────────────────
   const hdr = document.getElementById('header-row');
   hdr.innerHTML = '';
-  hdr.style.width = (days.length * DAY_W) + 'px';
-  days.forEach(d => {{
+  hdr.style.width = totalW + 'px';
+  hdr.style.position = 'relative';
+
+  // Mois
+  let curMonth = -1, monthStart = 0;
+  days.forEach((d, i) => {{
+    if (d.getMonth() !== curMonth) {{
+      if (curMonth !== -1) {{
+        const mEl = document.createElement('div');
+        mEl.className = 'month-header';
+        mEl.style.left = (monthStart * DAY_W) + 'px';
+        mEl.style.width = ((i - monthStart) * DAY_W) + 'px';
+        mEl.textContent = new Date(days[monthStart]).toLocaleDateString('fr-FR', {{month:'long', year:'numeric'}});
+        hdr.appendChild(mEl);
+      }}
+      curMonth = d.getMonth(); monthStart = i;
+    }}
+  }});
+  // Last month
+  const mEl = document.createElement('div');
+  mEl.className = 'month-header';
+  mEl.style.left = (monthStart * DAY_W) + 'px';
+  mEl.style.width = ((days.length - monthStart) * DAY_W) + 'px';
+  mEl.textContent = new Date(days[monthStart]).toLocaleDateString('fr-FR', {{month:'long', year:'numeric'}});
+  hdr.appendChild(mEl);
+
+  // Jours
+  days.forEach((d, i) => {{
     const el = document.createElement('div');
     el.className = 'day-header' +
-      (d.getDay() === 0 || d.getDay() === 6 ? ' weekend' : '') +
-      (+d === +TODAY ? ' today' : '');
+      (d.getDay()===0||d.getDay()===6 ? ' weekend-h':'') +
+      (+d===+TODAY ? ' today-h':'');
+    el.style.left  = (i * DAY_W) + 'px';
     el.style.width = DAY_W + 'px';
-    const isFirst = d.getDate() === 1 || d === days[0];
-    if (DAY_W >= 28 || isFirst) {{
-      el.textContent = d.getDate() === 1
-        ? d.toLocaleDateString('fr-FR', {{month:'short', day:'numeric'}})
-        : d.getDate();
-    }} else {{
-      el.textContent = '';
-    }}
+    el.textContent = DAY_W >= 20 ? d.getDate() : (d.getDate()===1 ? d.getDate() : '');
     hdr.appendChild(el);
   }});
 
-  // Labels
+  // ── Labels ────────────────────────────────────────────────────────
   const labels = document.getElementById('task-labels');
-  labels.innerHTML = '';
+  // Keep header, rebuild rows
+  const existingRows = labels.querySelectorAll('.task-row-label');
+  existingRows.forEach(r => r.remove());
+
   TASKS.forEach((t, i) => {{
     const el = document.createElement('div');
     el.className = 'task-row-label';
-    el.title = (t.client || '') + (t.chantier ? ' — ' + t.chantier : '');
-    el.textContent = t.label;
+    el.title = [t.client, t.chantier, t.num].filter(Boolean).join(' — ');
+    el.innerHTML = `
+      <div class="label-dot" style="background:${{t.color}};"></div>
+      <div class="label-text">
+        <div class="label-main">${{t.label}}</div>
+        <div class="label-sub">${{t.num ? t.num + (t.salarie && t.salarie!=='—' ? ' · ' + t.salarie : '') : (t.salarie && t.salarie!=='—' ? t.salarie : '')}}</div>
+      </div>
+    `;
+    el.onclick = () => openModal(t);
     labels.appendChild(el);
   }});
 
-  // Bars
+  // ── Bars ──────────────────────────────────────────────────────────
   const bc = document.getElementById('bars-container');
-  bc.innerHTML = '';
-  bc.style.width = (days.length * DAY_W) + 'px';
+  // Remove old rows (keep today-vline)
+  bc.querySelectorAll('.task-bar-row').forEach(r => r.remove());
+  bc.style.width = totalW + 'px';
   bc.style.position = 'relative';
+
+  // Background cells (weekend + today)
+  bc.querySelectorAll('.bg-cell').forEach(c => c.remove());
+  days.forEach((d, i) => {{
+    const isWeekend = d.getDay()===0||d.getDay()===6;
+    const isToday   = +d===+TODAY;
+    if (isWeekend || isToday) {{
+      const cell = document.createElement('div');
+      cell.className = 'bg-cell ' + (isToday ? 'bg-today' : 'bg-weekend');
+      cell.style.left   = (i * DAY_W) + 'px';
+      cell.style.width  = DAY_W + 'px';
+      cell.style.height = (TASKS.length * 48) + 'px';
+      bc.insertBefore(cell, bc.firstChild);
+    }}
+  }});
 
   TASKS.forEach((t, i) => {{
     const row = document.createElement('div');
     row.className = 'task-bar-row';
-    row.style.width = (days.length * DAY_W) + 'px';
+    row.style.width = totalW + 'px';
 
-    // Day cells (background)
-    days.forEach(d => {{
-      const cell = document.createElement('div');
-      cell.className = 'day-cell' +
-        (d.getDay() === 0 || d.getDay() === 6 ? ' weekend' : '') +
-        (+d === +TODAY ? ' today-col' : '');
-      cell.style.width = DAY_W + 'px';
-      row.appendChild(cell);
-    }});
-
-    // Bar
     const tStart = parseDate(t.start);
     const tEnd   = parseDate(t.end);
+    const endDate = addDays(startDate, visibleDays);
     const offsetDays = dateDiff(startDate, tStart);
     const durDays    = dateDiff(tStart, tEnd) + 1;
 
-    if (tEnd >= startDate && tStart <= endDate) {{
+    if (tEnd >= startDate && tStart < endDate) {{
       const clampStart = Math.max(0, offsetDays);
-      const clampEnd   = Math.min(days.length, offsetDays + durDays);
+      const clampEnd   = Math.min(visibleDays, offsetDays + durDays);
       const barW = (clampEnd - clampStart) * DAY_W;
       const barL = clampStart * DAY_W;
 
       if (barW > 0) {{
-        const color = t.termine ? '#00d68f' : (t.progress > 0 ? '#4f8ef7' : '#ffb84d');
         const bar = document.createElement('div');
         bar.className = 'task-bar';
-        bar.style.left = barL + 'px';
-        bar.style.width = barW + 'px';
-        bar.style.background = color;
-        bar.style.opacity = '0.92';
+        bar.style.left       = barL + 'px';
+        bar.style.width      = barW + 'px';
+        bar.style.background = t.color;
+        bar.style.boxShadow  = `0 2px 8px ${{t.color}}55`;
 
         // Progress fill
-        const prog = document.createElement('div');
-        prog.className = 'bar-progress';
-        prog.style.width = t.progress + '%';
-        prog.style.background = '#fff';
-        bar.appendChild(prog);
+        const pf = document.createElement('div');
+        pf.className = 'bar-progress-fill';
+        pf.style.width = t.progress + '%';
+        bar.appendChild(pf);
 
         // Label
         const lbl = document.createElement('div');
         lbl.className = 'bar-label';
-        lbl.textContent = barW > 40 ? t.label : '';
+        if (barW > 50) {{
+          lbl.innerHTML = `${{t.label}}${{t.num && barW > 100 ? `<span class="bar-num">[${{t.num}}]</span>` : ''}}`;
+        }}
         bar.appendChild(lbl);
 
-        // Tooltip
-        bar.addEventListener('mouseenter', (e) => showTip(e, t));
-        bar.addEventListener('mousemove',  (e) => moveTip(e));
+        bar.addEventListener('mouseenter', e => showTip(e, t));
+        bar.addEventListener('mousemove',  e => moveTip(e));
         bar.addEventListener('mouseleave', hideTip);
+        bar.addEventListener('click', () => openModal(t));
 
         row.appendChild(bar);
       }}
@@ -4425,51 +4529,158 @@ function render() {{
   }});
 
   // Today line
-  const todayOffset = dateDiff(startDate, TODAY);
-  const tl = document.getElementById('today-line');
-  if (todayOffset >= 0 && todayOffset <= days.length) {{
-    tl.style.left = (todayOffset * DAY_W) + 'px';
+  const todayOff = dateDiff(startDate, TODAY);
+  const tl = document.getElementById('today-vline');
+  if (todayOff >= 0 && todayOff <= visibleDays) {{
+    tl.style.left    = (todayOff * DAY_W) + 'px';
+    tl.style.height  = (TASKS.length * 48) + 'px';
     tl.style.display = 'block';
-    tl.style.height = (TASKS.length * 44) + 'px';
   }} else {{
     tl.style.display = 'none';
   }}
 }}
 
+// ── Tooltip ──────────────────────────────────────────────────────────
 function showTip(e, t) {{
   const tip = document.getElementById('tooltip');
+  const statusColor = t.termine ? '#00d68f' : (t.progress > 0 ? '#4f8ef7' : '#ffb84d');
+  const statusLabel = t.termine ? 'Terminé' : (t.progress > 0 ? 'En cours' : 'À démarrer');
   tip.innerHTML = `
     <div class="tt-title">${{t.label}}</div>
-    ${{t.chantier ? `<div class="tt-row"><span class="tt-label">Chantier</span><span class="tt-val">${{t.chantier}}</span></div>` : ''}}
-    ${{t.salarie && t.salarie !== '—' ? `<div class="tt-row"><span class="tt-label">Salarié</span><span class="tt-val">${{t.salarie}}</span></div>` : ''}}
-    <div class="tt-row"><span class="tt-label">Début</span><span class="tt-val">${{new Date(t.start + 'T00:00').toLocaleDateString('fr-FR')}}</span></div>
-    <div class="tt-row"><span class="tt-label">Fin</span><span class="tt-val">${{new Date(t.end + 'T00:00').toLocaleDateString('fr-FR')}}</span></div>
-    <div class="tt-row"><span class="tt-label">Avancement</span><span class="tt-val" style="color:#4f8ef7">${{t.progress}}%</span></div>
-    <div class="tt-row"><span class="tt-label">Statut</span><span class="tt-val" style="color:${{t.termine ? '#00d68f' : '#ffb84d'}}">${{t.termine ? 'Terminé' : t.progress > 0 ? 'En cours' : 'À démarrer'}}</span></div>
+    ${{t.num ? `<div class="tt-row"><span class="tt-lbl">N°</span><span class="tt-val">${{t.num}}</span></div>` : ''}}
+    ${{t.chantier ? `<div class="tt-row"><span class="tt-lbl">Chantier</span><span class="tt-val">${{t.chantier}}</span></div>` : ''}}
+    ${{t.salarie && t.salarie!=='—' ? `<div class="tt-row"><span class="tt-lbl">Salarié</span><span class="tt-val">${{t.salarie}}</span></div>` : ''}}
+    <div class="tt-row"><span class="tt-lbl">Début</span><span class="tt-val">${{new Date(t.start+'T00:00').toLocaleDateString('fr-FR')}}</span></div>
+    <div class="tt-row"><span class="tt-lbl">Fin</span><span class="tt-val">${{new Date(t.end+'T00:00').toLocaleDateString('fr-FR')}}</span></div>
+    <div class="tt-row"><span class="tt-lbl">Durée</span><span class="tt-val">${{t.duree}} jour(s)</span></div>
+    ${{t.montant ? `<div class="tt-row"><span class="tt-lbl">Montant</span><span class="tt-val" style="color:#00d68f">${{t.montant}} €</span></div>` : ''}}
+    <div class="tt-prog">
+      <span class="tt-lbl" style="color:${{statusColor}}">${{statusLabel}}</span>
+      <div class="tt-prog-bar"><div class="tt-prog-fill" style="width:${{t.progress}}%;background:${{statusColor}};"></div></div>
+      <span class="tt-val" style="color:${{statusColor}}">${{t.progress}}%</span>
+    </div>
   `;
   tip.style.display = 'block';
   moveTip(e);
 }}
-
 function moveTip(e) {{
   const tip = document.getElementById('tooltip');
-  tip.style.left = (e.clientX + 16) + 'px';
-  tip.style.top  = (e.clientY - 10) + 'px';
+  const x = e.clientX + 18;
+  const y = e.clientY - 10;
+  tip.style.left = (x + tip.offsetWidth > window.innerWidth ? e.clientX - tip.offsetWidth - 10 : x) + 'px';
+  tip.style.top  = Math.min(y, window.innerHeight - tip.offsetHeight - 10) + 'px';
 }}
-
 function hideTip() {{
   document.getElementById('tooltip').style.display = 'none';
 }}
 
-// Drag to scroll
+// ── Modal fiche détail ────────────────────────────────────────────────
+function openModal(t) {{
+  hideTip();
+  const statusColor = t.termine ? '#00d68f' : (t.progress > 0 ? '#4f8ef7' : '#ffb84d');
+  const statusLabel = t.termine ? '✓ Terminé' : (t.progress > 0 ? '⚡ En cours' : '○ À démarrer');
+  document.getElementById('modal-title').textContent = t.label;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-badge" style="background:${{statusColor}}22;color:${{statusColor}};border:1px solid ${{statusColor}}44;">${{statusLabel}}</div>
+    <div class="modal-grid">
+      ${{t.num ? `<div class="modal-field"><div class="modal-field-label">N° Devis</div><div class="modal-field-val">${{t.num}}</div></div>` : ''}}
+      ${{t.client ? `<div class="modal-field"><div class="modal-field-label">Client</div><div class="modal-field-val">${{t.client}}</div></div>` : ''}}
+      ${{t.chantier ? `<div class="modal-field"><div class="modal-field-label">Chantier</div><div class="modal-field-val">${{t.chantier}}</div></div>` : ''}}
+      ${{t.salarie && t.salarie!=='—' ? `<div class="modal-field"><div class="modal-field-label">Salarié</div><div class="modal-field-val">${{t.salarie}}</div></div>` : ''}}
+      <div class="modal-field"><div class="modal-field-label">Début</div><div class="modal-field-val">${{new Date(t.start+'T00:00').toLocaleDateString('fr-FR')}}</div></div>
+      <div class="modal-field"><div class="modal-field-label">Fin prévue</div><div class="modal-field-val">${{new Date(t.end+'T00:00').toLocaleDateString('fr-FR')}}</div></div>
+      <div class="modal-field"><div class="modal-field-label">Durée</div><div class="modal-field-val">${{t.duree}} jour(s)</div></div>
+      ${{t.montant ? `<div class="modal-field"><div class="modal-field-label">Montant TTC</div><div class="modal-field-val" style="color:#00d68f">${{t.montant}} €</div></div>` : ''}}
+      ${{t.adresse ? `<div class="modal-field" style="grid-column:1/-1"><div class="modal-field-label">Adresse</div><div class="modal-field-val">${{t.adresse}}</div></div>` : ''}}
+    </div>
+    <div class="modal-prog-wrap">
+      <div class="modal-field-label">Avancement — ${{t.progress}}%</div>
+      <div class="modal-prog-track"><div class="modal-prog-fill" style="width:${{t.progress}}%;background:${{statusColor}};"></div></div>
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+}}
+function closeModal() {{
+  document.getElementById('modal-overlay').classList.remove('open');
+}}
+document.getElementById('modal-overlay').addEventListener('click', e => {{
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}});
+document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeModal(); }});
+
+// ── Export PNG ────────────────────────────────────────────────────────
+function exportPNG() {{
+  try {{
+    const canvas = document.createElement('canvas');
+    const wrapper = document.getElementById('gantt-wrapper');
+    const w = wrapper.scrollWidth;
+    const h = wrapper.scrollHeight;
+    canvas.width  = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#080f1a';
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw each task bar as colored rect
+    const barEls = document.querySelectorAll('.task-bar');
+    barEls.forEach(bar => {{
+      const rect = bar.getBoundingClientRect();
+      const wRect = wrapper.getBoundingClientRect();
+      const x = rect.left - wRect.left + wrapper.scrollLeft;
+      const y = rect.top  - wRect.top  + wrapper.scrollTop;
+      ctx.fillStyle = bar.style.background || '#4f8ef7';
+      ctx.globalAlpha = 0.9;
+      roundRect(ctx, x, y, rect.width, rect.height, 5);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.fillText(bar.querySelector('.bar-label')?.textContent || '', x + 8, y + 18);
+    }});
+
+    // Today line
+    const tl = document.getElementById('today-vline');
+    if (tl.style.display !== 'none') {{
+      const tlRect = tl.getBoundingClientRect();
+      const wRect  = wrapper.getBoundingClientRect();
+      ctx.fillStyle = '#ffb84d';
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(tlRect.left - wRect.left, 0, 2, h);
+      ctx.globalAlpha = 1;
+    }}
+
+    const link = document.createElement('a');
+    link.download = 'gantt_planning.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }} catch(e) {{
+    alert('Export PNG : ' + e.message);
+  }}
+}}
+
+function roundRect(ctx, x, y, w, h, r) {{
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}}
+
+// ── Drag to pan ───────────────────────────────────────────────────────
 let isDragging = false, dragStartX = 0, dragStartDate;
 const chartArea = document.getElementById('chart-area');
-chartArea.style.cursor = 'grab';
 chartArea.addEventListener('mousedown', e => {{
+  if (e.target.classList.contains('task-bar')) return;
   isDragging = true;
   dragStartX = e.clientX;
   dragStartDate = new Date(startDate);
-  chartArea.style.cursor = 'grabbing';
+  chartArea.classList.add('dragging');
 }});
 document.addEventListener('mousemove', e => {{
   if (!isDragging) return;
@@ -4480,18 +4691,24 @@ document.addEventListener('mousemove', e => {{
 }});
 document.addEventListener('mouseup', () => {{
   isDragging = false;
-  chartArea.style.cursor = 'grab';
+  chartArea.classList.remove('dragging');
 }});
 
-// Init
+// ── Scroll molette ────────────────────────────────────────────────────
+chartArea.addEventListener('wheel', e => {{
+  e.preventDefault();
+  const daysDelta = e.deltaY > 0 ? 3 : -3;
+  startDate = addDays(startDate, daysDelta);
+  render();
+}}, {{ passive: false }});
+
 goToday();
 </script>
 </body>
 </html>"""
 
-                components.html(gantt_html, height=max(400, len(tasks) * 44 + 120), scrolling=True)
-
-                st.caption(f"💡 Glisse pour naviguer dans le temps · Survole une barre pour les détails · {len(tasks)} chantier(s) affichés")
+                components.html(gantt_html, height=max(480, len(tasks) * 48 + 160), scrolling=False)
+                st.caption(f"💡 Glisse ou scroll pour naviguer · Clic sur une barre pour la fiche détail · 📷 Export PNG disponible · {len(tasks)} chantier(s)")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
