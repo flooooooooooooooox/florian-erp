@@ -4223,6 +4223,8 @@ elif page == "Planning":
                         "num":      num_g,
                         "color":    color_g,
                         "duree":    duree_g,
+                        "heure_deb": row["_heure_deb"] or "",   # ← AJOUT
+                        "heure_fin": row["_heure_fin"] or "",   # ← AJOUT
                     })
 
                 # Légende catégories
@@ -4553,6 +4555,7 @@ function showTip(e, t) {{
     <div class="tt-row"><span class="tt-lbl">Début</span><span class="tt-val">${{new Date(t.start+'T00:00').toLocaleDateString('fr-FR')}}</span></div>
     <div class="tt-row"><span class="tt-lbl">Fin</span><span class="tt-val">${{new Date(t.end+'T00:00').toLocaleDateString('fr-FR')}}</span></div>
     <div class="tt-row"><span class="tt-lbl">Durée</span><span class="tt-val">${{t.duree}} jour(s)</span></div>
+    ${{t.heure_deb && t.heure_fin ? `<div class="tt-row"><span class="tt-lbl">Horaires</span><span class="tt-val" style="color:#ffb84d;">${{t.heure_deb}} → ${{t.heure_fin}}</span></div>` : ''}}
     ${{t.montant ? `<div class="tt-row"><span class="tt-lbl">Montant</span><span class="tt-val" style="color:#00d68f">${{t.montant}} €</span></div>` : ''}}
     <div class="tt-prog">
       <span class="tt-lbl" style="color:${{statusColor}}">${{statusLabel}}</span>
@@ -4591,6 +4594,7 @@ function openModal(t) {{
       <div class="modal-field"><div class="modal-field-label">Fin prévue</div><div class="modal-field-val">${{new Date(t.end+'T00:00').toLocaleDateString('fr-FR')}}</div></div>
       <div class="modal-field"><div class="modal-field-label">Durée</div><div class="modal-field-val">${{t.duree}} jour(s)</div></div>
       ${{t.montant ? `<div class="modal-field"><div class="modal-field-label">Montant TTC</div><div class="modal-field-val" style="color:#00d68f">${{t.montant}} €</div></div>` : ''}}
+      ${{t.heure_deb && t.heure_fin ? `<div class="modal-field"><div class="modal-field-label">Horaires</div><div class="modal-field-val" style="color:#ffb84d;">🕐 ${{t.heure_deb}} → ${{t.heure_fin}}</div></div>` : ''}}
       ${{t.adresse ? `<div class="modal-field" style="grid-column:1/-1"><div class="modal-field-label">Adresse</div><div class="modal-field-val">${{t.adresse}}</div></div>` : ''}}
     </div>
     <div class="modal-prog-wrap">
@@ -4707,8 +4711,13 @@ goToday();
 </body>
 </html>"""
 
-                components.html(gantt_html, height=max(480, len(tasks) * 48 + 160), scrolling=False)
-                st.caption(f"💡 Glisse ou scroll pour naviguer · Clic sur une barre pour la fiche détail · 📷 Export PNG disponible · {len(tasks)} chantier(s)")
+                st.markdown(f"""
+                <div style="border:1px solid rgba(79,142,247,0.25);border-radius:14px;overflow:hidden;
+                    background:#080f1a;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+                """, unsafe_allow_html=True)
+                components.html(gantt_html, height=520, scrolling=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+                st.caption(f"💡 Glisse ou scroll pour naviguer · Clic sur une barre pour la fiche détail · 📷 Export PNG · {len(tasks)} chantier(s)")
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE : TOUS LES DOSSIERS
 # ══════════════════════════════════════════════════════════════════════════════
