@@ -140,6 +140,34 @@ label,
 }}
 [data-testid="stSidebar"] > div {{ padding: 0 !important; }}
 
+/* Mobile: flèche/sidebar toggle plus grande et facile à toucher */
+@media (max-width: 900px) {{
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"],
+    button[aria-label*="sidebar" i],
+    button[title*="sidebar" i] {{
+        min-width: 46px !important;
+        min-height: 46px !important;
+        width: 46px !important;
+        height: 46px !important;
+        border-radius: 12px !important;
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.18) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 !important;
+    }}
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg,
+    button[aria-label*="sidebar" i] svg,
+    button[title*="sidebar" i] svg {{
+        width: 22px !important;
+        height: 22px !important;
+    }}
+}}
+
 ::-webkit-scrollbar {{ width: 4px; height: 4px; }}
 ::-webkit-scrollbar-track {{ background: transparent; }}
 ::-webkit-scrollbar-thumb {{ background: var(--text-dim); border-radius: 99px; }}
@@ -498,22 +526,57 @@ if not check_login():
 # ── Conditions d'utilisation ──────────────────────────────────────────────────
 # Objectif : rappeler que l'accès dépend des droits utilisateur (`allowed_pages`)
 # et éviter les confusions lors de la gestion des accès.
-_TERMS_VERSION = "v1"
+_TERMS_VERSION = "v2_legal_2026_05"
 _username = st.session_state.get("username", "")
 _terms_key = f"accepted_terms_{_username}"
 if _username and st.session_state.get(_terms_key) != _TERMS_VERSION:
     st.markdown("<div class='page-header'><h1>Conditions d'utilisation</h1></div>", unsafe_allow_html=True)
+    st.caption("Version contractuelle : 2026-05 — Acceptation obligatoire avant accès.")
     st.markdown(
-        "En utilisant cette application, vous acceptez que : "
-        "`vos droits d'accès` déterminent les pages/fonctionnalités visibles (champ `allowed_pages`), "
-        "que vos actions peuvent déclencher des automatisations via `n8n` (webhooks), "
-        "et que vous vous engagez à ne pas divulguer d'informations internes ou sensibles."
+        """
+**1) Objet et périmètre.**  
+Cette application ERP est un outil interne de gestion commerciale et opérationnelle. L'accès est strictement réservé aux utilisateurs autorisés.
+
+**2) Contrôle d'accès.**  
+Les droits sont limités selon le profil utilisateur (pages/fonctionnalités autorisées). Toute tentative d'accès non autorisée, de contournement, ou de partage d'identifiants est interdite.
+
+**3) Responsabilité utilisateur.**  
+Chaque utilisateur est responsable des actions réalisées depuis son compte, de l'exactitude des données saisies et du respect des procédures internes.
+
+**4) Données et confidentialité.**  
+Les données traitées peuvent inclure des informations sensibles (clients, devis, factures, coordonnées, historique d'activité). L'utilisateur s'engage à la confidentialité stricte, à la minimisation des données partagées et à l'usage exclusivement professionnel.
+
+**5) Automatisations et services tiers.**  
+Certaines actions peuvent déclencher des traitements externes (ex. webhooks/automatisations). L'utilisateur reconnaît et accepte ces traitements dans le cadre des finalités métiers.
+
+**6) Propriété intellectuelle.**  
+Le code source, les interfaces, les structures de données, les contenus, les exports et l'architecture applicative sont protégés par le droit d'auteur. Toute reproduction, extraction, diffusion, rétro-ingénierie, adaptation ou exploitation non autorisée est interdite.
+
+**7) Limitation de responsabilité.**  
+L'application est fournie pour un usage interne. En cas d'indisponibilité, d'erreur de saisie, de mauvaise configuration ou d'usage non conforme, la responsabilité de l'éditeur ne saurait être engagée au-delà des obligations légales impératives.
+
+**8) Contrôle, suspension et traçabilité.**  
+Les actions peuvent être journalisées (audit interne). En cas de non-respect des présentes conditions, l'accès peut être suspendu ou retiré sans préavis.
+
+**9) Protection des données (RGPD).**  
+Chaque utilisateur s'engage à traiter les données de manière licite, loyale, proportionnée et sécurisée, et à signaler immédiatement toute violation, fuite ou accès suspect.
+
+**10) Droit applicable.**  
+Les présentes conditions sont régies par le droit français. En cas de litige, compétence est attribuée aux juridictions territorialement compétentes, sous réserve des dispositions d'ordre public applicables.
+"""
     )
-    accept = st.checkbox(
-        "J'ai lu et j'accepte les conditions d'utilisation",
-        key="accept_terms_checkbox",
+    st.warning(
+        "En cochant ci-dessous, vous reconnaissez avoir lu, compris et accepté l'intégralité des conditions."
     )
-    if accept:
+    accept_main = st.checkbox(
+        "J'accepte les conditions d'utilisation et la politique de confidentialité interne",
+        key="accept_terms_checkbox_main",
+    )
+    accept_auth = st.checkbox(
+        "Je confirme être autorisé à utiliser cet ERP au nom de mon organisation",
+        key="accept_terms_checkbox_authority",
+    )
+    if accept_main and accept_auth:
         st.session_state[_terms_key] = _TERMS_VERSION
         st.rerun()
     st.stop()
@@ -590,7 +653,7 @@ def _dedup_headers(headers):
             out.append(h)
     return out
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_sheet_data(username: str):
     cache_bucket = st.session_state.setdefault("_offline_sheet_cache", {})
     st.session_state["_data_source_notice"] = ""
@@ -649,11 +712,31 @@ def clean_amount(val):
     except:
         return 0.0
 
+def clean_amount_series(series: pd.Series) -> pd.Series:
+    s = (
+        series.fillna("")
+        .astype(str)
+        .str.replace("\xa0", "", regex=False)
+        .str.replace("\u202f", "", regex=False)
+        .str.replace(" ", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.replace("€", "", regex=False)
+        .str.strip()
+    )
+    return pd.to_numeric(s, errors="coerce").fillna(0.0)
+
 def is_checked(val):
     if pd.isna(val):
         return False
     s = str(val).strip()
     return s in {"✅","✓","✔","TRUE","true","oui","Oui","OUI","1","x","X","yes","Yes"} or "✅" in s
+
+def is_checked_series(series: pd.Series) -> pd.Series:
+    s = series.fillna("").astype(str).str.strip()
+    return (
+        s.isin(["✅", "✓", "✔", "TRUE", "true", "oui", "Oui", "OUI", "1", "x", "X", "yes", "Yes"])
+        | s.str.contains("✅", regex=False)
+    )
 
 def fcol(df, *keywords):
     for kw in keywords:
@@ -748,7 +831,12 @@ def parse_flexible_date(value):
     return pd.to_datetime(s, dayfirst=False, errors="coerce")
 
 def parse_flexible_series(series: pd.Series) -> pd.Series:
-    return series.apply(parse_flexible_date)
+    if series is None:
+        return pd.Series(dtype="datetime64[ns]")
+    s = series.fillna("").astype(str)
+    unique_vals = pd.unique(s)
+    parsed_map = {val: parse_flexible_date(val) for val in unique_vals}
+    return s.map(parsed_map)
 
 def safe_slug(value: str) -> str:
     raw = str(value or "").strip()
@@ -832,6 +920,11 @@ def clear_cache_if_exists(func_name: str):
     fn = globals().get(func_name)
     if fn and hasattr(fn, "clear"):
         fn.clear()
+    # Invalidation centralisée: évite d'afficher des données obsolètes après écriture.
+    for cache_fn_name in ("_read_tab_values_online", "get_sheet_data", "get_main_dataset"):
+        cache_fn = globals().get(cache_fn_name)
+        if cache_fn and hasattr(cache_fn, "clear"):
+            cache_fn.clear()
 
 def _track_sync_status(source_key: str, fallback_used: bool):
     sync_meta = st.session_state.setdefault("_sync_meta", {})
@@ -846,6 +939,30 @@ def _track_sync_status(source_key: str, fallback_used: bool):
     sync_meta[source_key] = item
     st.session_state["_sync_meta"] = sync_meta
 
+@st.cache_data(ttl=180, show_spinner=False)
+def _read_tab_values_online(username: str, tab_name: str, retries: int = 2):
+    """
+    Lecture distante d'un onglet (mise en cache) pour éviter les appels
+    Google Sheets répétés à chaque rerun.
+    """
+    ws, err = get_worksheet(username, tab_name)
+    if err or not ws:
+        return None, err or f"Onglet '{tab_name}' inaccessible."
+
+    last_exc = None
+    values = None
+    for _ in range(max(1, retries)):
+        try:
+            values = ws.get_all_values()
+            break
+        except Exception as ex:
+            last_exc = ex
+            time.sleep(0.15)
+
+    if values is not None:
+        return values, None
+    return None, str(last_exc) if last_exc else f"Lecture impossible sur '{tab_name}'."
+
 def render_sync_badge():
     sync_meta = st.session_state.get("_sync_meta", {})
     if not sync_meta:
@@ -859,31 +976,16 @@ def render_sync_badge():
 
 def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, retries: int = 2):
     bucket = st.session_state.setdefault("_offline_tab_values_cache", {})
-    ws, err = get_worksheet(username, tab_name)
-    if err or not ws:
+    values, err = _read_tab_values_online(username, tab_name, retries=max(1, retries))
+    if err:
         cached_vals = bucket.get(cache_slot)
         if cached_vals is not None:
             _track_sync_status(cache_slot, fallback_used=True)
             return None, cached_vals
         return err or f"Onglet '{tab_name}' inaccessible.", None
-    last_exc = None
-    values = None
-    for _ in range(max(1, retries)):
-        try:
-            values = ws.get_all_values()
-            break
-        except Exception as ex:
-            last_exc = ex
-            time.sleep(0.15)
-    if values is not None:
-        bucket[cache_slot] = values
-        _track_sync_status(cache_slot, fallback_used=False)
-        return None, values
-    cached_vals = bucket.get(cache_slot)
-    if cached_vals is not None:
-        _track_sync_status(cache_slot, fallback_used=True)
-        return None, cached_vals
-    return str(last_exc) if last_exc else f"Lecture impossible sur '{tab_name}'.", None
+    bucket[cache_slot] = values
+    _track_sync_status(cache_slot, fallback_used=False)
+    return None, values
 
 @st.cache_data(ttl=60, show_spinner=False)
 def build_monthly_ca_aggregates(df_in: pd.DataFrame):
@@ -900,7 +1002,7 @@ def build_monthly_ca_aggregates(df_in: pd.DataFrame):
     merged["CA Cumul"] = merged["CA Total"].cumsum()
     return merged
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_main_dataset(username: str):
     dataset_cache = st.session_state.setdefault("_offline_main_dataset_cache", {})
     df_raw, error = get_sheet_data(username)
@@ -936,13 +1038,13 @@ def get_main_dataset(username: str):
     col_date_fin = fcol(df, "fin des travaux", "date fin", "date de fin")
     col_equipe = fcol(df, "équipe", "equipe", "employé", "employe", "intervenant", "technicien")
 
-    df["_montant"] = df[col_montant].apply(clean_amount) if col_montant else 0.0
-    df["_acompte1"] = df[col_acompte1].apply(clean_amount) if col_acompte1 else 0.0
-    df["_acompte2"] = df[col_acompte2].apply(clean_amount) if col_acompte2 else 0.0
+    df["_montant"] = clean_amount_series(df[col_montant]) if col_montant else 0.0
+    df["_acompte1"] = clean_amount_series(df[col_acompte1]) if col_acompte1 else 0.0
+    df["_acompte2"] = clean_amount_series(df[col_acompte2]) if col_acompte2 else 0.0
     df["_reste"] = (df["_montant"] - df["_acompte1"] - df["_acompte2"]).clip(lower=0)
-    df["_signe"] = df[col_sign].apply(is_checked) if col_sign else False
-    df["_fact_fin"] = df[col_fact_fin].apply(is_checked) if col_fact_fin else False
-    df["_pv"] = df[col_pv].apply(is_checked) if col_pv else False
+    df["_signe"] = is_checked_series(df[col_sign]) if col_sign else False
+    df["_fact_fin"] = is_checked_series(df[col_fact_fin]) if col_fact_fin else False
+    df["_pv"] = is_checked_series(df[col_pv]) if col_pv else False
     # Pré-calcul des dates pour éviter de reparser à chaque interaction (filtres plus rapides).
     df["_date_parsed_main"] = parse_flexible_series(df[col_date]) if col_date else pd.NaT
     df["_date_fin_parsed_main"] = parse_flexible_series(df[col_date_fin]) if col_date_fin else pd.NaT
@@ -3993,6 +4095,8 @@ elif page == "Planning":
         df_plan["_end"] = df_plan[COL_DATE_FIN].apply(parse_date_flex)
     df_plan = df_plan.dropna(subset=["_start", "_end"])
     df_plan = df_plan[df_plan["_end"] >= df_plan["_start"]].reset_index(drop=True)
+    df_plan["_start_date"] = df_plan["_start"].dt.date
+    df_plan["_end_date"] = df_plan["_end"].dt.date
 
     if COL_SALARIE_P:
         df_plan["_salarie"] = df_plan[COL_SALARIE_P].apply(lambda v: "" if str(v).strip().lower() in ("nan","none","") else str(v).strip())
@@ -4011,8 +4115,8 @@ elif page == "Planning":
     # ── KPIs ───────────────────────────────────────────────────────────────
     render_kpi_cards([
         {"label": "Total planifiés", "value": len(df_plan), "delta": "Charge totale", "icon": "▣", "fill_pct": 100, "accent": "#4f8ef7", "accent_bg": "rgba(79,142,247,0.18)"},
-        {"label": "En cours / à venir", "value": int((df_plan['_end'].dt.date >= today.date()).sum()), "delta": "Pipeline terrain", "icon": "◔", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end'].dt.date >= today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
-        {"label": "Terminés", "value": int((df_plan['_end'].dt.date < today.date()).sum()), "delta": "Interventions closes", "icon": "✓", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end'].dt.date < today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
+        {"label": "En cours / à venir", "value": int((df_plan['_end_date'] >= today.date()).sum()), "delta": "Pipeline terrain", "icon": "◔", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end_date'] >= today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#ffb84d", "accent_bg": "rgba(255,184,77,0.18)", "delta_color": "#ffb84d"},
+        {"label": "Terminés", "value": int((df_plan['_end_date'] < today.date()).sum()), "delta": "Interventions closes", "icon": "✓", "fill_pct": 100 if len(df_plan) == 0 else int(((df_plan['_end_date'] < today.date()).sum() / max(len(df_plan), 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
     ])
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -4060,10 +4164,10 @@ elif page == "Planning":
                 for i, day in enumerate(week):
                     if day != 0:
                         current_date = datetime(sel_y, sel_m, day).date()
-                        evs = df_plan[(df_plan["_start"].dt.date <= current_date) & (df_plan["_end"].dt.date >= current_date)]
+                        evs = df_plan[(df_plan["_start_date"] <= current_date) & (df_plan["_end_date"] >= current_date)]
                         label = str(day)
                         if not evs.empty:
-                            termine = (evs["_end"].dt.date < today.date()).all()
+                            termine = (evs["_end_date"] < today.date()).all()
                             label += " 🟢" if termine else " 🔵"
                         if cols_w[i].button(label, key=f"d_{sel_y}_{sel_m}_{day}", use_container_width=True):
                             st.session_state["selected_date"] = datetime(sel_y, sel_m, day)
@@ -4071,7 +4175,7 @@ elif page == "Planning":
         if "selected_date" in st.session_state:
             sd = st.session_state["selected_date"]
             st.markdown(f"### Chantiers du {sd.strftime('%d/%m/%Y')}")
-            day_events = df_plan[(df_plan["_start"].dt.date <= sd.date()) & (df_plan["_end"].dt.date >= sd.date())]
+            day_events = df_plan[(df_plan["_start_date"] <= sd.date()) & (df_plan["_end_date"] >= sd.date())]
 
             if day_events.empty:
                 st.info("Aucun chantier prévu ce jour.")
@@ -4087,7 +4191,7 @@ elif page == "Planning":
                     debut = row["_start"].strftime("%d/%m/%Y")
                     fin_  = row["_end"].strftime("%d/%m/%Y")
                     duree = (row["_end"] - row["_start"]).days + 1
-                    termine = row["_end"].date() < today.date()
+                    termine = row["_end_date"] < today.date()
                     color = "#00d68f" if termine else "#4f8ef7"
                     progress_pct = int(row.get("_progress_pct", 0))
                     status_label = row.get("_status_label", "En cours")
