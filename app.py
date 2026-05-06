@@ -103,6 +103,32 @@ html, body, [data-testid="stAppViewContainer"] {{
     -webkit-font-smoothing: antialiased;
 }}
 
+/* Verrouillage lisibilité globale (évite textes/titres "fantômes") */
+h1, h2, h3, h4, h5, h6,
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4,
+[data-testid="stMarkdownContainer"] h5,
+[data-testid="stMarkdownContainer"] h6 {{
+    color: var(--text-main) !important;
+    opacity: 1 !important;
+}}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span,
+label,
+[data-testid="stCaptionContainer"] {{
+    color: var(--text-muted) !important;
+    opacity: 1 !important;
+}}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] details > summary {{
+    color: var(--text-main) !important;
+    opacity: 1 !important;
+}}
+
 [data-testid="stDataFrame"] div[role="grid"] div[role="row"]:hover {{
     background-color: rgba(79, 142, 247, 0.15) !important;
     transition: background 0.2s ease;
@@ -212,6 +238,9 @@ html, body, [data-testid="stAppViewContainer"] {{
 hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
 
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label [role="radio"] {{
+    display: none !important;
+}}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {{
     padding: 10px 14px;
     background: transparent;
@@ -252,6 +281,9 @@ section.main .stRadio > div[role="radiogroup"] > label {{
     white-space: nowrap;
 }}
 section.main .stRadio > div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
+section.main .stRadio div[role="radiogroup"] label [role="radio"] {{
+    display: none !important;
+}}
 section.main .stRadio > div[role="radiogroup"] > label p {{
     margin: 0 !important;
     font-size: 0.88rem !important;
@@ -268,6 +300,18 @@ section.main .stRadio > div[role="radiogroup"] > label[data-checked="true"] p {{
 }}
 section.main .stRadio > div[role="radiogroup"] > label:hover:not([data-checked="true"]) {{
     background: var(--bg-card) !important;
+}}
+
+/* Fallback global: masque les puces radio natives Streamlit */
+.stRadio div[role="radiogroup"] label [role="radio"] {{
+    width: 0 !important;
+    min-width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
 }}
 
 .pulse-dot {{
