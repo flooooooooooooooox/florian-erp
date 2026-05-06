@@ -40,6 +40,14 @@ if st.session_state.themes == "light":
     --text-dim: #64748B;
     --border: rgba(15,23,42,0.12);
     --border-hover: rgba(37,99,235,0.45);
+    --hero-grad-a: rgba(37,99,235,0.12);
+    --hero-grad-b: rgba(14,165,233,0.10);
+    --hero-grad-c: rgba(255,184,77,0.14);
+    --hero-title: #0B1220;
+    --hero-subtitle: #334155;
+    --hero-chip-text: #1e3a8a;
+    --hero-chip-bg: rgba(37,99,235,0.10);
+    --hero-chip-border: rgba(37,99,235,0.22);
     """
     chart_bg = "#FFFFFF"
     chart_font = "#0B1220"
@@ -55,6 +63,14 @@ else:
     --text-dim: #3d5473;
     --border: rgba(255,255,255,0.06);
     --border-hover: rgba(79,142,247,0.35);
+    --hero-grad-a: rgba(79,142,247,0.18);
+    --hero-grad-b: rgba(255,184,77,0.16);
+    --hero-grad-c: rgba(19,34,56,0.98);
+    --hero-title: #f8fbff;
+    --hero-subtitle: #9fb3cc;
+    --hero-chip-text: #dbe8ff;
+    --hero-chip-bg: rgba(255,255,255,0.04);
+    --hero-chip-border: rgba(255,255,255,0.08);
     """
     chart_bg = "rgba(0,0,0,0)"
     chart_font = "#e8f0fe"
@@ -284,21 +300,21 @@ st.markdown("""
     padding: 24px 26px;
     margin: 0 0 18px 0;
     background:
-        radial-gradient(circle at top right, rgba(255,184,77,0.16), transparent 24%),
-        radial-gradient(circle at left center, rgba(79,142,247,0.18), transparent 28%),
-        linear-gradient(135deg, rgba(19,34,56,0.98), rgba(10,17,30,0.98));
+        radial-gradient(circle at top right, var(--hero-grad-c), transparent 24%),
+        radial-gradient(circle at left center, var(--hero-grad-a), transparent 28%),
+        linear-gradient(135deg, var(--bg-card), var(--hero-grad-b));
     box-shadow: 0 24px 60px rgba(0,0,0,0.22);
 }
 .ceo-hero-title {
     font-size: 2.15rem;
     font-weight: 800;
     letter-spacing: -0.04em;
-    color: #f8fbff;
+    color: var(--hero-title);
     margin-bottom: 6px;
 }
 .ceo-hero-subtitle {
     font-size: 0.95rem;
-    color: #9fb3cc;
+    color: var(--hero-subtitle);
     max-width: 900px;
     line-height: 1.55;
 }
@@ -309,9 +325,9 @@ st.markdown("""
     margin-top: 18px;
 }
 .ceo-chip {
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
-    color: #dbe8ff;
+    border: 1px solid var(--hero-chip-border);
+    background: var(--hero-chip-bg);
+    color: var(--hero-chip-text);
     border-radius: 999px;
     padding: 8px 12px;
     font-size: 0.8rem;
@@ -4270,17 +4286,17 @@ elif page == "Planning":
   .label-sub  {{ font-size: 0.65rem; color: {gantt_muted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   #chart-area {{ flex: 1; overflow-x: hidden; position: relative; cursor: grab; }}
   #chart-area.dragging {{ cursor: grabbing; }}
-  #header-row {{ display: flex; height: 48px; background: #0f1e30; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 10; }}
+  #header-row {{ display: flex; height: 48px; background: {gantt_panel}; border-bottom: 1px solid {gantt_border}; position: sticky; top: 0; z-index: 10; }}
   .month-header {{ position: absolute; top: 0; height: 20px; display: flex; align-items: center; padding: 0 8px; font-size: 0.7rem; font-weight: 700; color: #4f8ef7; border-right: 1px solid rgba(79,142,247,0.2); white-space: nowrap; overflow: hidden; }}
   .day-header {{ position: absolute; bottom: 0; height: 28px; text-align: center; font-size: 0.62rem; color: {gantt_muted}; border-right: 1px solid {gantt_row_border}; display: flex; align-items: center; justify-content: center; font-weight: 600; }}
   .day-header.today-h {{ color: #ffb84d; font-weight: 800; }}
-  .day-header.weekend-h {{ color: #3d5473; }}
+  .day-header.weekend-h {{ color: {gantt_muted}; opacity: 0.7; }}
   #bars-container {{ position: relative; }}
   .task-bar-row {{ height: 48px; display: flex; align-items: center; border-bottom: 1px solid {gantt_row_border}; position: relative; transition: background 0.1s; }}
-  .task-bar-row:hover {{ background: rgba(79,142,247,0.04); }}
+  .task-bar-row:hover {{ background: rgba(79,142,247,0.08); }}
   .bg-cell {{ position: absolute; top: 0; bottom: 0; }}
-  .bg-weekend {{ background: rgba(255,255,255,0.015); }}
-  .bg-today {{ background: rgba(255,184,77,0.07); border-right: 2px solid rgba(255,184,77,0.5); }}
+  .bg-weekend {{ background: {gantt_row_border}; }}
+  .bg-today {{ background: rgba(255,184,77,0.14); border-right: 2px solid rgba(255,184,77,0.65); }}
   .task-bar {{ position: absolute; height: 28px; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 0.72rem; font-weight: 700; color: #fff; cursor: pointer; z-index: 2; top: 10px; transition: filter 0.15s, box-shadow 0.15s; overflow: hidden; }}
   .task-bar:hover {{ filter: brightness(1.18); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }}
   .task-bar:active {{ transform: scale(0.99); }}
@@ -4733,7 +4749,7 @@ goToday();
 
                 st.markdown(f"""
                 <div style="border:1px solid rgba(79,142,247,0.25);border-radius:14px;overflow:hidden;
-                    background:#080f1a;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+                    background:{gantt_bg};box-shadow:0 8px 32px rgba(0,0,0,0.2);">
                 """, unsafe_allow_html=True)
                 components.html(gantt_html, height=520, scrolling=True)
                 st.markdown("</div>", unsafe_allow_html=True)
