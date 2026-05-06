@@ -31,19 +31,19 @@ def toggle_theme():
 
 if st.session_state.themes == "light":
     theme_css_vars = """
-    --bg-app: #F8FAFC;
-    --bg-surface: #F1F5F9;
+    --bg-app: #F6F8FC;
+    --bg-surface: #EDF2F7;
     --bg-card: #FFFFFF;
-    --bg-sidebar: #F1F5F9;
-    --text-main: #0F172A;
-    --text-muted: #475569;
-    --text-dim: #94A3B8;
-    --border: rgba(0,0,0,0.1);
-    --border-hover: rgba(79,142,247,0.5);
+    --bg-sidebar: #EDF2F7;
+    --text-main: #0B1220;
+    --text-muted: #334155;
+    --text-dim: #64748B;
+    --border: rgba(15,23,42,0.12);
+    --border-hover: rgba(37,99,235,0.45);
     """
     chart_bg = "#FFFFFF"
-    chart_font = "#0F172A"
-    chart_grid = "#E2E8F0"
+    chart_font = "#0B1220"
+    chart_grid = "#CBD5E1"
 else:
     theme_css_vars = """
     --bg-app: #080f1a;
@@ -3957,7 +3957,7 @@ elif page == "Planning":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    _plan_opts = ["Calendrier mensuel", "Liste", "Gantt interactif"]
+    _plan_opts = ["Gantt interactif", "Calendrier mensuel", "Liste"]
     view_mode = st.radio("Vue", _plan_opts, horizontal=True, key="_plan_view_radio", label_visibility="collapsed")
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -4235,41 +4235,48 @@ elif page == "Planning":
                 tasks_json = _json.dumps(tasks, ensure_ascii=False)
                 today_iso  = today_g.isoformat()
 
+                gantt_bg = "#FFFFFF" if st.session_state.themes == "light" else "#080f1a"
+                gantt_panel = "#F8FAFC" if st.session_state.themes == "light" else "#0f1e30"
+                gantt_text = "#0B1220" if st.session_state.themes == "light" else "#e8f0fe"
+                gantt_muted = "#475569" if st.session_state.themes == "light" else "#6b84a3"
+                gantt_border = "rgba(15,23,42,0.14)" if st.session_state.themes == "light" else "rgba(255,255,255,0.08)"
+                gantt_row_border = "rgba(15,23,42,0.08)" if st.session_state.themes == "light" else "rgba(255,255,255,0.04)"
+
                 gantt_html = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: 'Inter', 'Segoe UI', sans-serif; background: #080f1a; color: #e8f0fe; overflow-x: auto; user-select: none; }}
+  body {{ font-family: 'Inter', 'Segoe UI', sans-serif; background: {gantt_bg}; color: {gantt_text}; overflow-x: auto; user-select: none; }}
   #gantt-wrapper {{ min-width: 900px; padding: 12px; }}
   #controls {{ display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }}
-  #controls button {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
+  #controls button {{ background: {gantt_panel}; border: 1px solid {gantt_border}; color: {gantt_text}; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
   #controls button:hover {{ background: #1e3a5f; border-color: #4f8ef7; color: #4f8ef7; }}
   #controls button.active {{ background: #4f8ef7; color: #fff; border-color: #4f8ef7; }}
-  #controls label {{ font-size: 0.78rem; color: #6b84a3; font-weight: 600; }}
+  #controls label {{ font-size: 0.78rem; color: {gantt_muted}; font-weight: 600; }}
   .legend {{ display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }}
-  .legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: #6b84a3; }}
+  .legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: {gantt_muted}; }}
   .legend-dot {{ width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }}
-  .legend-sep {{ width: 1px; height: 14px; background: rgba(255,255,255,0.1); margin: 0 4px; }}
+  .legend-sep {{ width: 1px; height: 14px; background: {gantt_border}; margin: 0 4px; }}
   #gantt-container {{ display: flex; }}
   #task-labels {{ flex-shrink: 0; width: 210px; }}
-  .label-header {{ height: 48px; display: flex; align-items: flex-end; padding: 0 10px 8px; font-size: 0.7rem; color: #3d5473; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid rgba(255,255,255,0.06); }}
-  .task-row-label {{ height: 48px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: background 0.12s; gap: 8px; }}
+  .label-header {{ height: 48px; display: flex; align-items: flex-end; padding: 0 10px 8px; font-size: 0.7rem; color: {gantt_muted}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid {gantt_border}; }}
+  .task-row-label {{ height: 48px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid {gantt_row_border}; cursor: pointer; transition: background 0.12s; gap: 8px; }}
   .task-row-label:hover {{ background: rgba(79,142,247,0.08); }}
   .label-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
   .label-text {{ flex: 1; overflow: hidden; }}
-  .label-main {{ font-size: 0.78rem; font-weight: 600; color: #e8f0fe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-  .label-sub  {{ font-size: 0.65rem; color: #6b84a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .label-main {{ font-size: 0.78rem; font-weight: 600; color: {gantt_text}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .label-sub  {{ font-size: 0.65rem; color: {gantt_muted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   #chart-area {{ flex: 1; overflow-x: hidden; position: relative; cursor: grab; }}
   #chart-area.dragging {{ cursor: grabbing; }}
   #header-row {{ display: flex; height: 48px; background: #0f1e30; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 10; }}
   .month-header {{ position: absolute; top: 0; height: 20px; display: flex; align-items: center; padding: 0 8px; font-size: 0.7rem; font-weight: 700; color: #4f8ef7; border-right: 1px solid rgba(79,142,247,0.2); white-space: nowrap; overflow: hidden; }}
-  .day-header {{ position: absolute; bottom: 0; height: 28px; text-align: center; font-size: 0.62rem; color: #6b84a3; border-right: 1px solid rgba(255,255,255,0.03); display: flex; align-items: center; justify-content: center; font-weight: 600; }}
+  .day-header {{ position: absolute; bottom: 0; height: 28px; text-align: center; font-size: 0.62rem; color: {gantt_muted}; border-right: 1px solid {gantt_row_border}; display: flex; align-items: center; justify-content: center; font-weight: 600; }}
   .day-header.today-h {{ color: #ffb84d; font-weight: 800; }}
   .day-header.weekend-h {{ color: #3d5473; }}
   #bars-container {{ position: relative; }}
-  .task-bar-row {{ height: 48px; display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); position: relative; transition: background 0.1s; }}
+  .task-bar-row {{ height: 48px; display: flex; align-items: center; border-bottom: 1px solid {gantt_row_border}; position: relative; transition: background 0.1s; }}
   .task-bar-row:hover {{ background: rgba(79,142,247,0.04); }}
   .bg-cell {{ position: absolute; top: 0; bottom: 0; }}
   .bg-weekend {{ background: rgba(255,255,255,0.015); }}
@@ -4281,11 +4288,11 @@ elif page == "Planning":
   .bar-label {{ position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }}
   .bar-num {{ font-size: 0.6rem; opacity: 0.75; margin-left: 4px; }}
   #today-vline {{ position: absolute; top: 0; width: 2px; background: linear-gradient(180deg, #ffb84d, rgba(255,184,77,0.2)); z-index: 5; pointer-events: none; }}
-  #tooltip {{ position: fixed; background: #0f1e30; border: 1px solid rgba(79,142,247,0.35); border-radius: 12px; padding: 14px 18px; font-size: 0.78rem; color: #e8f0fe; pointer-events: none; z-index: 9999; max-width: 280px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); display: none; line-height: 1.8; }}
+  #tooltip {{ position: fixed; background: {gantt_panel}; border: 1px solid rgba(79,142,247,0.35); border-radius: 12px; padding: 14px 18px; font-size: 0.78rem; color: {gantt_text}; pointer-events: none; z-index: 9999; max-width: 280px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); display: none; line-height: 1.8; }}
   .tt-title {{ font-weight: 800; font-size: 0.9rem; color: #4f8ef7; margin-bottom: 8px; border-bottom: 1px solid rgba(79,142,247,0.2); padding-bottom: 6px; }}
   .tt-row {{ display: flex; justify-content: space-between; gap: 16px; }}
-  .tt-lbl {{ color: #6b84a3; font-size: 0.72rem; }}
-  .tt-val {{ font-weight: 600; font-size: 0.75rem; color: #e8f0fe; text-align: right; }}
+  .tt-lbl {{ color: {gantt_muted}; font-size: 0.72rem; }}
+  .tt-val {{ font-weight: 600; font-size: 0.75rem; color: {gantt_text}; text-align: right; }}
   .tt-prog {{ display: flex; align-items: center; gap: 8px; margin-top: 6px; }}
   .tt-prog-bar {{ flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; }}
   .tt-prog-fill {{ height: 100%; border-radius: 99px; background: #4f8ef7; }}
@@ -4293,22 +4300,22 @@ elif page == "Planning":
   /* Modal fiche détail */
   #modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 20px; box-sizing: border-box; }}
   #modal-overlay.open {{ display: flex; }}
-  #modal {{ background: #0f1e30; border: 1px solid rgba(79,142,247,0.3); border-radius: 18px; padding: 28px 32px; max-width: 480px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }}
-  #modal-close {{ position: absolute; top: 16px; right: 18px; background: none; border: none; color: #6b84a3; font-size: 1.3rem; cursor: pointer; line-height: 1; }}
+  #modal {{ background: {gantt_panel}; border: 1px solid rgba(79,142,247,0.3); border-radius: 18px; padding: 28px 32px; max-width: 480px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 24px 80px rgba(0,0,0,0.6); position: relative; }}
+  #modal-close {{ position: absolute; top: 16px; right: 18px; background: none; border: none; color: {gantt_muted}; font-size: 1.3rem; cursor: pointer; line-height: 1; }}
   #modal-close:hover {{ color: #ff5c7a; }}
   #modal-title {{ font-size: 1.2rem; font-weight: 800; color: #4f8ef7; margin-bottom: 18px; padding-right: 24px; }}
   .modal-badge {{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 16px; }}
   .modal-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }}
-  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: #e8f0fe; word-break: break-word; }}
+  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: {gantt_text}; word-break: break-word; }}
   .modal-field {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; }}
-  .modal-field-label {{ font-size: 0.65rem; font-weight: 700; color: #6b84a3; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }}
-  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: #e8f0fe; }}
+  .modal-field-label {{ font-size: 0.65rem; font-weight: 700; color: {gantt_muted}; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }}
+  .modal-field-val {{ font-size: 0.85rem; font-weight: 600; color: {gantt_text}; }}
   .modal-prog-wrap {{ margin-top: 4px; }}
   .modal-prog-track {{ height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; margin-top: 6px; }}
   .modal-prog-fill {{ height: 100%; border-radius: 99px; }}
 
   /* Export button */
-  #export-btn {{ background: #132238; border: 1px solid rgba(255,255,255,0.08); color: #e8f0fe; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
+  #export-btn {{ background: {gantt_panel}; border: 1px solid {gantt_border}; color: {gantt_text}; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.15s; }}
   #export-btn:hover {{ border-color: #00d68f; color: #00d68f; }}
 </style>
 </head>
@@ -4387,11 +4394,23 @@ function setZoom(days) {{
 }}
 
 function goToday() {{
-  startDate = addDays(TODAY, -Math.floor(visibleDays * 0.25));
-  render();
+  const onlyToday = TASKS.filter(t => {{
+    const tStart = parseDate(t.start);
+    const tEnd = parseDate(t.end);
+    return tStart <= TODAY && tEnd >= TODAY;
+  }});
+  if (onlyToday.length === 0) {{
+    alert("Aucun chantier actif aujourd'hui.");
+    return;
+  }}
+  startDate = new Date(TODAY);
+  visibleDays = 1;
+  DAY_W = 72;
+  document.querySelectorAll('#controls button[id^="z"]').forEach(b => b.classList.remove('active'));
+  render(onlyToday);
 }}
 
-function render() {{
+function render(tasksSource = TASKS) {{
   if (!startDate) startDate = addDays(TODAY, -7);
   const days = [];
   for (let i = 0; i < visibleDays; i++) days.push(addDays(startDate, i));
@@ -4444,7 +4463,7 @@ function render() {{
   const existingRows = labels.querySelectorAll('.task-row-label');
   existingRows.forEach(r => r.remove());
 
-  TASKS.forEach((t, i) => {{
+  tasksSource.forEach((t, i) => {{
     const el = document.createElement('div');
     el.className = 'task-row-label';
     el.title = [t.client, t.chantier, t.num].filter(Boolean).join(' — ');
@@ -4476,12 +4495,12 @@ function render() {{
       cell.className = 'bg-cell ' + (isToday ? 'bg-today' : 'bg-weekend');
       cell.style.left   = (i * DAY_W) + 'px';
       cell.style.width  = DAY_W + 'px';
-      cell.style.height = (TASKS.length * 48) + 'px';
+      cell.style.height = (tasksSource.length * 48) + 'px';
       bc.insertBefore(cell, bc.firstChild);
     }}
   }});
 
-  TASKS.forEach((t, i) => {{
+  tasksSource.forEach((t, i) => {{
     const row = document.createElement('div');
     row.className = 'task-bar-row';
     row.style.width = totalW + 'px';
@@ -4536,7 +4555,7 @@ function render() {{
   const tl = document.getElementById('today-vline');
   if (todayOff >= 0 && todayOff <= visibleDays) {{
     tl.style.left    = (todayOff * DAY_W) + 'px';
-    tl.style.height  = (TASKS.length * 48) + 'px';
+    tl.style.height  = (tasksSource.length * 48) + 'px';
     tl.style.display = 'block';
   }} else {{
     tl.style.display = 'none';
@@ -5691,11 +5710,15 @@ elif page == "Coordonnées & RGPD":
 
     with st.container(border=True):
         st.markdown("### Coordonnées")
-        st.markdown("**Entreprise** : FLOXIA")
-        st.markdown("**Responsable** : Florian")
-        st.markdown("**Application** : ERP Streamlit interne")
-        st.markdown("**Email** : flogagnebien611@gmail.com")
-        st.markdown("**Téléphone** : 06 33 79 05 42")
+        left_c, right_c = st.columns(2)
+        with left_c:
+            st.markdown("**Entreprise** : FLOXIA")
+            st.markdown("**Responsable de traitement** : Florian")
+            st.markdown("**Application** : ERP Streamlit interne")
+        with right_c:
+            st.markdown("**Email** : flogagnebien611@gmail.com")
+            st.markdown("**Téléphone** : 06 33 79 05 42")
+            st.markdown("**Support** : assistance interne")
 
     with st.container(border=True):
         st.markdown("### Utilisation des données")
@@ -5706,6 +5729,30 @@ elif page == "Coordonnées & RGPD":
         st.markdown(
             "Certaines actions peuvent envoyer des informations vers des automatisations `n8n` "
             "pour générer des documents, envoyer des notifications ou signaler des retards."
+        )
+        st.markdown(
+            "Ces traitements sont réalisés uniquement pour le suivi opérationnel des devis, factures, "
+            "paiements, chantiers, obligations administratives et qualité de service."
+        )
+
+    with st.container(border=True):
+        st.markdown("### Conditions d'utilisation")
+        st.markdown(
+            "L'accès à cette application est strictement réservé aux utilisateurs autorisés. "
+            "Chaque utilisateur est responsable de toute action effectuée avec son compte."
+        )
+        st.markdown(
+            "Il est interdit de transmettre ses identifiants, d'extraire des données en dehors du cadre "
+            "professionnel, ou de modifier des informations sans validation métier."
+        )
+        st.markdown(
+            "Tout usage non conforme peut entraîner une suspension de compte, un audit des accès "
+            "et des mesures internes de sécurité."
+        )
+        st.info(
+            "Copyright : le code, l'interface et la structure fonctionnelle de cette application ERP "
+            "sont protégés. Toute reproduction, diffusion, adaptation ou exploitation sans autorisation "
+            "écrite préalable est interdite."
         )
 
     with st.container(border=True):
@@ -5719,8 +5766,10 @@ elif page == "Coordonnées & RGPD":
         )
 
     with st.container(border=True):
-        st.markdown("### Bonnes pratiques RGPD")
+        st.markdown("### RGPD (bonnes pratiques renforcées)")
         st.markdown("- Ne partage pas d'identifiants ou de secrets Google Service Account.")
         st.markdown("- N'envoie que les données strictement necessaires aux automatisations.")
         st.markdown("- Vérifie les informations client avant tout envoi ou toute relance.")
         st.markdown("- Déconnecte-toi en fin de session sur un poste partagé.")
+        st.markdown("- Respecte les demandes de correction ou suppression des données.")
+        st.markdown("- Signale immédiatement tout accès suspect ou toute fuite d'informations.")
