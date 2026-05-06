@@ -25,9 +25,23 @@ st.set_page_config(
 # ── THEME (WHITE / DARK MODE) ──────────────────────────────────────────────────
 if "themes" not in st.session_state:
     st.session_state.themes = "dark"
+if "ui_density" not in st.session_state:
+    st.session_state.ui_density = "Normal"
 
 def toggle_theme():
     st.session_state.themes = "light" if st.session_state.themes == "dark" else "dark"
+
+_density_map = {
+    "Compact": {"font": 0.93, "space": 0.88, "tap": 40},
+    "Normal": {"font": 1.00, "space": 1.00, "tap": 44},
+    "Large": {"font": 1.08, "space": 1.16, "tap": 50},
+}
+_density_cfg = _density_map.get(st.session_state.get("ui_density", "Normal"), _density_map["Normal"])
+density_css_vars = f"""
+    --font-scale: {_density_cfg["font"]};
+    --space-scale: {_density_cfg["space"]};
+    --tap-min-height: {_density_cfg["tap"]}px;
+"""
 
 if st.session_state.themes == "light":
     theme_css_vars = """
@@ -83,6 +97,7 @@ st.markdown(f"""
 
 :root {{
     {theme_css_vars}
+    {density_css_vars}
     --primary: #4f8ef7;
     --primary-glow: rgba(79,142,247,0.15);
     --success: #00d68f;
@@ -101,6 +116,8 @@ html, body, [data-testid="stAppViewContainer"] {{
     font-family: 'Inter', sans-serif;
     color: var(--text-main);
     -webkit-font-smoothing: antialiased;
+    font-size: calc(15px * var(--font-scale));
+    line-height: calc(1.45 * var(--space-scale));
 }}
 
 /* Verrouillage lisibilité globale (évite textes/titres "fantômes") */
@@ -142,6 +159,19 @@ label,
 
 /* Mobile: flèche/sidebar toggle plus grande et facile à toucher */
 @media (max-width: 900px) {{
+    .stButton > button {{
+        min-height: 46px !important;
+    }}
+    section.main .stRadio > div[role="radiogroup"] > label {{
+        min-height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+    }}
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stSelectbox"] div[data-baseweb="select"] {{
+        min-height: 44px !important;
+    }}
     [data-testid="collapsedControl"],
     [data-testid="stSidebarCollapseButton"],
     button[aria-label*="sidebar" i],
@@ -176,7 +206,7 @@ label,
     background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-surface) 100%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px 22px !important;
+    padding: calc(20px * var(--space-scale)) calc(22px * var(--space-scale)) !important;
     position: relative;
     overflow: hidden;
     transition: transform 0.2s ease, border-color 0.2s ease;
@@ -239,7 +269,8 @@ label,
     border: 1px solid var(--border) !important;
     background: var(--bg-card) !important;
     color: var(--text-main) !important;
-    padding: 8px 16px !important;
+    padding: calc(8px * var(--space-scale)) calc(16px * var(--space-scale)) !important;
+    min-height: var(--tap-min-height) !important;
 }}
 .stButton > button:hover {{
     border-color: var(--primary) !important;
@@ -270,7 +301,7 @@ hr {{ border-color: var(--border) !important; margin: 16px 0 !important; }}
     display: none !important;
 }}
 [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label {{
-    padding: 10px 14px;
+    padding: calc(10px * var(--space-scale)) calc(14px * var(--space-scale));
     background: transparent;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -300,7 +331,7 @@ section.main .stRadio > div[role="radiogroup"] {{
     margin-bottom: 4px;
 }}
 section.main .stRadio > div[role="radiogroup"] > label {{
-    padding: 7px 16px !important;
+    padding: calc(7px * var(--space-scale)) calc(16px * var(--space-scale)) !important;
     background: transparent;
     border-radius: 6px !important;
     cursor: pointer;
@@ -909,8 +940,10 @@ def chantier_status_meta(progress_pct, is_finished=False):
     return "En cours", "#4f8ef7", "rgba(79,142,247,0.14)"
 
 def show_data_source_error(message: str, clear_fn=None, retry_key: str = "retry_data_source"):
-    st.error(message)
-    st.info("La source est peut-être lente/indisponible. Réessaie dans quelques secondes.")
+    st.warning("Impossible de charger cette section pour le moment.")
+    st.caption("La source est peut-être temporairement lente ou indisponible.")
+    with st.expander("Détails techniques (optionnel)", expanded=False):
+        st.code(str(message)[:1200], language="text")
     if st.button("Réessayer", key=retry_key):
         if clear_fn:
             clear_fn()
@@ -1245,6 +1278,16 @@ with st.sidebar:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.button("Basculer thème", on_click=toggle_theme, use_container_width=True)
+    density_choice = st.selectbox(
+        "Confort d'affichage",
+        ["Compact", "Normal", "Large"],
+        index=["Compact", "Normal", "Large"].index(st.session_state.get("ui_density", "Normal")),
+        key="ui_density_select",
+        help="Ajuste la taille des textes, espacements et zones tactiles.",
+    )
+    if density_choice != st.session_state.get("ui_density", "Normal"):
+        st.session_state.ui_density = density_choice
+        st.rerun()
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
     user = st.session_state.get("username", "")
@@ -1314,6 +1357,65 @@ with st.sidebar:
     if page in pages:
         st.session_state["_page_index"] = pages.index(page)
     page = page_key_map.get(page, page)
+    st.markdown(
+        """
+        <script>
+        (function () {
+          const d = window.parent.document;
+          if (window.__floxiaShortcutsBound) return;
+          window.__floxiaShortcutsBound = true;
+          let chord = "";
+          let chordTimer = null;
+
+          function inInput(el) {
+            if (!el) return false;
+            const tag = (el.tagName || "").toLowerCase();
+            return tag === "input" || tag === "textarea" || el.isContentEditable;
+          }
+          function clickNav(labelContains) {
+            const radios = Array.from(d.querySelectorAll('[data-testid="stSidebar"] label p'));
+            const target = radios.find(p => (p.textContent || "").toLowerCase().includes(labelContains));
+            if (target) target.closest("label")?.click();
+          }
+          function focusSearch() {
+            const selectors = [
+              'input[placeholder*="Rechercher"]',
+              'input[placeholder*="rechercher"]',
+              'input[placeholder*="Filtrer"]',
+              'input[placeholder*="filtrer"]'
+            ];
+            for (const s of selectors) {
+              const el = d.querySelector(s);
+              if (el) { el.focus(); el.select?.(); return; }
+            }
+          }
+
+          d.addEventListener("keydown", function (e) {
+            if (inInput(e.target)) return;
+            const k = (e.key || "").toLowerCase();
+            if (k === "/") {
+              e.preventDefault();
+              focusSearch();
+              return;
+            }
+            if (k === "g") {
+              chord = "g";
+              clearTimeout(chordTimer);
+              chordTimer = setTimeout(() => { chord = ""; }, 900);
+              return;
+            }
+            if (chord === "g") {
+              if (k === "d") clickNav("devis");
+              if (k === "p") clickNav("planning");
+              if (k === "f") clickNav("factures");
+              chord = "";
+            }
+          }, true);
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
