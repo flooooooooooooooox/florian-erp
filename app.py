@@ -2567,7 +2567,7 @@ elif "Notifications" in page:
                         # ── Affichage dates début / fin ────────────────────────
                         if duree_raw:
                             st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** · {duree_raw}")
-                         else:
+                        else:
                             st.warning("⚠️ Durée introuvable dans chatmemory2 — date de fin estimée à J+6.")
                             st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}**")
                         # ── Horaires rapides ───────────────────────────────────
