@@ -2345,6 +2345,32 @@ elif "Notifications" in page:
         except Exception as e:
             return str(e), pd.DataFrame()
 
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _get_date_realisation(u, numero_devis):
+        try:
+            _, gsa_json = get_user_credentials(u)
+            if not gsa_json:
+                return None
+            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+            gc = gspread.authorize(creds)
+            sh = gc.open("chatmemory2")
+            ws = sh.sheet1
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return None
+            headers = [h.strip().lower() for h in vals[0]]
+            idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
+            idx_date = next((i for i, h in enumerate(headers) if "date_realisation" in h or "date realisation" in h), None)
+            if idx_num is None or idx_date is None:
+                return None
+            for row in vals[1:]:
+                if len(row) > idx_num and row[idx_num].strip() == numero_devis.strip():
+                    if len(row) > idx_date and row[idx_date].strip():
+                        return row[idx_date].strip()
+            return None
+        except Exception:
+            return None
+
     def _ensure_col(headers, row_vals, candidates):
         idx = None
         headers_l = [h.strip().lower() for h in headers]
@@ -2394,7 +2420,6 @@ elif "Notifications" in page:
 
         st.markdown("---")
 
-        # Chargement des calendriers disponibles
         calendars_available = get_calendars_list(user)
 
         if nb_attente_notif == 0:
@@ -2407,8 +2432,20 @@ elif "Notifications" in page:
                 montant = str(row.get("montant", "")).strip()
                 date_r  = str(row.get("date_reception", "")).strip()
 
+                # Valeurs par défaut
+                date_debut_notif   = datetime.today().date()
+                date_fin_notif     = date_debut_notif + timedelta(days=6)
+                heure_intervention = datetime.strptime("08:00", "%H:%M").time()
+                heure_fin          = datetime.strptime("17:00", "%H:%M").time()
+
+                # Récupère la date de réalisation depuis chatmemory2
+                date_realisation_raw = _get_date_realisation(user, numero)
+                if date_realisation_raw:
+                    dt_real = parse_flexible_date(date_realisation_raw)
+                    if not pd.isna(dt_real):
+                        date_fin_notif = dt_real.date()
+
                 with st.container(border=True):
-                    # ── En-tête notification ──────────────────────────────────
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                       <div>
@@ -2421,14 +2458,12 @@ elif "Notifications" in page:
                     <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:14px;">{montant} €</div>
                     """, unsafe_allow_html=True)
 
-                    # ── Salarié ───────────────────────────────────────────────
                     salarie_sel = st.selectbox(
                         "Salarié assigné",
                         ["— Choisir —"] + salaries,
                         key=f"notif_sal_{idx}"
                     )
 
-                    # ── Sélection du calendrier à consulter ───────────────────
                     cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
                     cal_choisi_nom = st.selectbox(
                         "Calendrier à consulter (disponibilités)",
@@ -2437,7 +2472,6 @@ elif "Notifications" in page:
                         help="Choisissez le calendrier du salarié pour voir ses disponibilités"
                     )
 
-                    # ── Navigation semaine ────────────────────────────────────
                     if f"cal_week_offset_{idx}" not in st.session_state:
                         st.session_state[f"cal_week_offset_{idx}"] = 0
 
@@ -2463,7 +2497,6 @@ elif "Notifications" in page:
                             st.session_state[f"cal_week_offset_{idx}"] += 1
                             st.rerun()
 
-                    # ── Chargement et affichage des événements ────────────────
                     events_by_day = {}
                     if cal_choisi_nom != "— Choisir un calendrier —":
                         cal_id = calendars_available[cal_choisi_nom]
@@ -2481,7 +2514,6 @@ elif "Notifications" in page:
                     st.markdown("<br>", unsafe_allow_html=True)
                     render_mini_calendar(events_by_day, jours_semaine_cal, today_cal, f"{idx}_{salarie_sel}")
 
-                    # ── Détail du jour sélectionné ────────────────────────────
                     selected_day_iso = st.session_state.get("cal_selected_day")
                     if selected_day_iso:
                         selected_date = datetime.fromisoformat(selected_day_iso).date()
@@ -2526,6 +2558,13 @@ elif "Notifications" in page:
 
                         # ── Date de début = jour sélectionné ──────────────────
                         date_debut_notif = selected_date
+
+                        # ── Affichage dates début / fin ────────────────────────
+                        if date_realisation_raw and not pd.isna(parse_flexible_date(date_realisation_raw)):
+                            st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** (date de réalisation depuis chatmemory2)")
+                        else:
+                            st.warning("⚠️ Date de réalisation introuvable dans chatmemory2 — date de fin estimée à J+6.")
+                            st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}**")
 
                         # ── Horaires rapides ───────────────────────────────────
                         st.markdown(
@@ -2576,22 +2615,9 @@ elif "Notifications" in page:
                                 key=f"notif_heure_fin_{idx}"
                             )
 
-                        # ── Durée en semaines ──────────────────────────────────
-                        duree_semaines = st.number_input(
-                            "Durée (semaines)",
-                            min_value=1, value=1, step=1,
-                            key=f"notif_semaines_{idx}",
-                        )
-                        date_fin_notif = date_debut_notif + timedelta(days=(int(duree_semaines) * 7) - 1)
-                        st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** · {int(duree_semaines)} semaine(s)")
-
                     else:
                         st.info("👆 Clique sur un jour dans le calendrier pour choisir la date de début des travaux.")
-                        date_debut_notif = datetime.today().date()
-                        date_fin_notif   = date_debut_notif + timedelta(days=6)
-                        heure_intervention = datetime.strptime("08:00", "%H:%M").time()
-                        heure_fin          = datetime.strptime("17:00", "%H:%M").time()
-                        duree_semaines     = 1
+
                     custom_slots = []
 
                     # ── Boutons action ─────────────────────────────────────────
@@ -2622,7 +2648,6 @@ elif "Notifications" in page:
                             elif not selected_day_iso:
                                 st.error("Clique sur un jour dans le calendrier pour choisir la date de début.")
                             else:
-                                tranches_json = json.dumps(custom_slots, ensure_ascii=False)
                                 payload_notif = {
                                     "numero_devis":       numero,
                                     "nom_client":         client,
@@ -2630,7 +2655,7 @@ elif "Notifications" in page:
                                     "montant":            montant,
                                     "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
                                     "date_fin_travaux":   date_fin_notif.strftime("%Y-%m-%d"),
-                                    "duree_semaines":     int(duree_semaines),
+                                    "duree_semaines":     max(1, (date_fin_notif - date_debut_notif).days // 7),
                                     "heure_intervention": heure_intervention.strftime("%H:%M"),
                                     "heure_fin":          heure_fin.strftime("%H:%M"),
                                     "tranches_horaires":  custom_slots,
@@ -2639,7 +2664,6 @@ elif "Notifications" in page:
                                     "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 }
 
-                                # Création événement dans le calendrier salarié
                                 if cal_choisi_nom != "— Choisir un calendrier —":
                                     cal_id_sel = calendars_available[cal_choisi_nom]
                                     ev_title   = f"{client} - {objet} ({salarie_sel})"
@@ -2657,7 +2681,6 @@ elif "Notifications" in page:
                                     else:
                                         st.warning("Impossible de créer l'événement dans le calendrier (vérifier les droits).")
 
-                                # Envoi n8n
                                 try:
                                     resp, send_err = post_n8n(WEBHOOK_REPONSE, payload_notif)
                                     if send_err:
