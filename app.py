@@ -5538,8 +5538,14 @@ elif page == "Salariés":
         salaries_connus = sorted([s for s in df_s["_sal"].unique() if s], key=str.lower)
         # Ajouter aussi les salariés de l'onglet liste même sans chantier cette semaine
         salaries_liste  = sorted(jours_salaries.keys(), key=str.lower)
-        all_salaries_merged = list({normalize_name(s): s for s in salaries_liste + salaries_connus}.values())
-        all_salaries    = sorted(all_salaries_merged, key=str.lower)
+        _seen = {}
+        for s in salaries_liste + salaries_connus:
+            key = normalize_name(s)
+            if key not in _seen:
+                _seen[key] = s
+            elif s in salaries_liste:
+                _seen[key] = s
+        all_salaries    = sorted(_seen.values(), key=str.lower)
 
         def jours_reels(sal_nom, start_d, end_d):
             jours_fixes = jours_salaries.get(sal_nom, ["Lun", "Mar", "Mer", "Jeu", "Ven"])
