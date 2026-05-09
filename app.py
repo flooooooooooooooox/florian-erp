@@ -5924,8 +5924,11 @@ elif page == "Salariés":
                 "fin": hf.strftime("%H:%M")
             }
 
+        APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw06HmzeuDHgmg5nW19VJyjvQgc7VWLkU0i-srTWGz-rfItxvtUIZ-OfEVcc_sxztIJ/exec"
+
         if st.button("💾 Enregistrer les horaires de la semaine", use_container_width=True, key="btn_save_horaires"):
             try:
+                # ── 1. Enregistre dans l'onglet planning (comme avant) ────────
                 ws_planning, err_wp = get_worksheet(user, "planning")
                 if err_wp:
                     sh, _ = get_spreadsheet(user)
@@ -5937,7 +5940,6 @@ elif page == "Salariés":
                 cell_value = f"semaine_{num_semaine}:" + ",".join(blocs)
 
                 all_planning_vals = ws_planning.get_all_values()
-
                 if not all_planning_vals:
                     ws_planning.update_cell(1, 1, sel_sal_cfg)
                     ws_planning.update_cell(2, 1, cell_value)
@@ -5948,7 +5950,6 @@ elif page == "Salariés":
                         if h.strip().lower() == sel_sal_cfg.strip().lower():
                             sal_col_plan = ci
                             break
-
                     if sal_col_plan is None:
                         sal_col_plan = len(plan_headers)
                         ws_planning.update_cell(1, sal_col_plan + 1, sel_sal_cfg)
@@ -5968,7 +5969,109 @@ elif page == "Salariés":
 
                 _load_planning_raw.clear()
                 st.success(f"✅ Horaires semaine {num_semaine} enregistrés pour {sel_sal_cfg}.")
+
+                # ── 2. Met à jour le Google Calendar via Apps Script ──────────
+                # Cherche les lignes du salarié dans suivie pour trouver les EventIds
+                sh_main, _ = get_spreadsheet(user)
+                ws_suivie  = sh_main.worksheet("suivie")
+                all_suivie = ws_suivie.get_all_values()
+
+                if all_suivie and len(all_suivie) > 1:
+                    headers_suivie = [h.strip() for h in all_suivie[0]]
+
+                    # Trouve les colonnes utiles
+                    def find_col(headers, *kws):
+                        for kw in kws:
+                            for i, h in enumerate(headers):
+                                if kw.lower() in h.strip().lower():
+                                    return i
+                        return -1
+
+                    idx_sal      = find_col(headers_suivie, "salarié", "salarie", "salar")
+                    idx_eventids = find_col(headers_suivie, "EventIds", "eventids")
+                    idx_debut    = find_col(headers_suivie, "Date début des travaux", "date debut", "debut")
+                    idx_fin      = find_col(headers_suivie, "Date de fin des travaux", "date fin")
+
+                    cal_errors   = []
+                    cal_success  = 0
+
+                    if idx_sal >= 0 and idx_eventids >= 0:
+                        JOURS_KEYS_MAP = ["lun","mar","mer","jeu","ven","sam","dim"]
+
+                        for row_i, suivie_row in enumerate(all_suivie[1:], start=2):
+                            # Vérifie si c'est le bon salarié
+                            if len(suivie_row) <= idx_sal:
+                                continue
+                            sal_cell = str(suivie_row[idx_sal]).strip().lower()
+                            if sel_sal_cfg.strip().lower() not in sal_cell and sal_cell not in sel_sal_cfg.strip().lower():
+                                continue
+
+                            # Récupère les EventIds de cette ligne
+                            if len(suivie_row) <= idx_eventids:
+                                continue
+                            raw_ids = str(suivie_row[idx_eventids]).strip()
+                            if not raw_ids or raw_ids == "{}" or not raw_ids.startswith("{"):
+                                continue
+
+                            try:
+                                event_ids = json.loads(raw_ids)
+                            except Exception:
+                                continue
+
+                            # Pour chaque jour modifié dans new_overrides
+                            for jour_key, hv in new_overrides.items():
+                                # jour_key = "lun", "mar", etc.
+                                # Trouve la date correspondante dans jours_sem
+                                jour_idx = JOURS_KEYS_MAP.index(jour_key) if jour_key in JOURS_KEYS_MAP else -1
+                                if jour_idx < 0:
+                                    continue
+
+                                # Trouve la date ISO de ce jour dans la semaine affichée
+                                date_iso = None
+                                for j_date, j_nom in zip(jours_sem, jours_noms):
+                                    if j_date.weekday() == jour_idx:
+                                        date_iso = j_date.isoformat()
+                                        break
+
+                                if not date_iso or date_iso not in event_ids:
+                                    continue
+
+                                # Appelle Apps Script pour mettre à jour cet event
+                                payload_as = {
+                                    "spreadsheet_id": "1sHLzdg-76Wpz3oxlEfgP0_qmUp5fzkuiUc-oUMYClY0",
+                                    "row_index":      row_i,
+                                    "date_key":       date_iso,
+                                    "heure_debut":    hv["debut"],
+                                    "heure_fin":      hv["fin"]
+                                }
+
+                                try:
+                                    resp_as = requests.post(
+                                        APPS_SCRIPT_URL,
+                                        json=payload_as,
+                                        timeout=15,
+                                        headers={"Content-Type": "application/json"}
+                                    )
+                                    result_as = resp_as.json()
+                                    if result_as.get("success"):
+                                        cal_success += 1
+                                        st.caption(f"📅 Calendar mis à jour : {date_iso} → {hv['debut']} à {hv['fin']}")
+                                    else:
+                                        cal_errors.append(f"{date_iso} : {result_as.get('error', '?')}")
+                                except Exception as ex_as:
+                                    cal_errors.append(f"{date_iso} : {str(ex_as)[:80]}")
+
+                    if cal_success > 0:
+                        st.success(f"📅 {cal_success} événement(s) Google Calendar mis à jour.")
+                    if cal_errors:
+                        with st.expander(f"⚠️ {len(cal_errors)} erreur(s) Calendar", expanded=False):
+                            for err in cal_errors:
+                                st.caption(err)
+                    if cal_success == 0 and not cal_errors:
+                        st.info("ℹ️ Aucun événement Calendar trouvé pour ces jours (EventIds manquants — relance le Apps Script d'abord).")
+
                 st.rerun()
+
             except Exception as ex:
                 st.error(f"Erreur : {ex}")
 
