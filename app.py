@@ -695,27 +695,33 @@ def get_calendars_list(username):
     except Exception:
         return {}
 
-@st.cache_data(ttl=60, show_spinner=False)
-def get_calendar_events(username, calendar_id, date_debut_str, date_fin_str):
-    _, gsa_json = get_user_credentials(username)
-    if not gsa_json:
-        return []
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_chatmemory2_durees(u):
+    """Charge toutes les durées de chatmemory2 en une seule requête."""
     try:
-        creds = Credentials.from_service_account_info(
-            json.loads(gsa_json),
-            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
-        )
-        service = build("calendar", "v3", credentials=creds)
-        events_result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=f"{date_debut_str}T00:00:00Z",
-            timeMax=f"{date_fin_str}T23:59:59Z",
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
-        return events_result.get("items", [])
+        _, gsa_json = get_user_credentials(u)
+        if not gsa_json:
+            return {}
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open("chatmemory2")
+        ws = sh.sheet1
+        vals = ws.get_all_values()
+        if not vals or len(vals) < 2:
+            return {}
+        headers = [h.strip().lower() for h in vals[0]]
+        idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
+        idx_duree = next((i for i, h in enumerate(headers) if "dur" in h and "travaux" in h), None)
+        if idx_num is None or idx_duree is None:
+            return {}
+        result = {}
+        for row in vals[1:]:
+            if len(row) > idx_num and row[idx_num].strip():
+                duree = row[idx_duree].strip() if len(row) > idx_duree else ""
+                result[row[idx_num].strip()] = duree
+        return result
     except Exception:
-        return []
+        return {}
 
 def create_calendar_event(username, calendar_id, title, description, location, start_dt, end_dt):
     _, gsa_json = get_user_credentials(username)
@@ -2441,7 +2447,8 @@ elif "Notifications" in page:
                 # Récupère la date de réalisation depuis chatmemory2
                 # Récupère la durée depuis chatmemory2
 # Récupère la durée depuis chatmemory2
-                duree_raw = _get_duree_travaux(user, numero)
+                _durees_map = _load_chatmemory2_durees(user)
+                duree_raw = _durees_map.get(numero, "")
                 if duree_raw:
                     duree_str = duree_raw.lower().replace("jours", "").replace("jour", "").strip()
                     try:
