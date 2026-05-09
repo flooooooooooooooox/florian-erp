@@ -6169,9 +6169,17 @@ elif page == "Salariés":
                         hdrs_tmp = [h.strip() for h in all_tmp[0]]
                         idx_num_tmp = next((i for i, h in enumerate(hdrs_tmp) if "eventid" in h.lower()), -1)
                         idx_sal_tmp = next((i for i, h in enumerate(hdrs_tmp) if "salar" in h.lower()), -1)
+                        # Cherche la colonne numéro de devis
+                        idx_num_devis = next(
+                            (i for i, h in enumerate(hdrs_tmp) if "n°" in h.lower() or "num" in h.lower() or "devis" in h.lower()),
+                        -1
+                        )
+                        # Récupère le numéro du chantier sélectionné
+                        num_devis_sel = str(sel_ch_row.get(COL_NUM, "")).strip() if COL_NUM else ""
+
                         for ri, rv in enumerate(all_tmp[1:], start=2):
-                            raw = str(rv[idx_num_tmp]).strip() if idx_num_tmp >= 0 and len(rv) > idx_num_tmp else ""
-                            if raw == raw_ids_ch and raw_ids_ch:
+                            raw = str(rv[idx_num_devis]).strip() if idx_num_devis >= 0 and len(rv) > idx_num_devis else ""
+                            if raw == num_devis_sel and num_devis_sel:
                                 _row_index_ch = ri
                                 break
 
