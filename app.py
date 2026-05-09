@@ -2346,31 +2346,31 @@ elif "Notifications" in page:
             return str(e), pd.DataFrame()
 
     @st.cache_data(ttl=60, show_spinner=False)
-    def _get_date_realisation(u, numero_devis):
-        try:
-            _, gsa_json = get_user_credentials(u)
-            if not gsa_json:
-                return None
-            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-            gc = gspread.authorize(creds)
-            sh = gc.open("chatmemory2")
-            ws = sh.sheet1
-            vals = ws.get_all_values()
-            if not vals or len(vals) < 2:
-                return None
-            headers = [h.strip().lower() for h in vals[0]]
-            idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
-            idx_date = next((i for i, h in enumerate(headers) if "date_realisation" in h or "date realisation" in h), None)
-            if idx_num is None or idx_date is None:
-                return None
-            for row in vals[1:]:
-                if len(row) > idx_num and row[idx_num].strip() == numero_devis.strip():
-                    if len(row) > idx_date and row[idx_date].strip():
-                        return row[idx_date].strip()
+def _get_duree_travaux(u, numero_devis):
+    try:
+        _, gsa_json = get_user_credentials(u)
+        if not gsa_json:
             return None
-        except Exception:
+        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open("chatmemory2")
+        ws = sh.sheet1
+        vals = ws.get_all_values()
+        if not vals or len(vals) < 2:
             return None
-
+        headers = [h.strip().lower() for h in vals[0]]
+        idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
+        idx_duree = next((i for i, h in enumerate(headers) if "dur" in h and "travaux" in h), None)
+        if idx_num is None or idx_duree is None:
+            return None
+        for row in vals[1:]:
+            if len(row) > idx_num and row[idx_num].strip() == numero_devis.strip():
+                if len(row) > idx_duree and row[idx_duree].strip():
+                    return row[idx_duree].strip()
+        return None
+    except Exception:
+        return None
+        
     def _ensure_col(headers, row_vals, candidates):
         idx = None
         headers_l = [h.strip().lower() for h in headers]
@@ -2439,12 +2439,16 @@ elif "Notifications" in page:
                 heure_fin          = datetime.strptime("17:00", "%H:%M").time()
 
                 # Récupère la date de réalisation depuis chatmemory2
-                date_realisation_raw = _get_date_realisation(user, numero)
-                if date_realisation_raw:
-                    dt_real = parse_flexible_date(date_realisation_raw)
-                    if not pd.isna(dt_real):
-                        date_fin_notif = dt_real.date()
-
+                # Récupère la durée depuis chatmemory2
+                duree_raw = _get_duree_travaux(user, numero)
+                    if duree_raw:
+                    duree_str = duree_raw.lower().replace("jours", "").replace("jour", "").strip()
+                    try:
+                        duree_jours = float(duree_str)
+                        if duree_jours > 0:
+                            date_fin_notif = date_debut_notif + timedelta(days=int(duree_jours))
+                    except ValueError:
+                        pass
                 with st.container(border=True):
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -2560,12 +2564,11 @@ elif "Notifications" in page:
                         date_debut_notif = selected_date
 
                         # ── Affichage dates début / fin ────────────────────────
-                        if date_realisation_raw and not pd.isna(parse_flexible_date(date_realisation_raw)):
-                            st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** (date de réalisation depuis chatmemory2)")
-                        else:
-                            st.warning("⚠️ Date de réalisation introuvable dans chatmemory2 — date de fin estimée à J+6.")
+                        if duree_raw:
+                            st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** · {duree_raw}")
+                         else:
+                            st.warning("⚠️ Durée introuvable dans chatmemory2 — date de fin estimée à J+6.")
                             st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}**")
-
                         # ── Horaires rapides ───────────────────────────────────
                         st.markdown(
                             "<div style='font-weight:700;font-size:0.85rem;color:var(--text-muted);"
