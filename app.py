@@ -1151,19 +1151,26 @@ def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, re
     return None, values
 
 @st.cache_data(ttl=60, show_spinner=False)
-def build_monthly_ca_aggregates(df_in: pd.DataFrame):
-    if df_in.empty:
-        return pd.DataFrame(columns=["_mois_key", "_mois_label", "CA Total", "CA Signé", "CA En attente", "CA Cumul"])
-    work = df_in.copy()
-    work["_mois_key"] = work["_date"].dt.to_period("M").astype(str)
-    work["_mois_label"] = work["_date"].dt.strftime("%b %Y")
-    month_map = work[["_mois_key", "_mois_label"]].drop_duplicates().sort_values("_mois_key")
-    ca_total_m = work.groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA Total"})
-    ca_signe_m = work[work["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA Signé"})
-    ca_attente_m = work[~work["_signe"]].groupby("_mois_key")["_montant"].sum().reset_index().rename(columns={"_montant": "CA En attente"})
-    merged = month_map.merge(ca_total_m, on="_mois_key", how="left").merge(ca_signe_m, on="_mois_key", how="left").merge(ca_attente_m, on="_mois_key", how="left").fillna(0)
-    merged["CA Cumul"] = merged["CA Total"].cumsum()
-    return merged
+def get_calendar_events(username, calendar_id, date_debut_str, date_fin_str):
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return []
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(gsa_json),
+            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
+        )
+        service = build("calendar", "v3", credentials=creds)
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=f"{date_debut_str}T00:00:00Z",
+            timeMax=f"{date_fin_str}T23:59:59Z",
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+        return events_result.get("items", [])
+    except Exception:
+        return []
 
 @st.cache_data(ttl=180, show_spinner=False)
 def get_main_dataset(username: str):
