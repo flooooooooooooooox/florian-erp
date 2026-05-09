@@ -5832,7 +5832,7 @@ elif page == "Salariés":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-# ── ON REVIENT À LA MARGE POUR LA PAGE SUIVANTE ────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE : RETARDS & AVENANTS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Retards & Avenants":
