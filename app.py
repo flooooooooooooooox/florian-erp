@@ -5512,13 +5512,17 @@ elif page == "Salariés":
             if not v:
                 return v
             norm = normalize_name(v)
-    #         Correspondance exacte
+            # 1. Correspondance exacte
             if norm in sal_canonical:
                 return sal_canonical[norm]
-    # Correspondance partielle (ex: "florian gagnebie" → "Florian Gagnebien")
+            # 2. Correspondance par début de mot uniquement (prénom)
+            norm_parts = norm.split()
             for key, canonical in sal_canonical.items():
-                if norm in key or key in norm:
-                    return canonical
+                key_parts = key.split()
+                # Correspondance si le premier mot est identique ET longueur similaire
+                if norm_parts and key_parts and norm_parts[0] == key_parts[0]:
+                    if abs(len(norm) - len(key)) <= 4:  # tolérance faute de frappe
+                        return canonical
             return v
 
         df_s["_sal"] = df_s["_sal"].apply(canonicalize)
