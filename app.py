@@ -5847,48 +5847,50 @@ elif page == "Salariés":
     if sal_view == "⚙️ Jours travaillés":
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
         st.caption("Configure les jours habituels et les horaires de chaque salarié. Ces informations servent au calcul des heures dans le planning semaine.")
- 
-        # Lire les salariés uniques depuis suivie (df_s déjà chargé)
-        salaries_cfg = sorted(
-            list({normalize_name(s): s for s in df_s["_sal"].unique() if s}.values()),
-            key=str.lower
-        )
- 
+
+        # Lire les salariés uniques depuis suivie directement
+        _df_sal_cfg = df.copy()
+        _col_sal_cfg = fcol(_df_sal_cfg, "salarié", "salarie", "salar")
+        if _col_sal_cfg:
+            _sals_raw = _df_sal_cfg[_col_sal_cfg].apply(
+                lambda v: "" if str(v).strip().lower() in ("nan", "none", "") else str(v).strip()
+            ).unique()
+            salaries_cfg = sorted(
+                list({str(s).strip().lower(): s for s in _sals_raw if s}.values()),
+                key=str.lower
+            )
+        else:
+            salaries_cfg = []
+
         if not salaries_cfg:
-            st.warning("Aucun salarié trouvé dans l'onglet 'liste'.")
+            st.warning("Aucun salarié trouvé dans l'onglet 'suivie'.")
             st.stop()
- 
+
         sel_sal_cfg = st.selectbox("Salarié à configurer", salaries_cfg, key="cfg_sal_sel")
- 
-        # Trouver la ligne du salarié
-        row_idx_cfg = None
-        for i, r in enumerate(rows_liste):
-            if len(r) > sal_idx_cfg and r[sal_idx_cfg].strip() == sel_sal_cfg:
-                row_idx_cfg = i
+
+        # Jours fixes
+        jours_fixes_cfg = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
+        for k, v in jours_salaries.items():
+            if normalize_name(k) == normalize_name(sel_sal_cfg):
+                jours_fixes_cfg = v
                 break
- 
-        cur_jours_cfg = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
-        if row_idx_cfg is not None and jour_idx_cfg is not None:
-            r = rows_liste[row_idx_cfg]
-            if len(r) > jour_idx_cfg and r[jour_idx_cfg].strip():
-                cur_jours_cfg = [j.strip() for j in r[jour_idx_cfg].replace(";", ",").split(",") if j.strip() in JOURS_DICO]
- 
+
         st.markdown("##### Jours habituels de travail")
         jours_sel = []
         cols_jours = st.columns(7)
         for i, j in enumerate(JOURS_LIST):
             with cols_jours[i]:
-                checked = st.checkbox(j, value=(j in cur_jours_cfg), key=f"cfg_jour_{j}")
+                checked = st.checkbox(j, value=(j in jours_fixes_cfg), key=f"cfg_jour_{j}")
                 if checked:
                     jours_sel.append(j)
- 
+
         st.markdown("##### Horaires spécifiques pour la semaine")
         num_semaine = lundi.isocalendar()[1]
         st.caption(f"Semaine actuelle : semaine {num_semaine} (du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')})")
- 
+
         overrides_cfg = _get_overrides_for_sal(sel_sal_cfg)
         ov_sem_cfg = overrides_cfg.get(num_semaine, {})
- 
+
         JOURS_KEYS_CFG = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
         new_overrides = {}
         for i, (jour_date, jour_nom) in enumerate(zip(jours_sem, jours_noms)):
@@ -5898,7 +5900,7 @@ elif page == "Salariés":
             cur_ov = ov_sem_cfg.get(jour_key_cfg, {})
             cur_deb = cur_ov.get("debut", "08:00")
             cur_fin = cur_ov.get("fin", "17:00")
- 
+
             c1, c2, c3 = st.columns([2, 2, 2])
             with c1:
                 st.markdown(f"**{jour_nom} {jour_date.strftime('%d/%m')}**")
@@ -5918,83 +5920,55 @@ elif page == "Salariés":
                 "debut": hd.strftime("%H:%M"),
                 "fin": hf.strftime("%H:%M")
             }
- 
-        col_save1, col_save2 = st.columns(2)
- 
-        with col_save1:
-            if st.button("💾 Enregistrer les jours habituels", use_container_width=True, key="btn_save_jours"):
-                try:
-                    ws_liste, err_ws = get_worksheet(user, "liste")
-                    if err_ws:
-                        st.error(err_ws)
+
+        if st.button("💾 Enregistrer les horaires de la semaine", use_container_width=True, key="btn_save_horaires"):
+            try:
+                ws_planning, err_wp = get_worksheet(user, "planning")
+                if err_wp:
+                    sh, _ = get_spreadsheet(user)
+                    ws_planning = sh.add_worksheet(title="planning", rows=100, cols=20)
+
+                blocs = []
+                for jk, hv in new_overrides.items():
+                    blocs.append(f"{jk}_{hv['debut']}-{hv['fin']}")
+                cell_value = f"semaine_{num_semaine}:" + ",".join(blocs)
+
+                all_planning_vals = ws_planning.get_all_values()
+
+                if not all_planning_vals:
+                    ws_planning.update_cell(1, 1, sel_sal_cfg)
+                    ws_planning.update_cell(2, 1, cell_value)
+                else:
+                    plan_headers = [h.strip() for h in all_planning_vals[0]]
+                    sal_col_plan = None
+                    for ci, h in enumerate(plan_headers):
+                        if h.strip().lower() == sel_sal_cfg.strip().lower():
+                            sal_col_plan = ci
+                            break
+
+                    if sal_col_plan is None:
+                        sal_col_plan = len(plan_headers)
+                        ws_planning.update_cell(1, sal_col_plan + 1, sel_sal_cfg)
+                        ws_planning.update_cell(2, sal_col_plan + 1, cell_value)
                     else:
-                        sheet_row = row_idx_cfg + 2 if row_idx_cfg is not None else None
-                        if sheet_row is None:
-                            st.error("Salarié introuvable dans la feuille.")
+                        sem_prefix = f"semaine_{num_semaine}:"
+                        row_found = None
+                        for ri, rv in enumerate(all_planning_vals[1:], start=2):
+                            if len(rv) > sal_col_plan and rv[sal_col_plan].startswith(sem_prefix):
+                                row_found = ri
+                                break
+                        if row_found:
+                            ws_planning.update_cell(row_found, sal_col_plan + 1, cell_value)
                         else:
-                            if jour_idx_cfg is not None:
-                                ws_liste.update_cell(sheet_row, jour_idx_cfg + 1, ", ".join(jours_sel))
-                            else:
-                                # Ajouter la colonne jours si elle n'existe pas
-                                headers_count = len(headers_liste)
-                                ws_liste.update_cell(1, headers_count + 1, "jours")
-                                ws_liste.update_cell(sheet_row, headers_count + 1, ", ".join(jours_sel))
-                            _load_jours_salaries.clear()
-                            _load_liste_raw.clear()
-                            st.success(f"✅ Jours de {sel_sal_cfg} mis à jour : {', '.join(jours_sel)}")
-                            st.rerun()
-                except Exception as ex:
-                    st.error(f"Erreur : {ex}")
- 
-        with col_save2:
-            if st.button("💾 Enregistrer les horaires de la semaine", use_container_width=True, key="btn_save_horaires"):
-                try:
-                    ws_planning, err_wp = get_worksheet(user, "planning")
-                    if err_wp:
-                        st.error(f"Onglet 'planning' inaccessible : {err_wp}")
-                    else:
-                        # Format de stockage : semaine_N: lun_HH:MM-HH:MM, mar_HH:MM-HH:MM, ...
-                        blocs = []
-                        for jk, hv in new_overrides.items():
-                            blocs.append(f"{jk}_{hv['debut']}-{hv['fin']}")
-                        cell_value = f"semaine_{num_semaine}:" + ",".join(blocs)
- 
-                        # Trouver ou créer la colonne du salarié dans planning
-                        all_planning_vals = ws_planning.get_all_values()
-                        if not all_planning_vals:
-                            # Feuille vide, créer l'en-tête
-                            ws_planning.update_cell(1, 1, sel_sal_cfg)
-                            ws_planning.update_cell(2, 1, cell_value)
-                        else:
-                            plan_headers = [h.strip().lower() for h in all_planning_vals[0]]
-                            sal_col_plan = next((i for i, h in enumerate(plan_headers) if h == sel_sal_cfg.strip().lower()), None)
- 
-                            if sal_col_plan is None:
-                                # Ajouter une nouvelle colonne
-                                sal_col_plan = len(all_planning_vals[0])
-                                ws_planning.update_cell(1, sal_col_plan + 1, sel_sal_cfg)
-                                ws_planning.update_cell(2, sal_col_plan + 1, cell_value)
-                            else:
-                                # Chercher si la semaine existe déjà
-                                sem_prefix = f"semaine_{num_semaine}:"
-                                row_found = None
-                                for ri, rv in enumerate(all_planning_vals[1:], start=2):
-                                    if len(rv) > sal_col_plan and rv[sal_col_plan].startswith(sem_prefix):
-                                        row_found = ri
-                                        break
-                                if row_found:
-                                    ws_planning.update_cell(row_found, sal_col_plan + 1, cell_value)
-                                else:
-                                    next_row = len(all_planning_vals) + 1
-                                    ws_planning.update_cell(next_row, sal_col_plan + 1, cell_value)
- 
-                        _load_planning_raw.clear()
-                        st.success(f"✅ Horaires de la semaine {num_semaine} enregistrés pour {sel_sal_cfg}.")
-                        st.rerun()
-                except Exception as ex:
-                    st.error(f"Erreur : {ex}")
- 
-        # Aperçu des overrides actuels
+                            next_row = len(all_planning_vals) + 1
+                            ws_planning.update_cell(next_row, sal_col_plan + 1, cell_value)
+
+                _load_planning_raw.clear()
+                st.success(f"✅ Horaires semaine {num_semaine} enregistrés pour {sel_sal_cfg}.")
+                st.rerun()
+            except Exception as ex:
+                st.error(f"Erreur : {ex}")
+
         if overrides_cfg:
             with st.expander("📋 Historique des horaires modifiés", expanded=False):
                 for sem_n, jours_ov in sorted(overrides_cfg.items()):
