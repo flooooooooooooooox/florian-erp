@@ -5846,6 +5846,9 @@ elif page == "Salariés":
             st.markdown("<br>", unsafe_allow_html=True)
     if sal_view == "⚙️ Jours travaillés":
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
+
+        def normalize_name(n):
+            return str(n).strip().lower()
         st.caption("Configure les jours habituels et les horaires de chaque salarié. Ces informations servent au calcul des heures dans le planning semaine.")
 
         # Lire les salariés uniques depuis suivie directement
