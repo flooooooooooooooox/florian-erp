@@ -5849,9 +5849,12 @@ elif page == "Salariés":
 
         def normalize_name(n):
             return str(n).strip().lower()
-        st.caption("Configure les jours habituels et les horaires de chaque salarié. Ces informations servent au calcul des heures dans le planning semaine.")
 
-        # Lire les salariés uniques depuis suivie directement
+        st.caption("Configure les jours habituels et les horaires de chaque salarié.")
+
+        cfg_tab1, cfg_tab2 = st.tabs(["👤 Par salarié", "🏗️ Par chantier"])
+
+        # ── Lire les salariés uniques depuis suivie ────────────────────────
         _df_sal_cfg = df.copy()
         _col_sal_cfg = fcol(_df_sal_cfg, "salarié", "salarie", "salar")
         if _col_sal_cfg:
@@ -5869,202 +5872,329 @@ elif page == "Salariés":
             st.warning("Aucun salarié trouvé dans l'onglet 'suivie'.")
             st.stop()
 
-        sel_sal_cfg = st.selectbox("Salarié à configurer", salaries_cfg, key="cfg_sal_sel")
-
-        # Jours fixes
-        jours_fixes_cfg = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
-        for k, v in jours_salaries.items():
-            if normalize_name(k) == normalize_name(sel_sal_cfg):
-                jours_fixes_cfg = v
-                break
-
-        st.markdown("##### Jours habituels de travail")
-        jours_sel = []
-        cols_jours = st.columns(7)
-        for i, j in enumerate(JOURS_LIST):
-            with cols_jours[i]:
-                checked = st.checkbox(j, value=(j in jours_fixes_cfg), key=f"cfg_jour_{j}")
-                if checked:
-                    jours_sel.append(j)
-
-        st.markdown("##### Horaires spécifiques pour la semaine")
-        num_semaine = lundi.isocalendar()[1]
-        st.caption(f"Semaine actuelle : semaine {num_semaine} (du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')})")
-
-        overrides_cfg = _get_overrides_for_sal(sel_sal_cfg)
-        ov_sem_cfg = overrides_cfg.get(num_semaine, {})
-
-        JOURS_KEYS_CFG = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
-        new_overrides = {}
-        for i, (jour_date, jour_nom) in enumerate(zip(jours_sem, jours_noms)):
-            if jour_nom not in jours_sel:
-                continue
-            jour_key_cfg = JOURS_KEYS_CFG[jour_date.weekday()]
-            cur_ov = ov_sem_cfg.get(jour_key_cfg, {})
-            cur_deb = cur_ov.get("debut", "08:00")
-            cur_fin = cur_ov.get("fin", "17:00")
-
-            c1, c2, c3 = st.columns([2, 2, 2])
-            with c1:
-                st.markdown(f"**{jour_nom} {jour_date.strftime('%d/%m')}**")
-            with c2:
-                hd = st.time_input(
-                    "Début",
-                    value=__import__("datetime").time(int(cur_deb.split(":")[0]), int(cur_deb.split(":")[1])),
-                    key=f"cfg_hd_{sel_sal_cfg}_{i}"
-                )
-            with c3:
-                hf = st.time_input(
-                    "Fin",
-                    value=__import__("datetime").time(int(cur_fin.split(":")[0]), int(cur_fin.split(":")[1])),
-                    key=f"cfg_hf_{sel_sal_cfg}_{i}"
-                )
-            new_overrides[jour_key_cfg] = {
-                "debut": hd.strftime("%H:%M"),
-                "fin": hf.strftime("%H:%M")
-            }
-
         APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw06HmzeuDHgmg5nW19VJyjvQgc7VWLkU0i-srTWGz-rfItxvtUIZ-OfEVcc_sxztIJ/exec"
 
-        if st.button("💾 Enregistrer les horaires de la semaine", use_container_width=True, key="btn_save_horaires"):
-            try:
-                # ── 1. Enregistre dans l'onglet planning (comme avant) ────────
-                ws_planning, err_wp = get_worksheet(user, "planning")
-                if err_wp:
-                    sh, _ = get_spreadsheet(user)
-                    ws_planning = sh.add_worksheet(title="planning", rows=100, cols=20)
+        # ══════════════════════════════════════════════════════════════════
+        # ONGLET 1 : PAR SALARIÉ
+        # ══════════════════════════════════════════════════════════════════
+        with cfg_tab1:
+            sel_sal_cfg = st.selectbox("Salarié à configurer", salaries_cfg, key="cfg_sal_sel")
 
-                blocs = []
-                for jk, hv in new_overrides.items():
-                    blocs.append(f"{jk}_{hv['debut']}-{hv['fin']}")
-                cell_value = f"semaine_{num_semaine}:" + ",".join(blocs)
+            # Jours fixes
+            jours_fixes_cfg = ["Lun", "Mar", "Mer", "Jeu", "Ven"]
+            for k, v in jours_salaries.items():
+                if normalize_name(k) == normalize_name(sel_sal_cfg):
+                    jours_fixes_cfg = v
+                    break
 
-                all_planning_vals = ws_planning.get_all_values()
-                if not all_planning_vals:
-                    ws_planning.update_cell(1, 1, sel_sal_cfg)
-                    ws_planning.update_cell(2, 1, cell_value)
-                else:
-                    plan_headers = [h.strip() for h in all_planning_vals[0]]
-                    sal_col_plan = None
-                    for ci, h in enumerate(plan_headers):
-                        if h.strip().lower() == sel_sal_cfg.strip().lower():
-                            sal_col_plan = ci
-                            break
-                    if sal_col_plan is None:
-                        sal_col_plan = len(plan_headers)
-                        ws_planning.update_cell(1, sal_col_plan + 1, sel_sal_cfg)
-                        ws_planning.update_cell(2, sal_col_plan + 1, cell_value)
+            st.markdown("##### Jours habituels de travail")
+            jours_sel = []
+            cols_jours = st.columns(7)
+            for i, j in enumerate(JOURS_LIST):
+                with cols_jours[i]:
+                    checked = st.checkbox(j, value=(j in jours_fixes_cfg), key=f"cfg_jour_{j}")
+                    if checked:
+                        jours_sel.append(j)
+
+            st.markdown("##### Horaires spécifiques pour la semaine")
+            num_semaine = lundi.isocalendar()[1]
+            st.caption(f"Semaine {num_semaine} — du {lundi.strftime('%d/%m/%Y')} au {dimanche.strftime('%d/%m/%Y')}")
+
+            overrides_cfg = _get_overrides_for_sal(sel_sal_cfg)
+            ov_sem_cfg = overrides_cfg.get(num_semaine, {})
+
+            JOURS_KEYS_CFG = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+            new_overrides = {}
+            for i, (jour_date, jour_nom) in enumerate(zip(jours_sem, jours_noms)):
+                if jour_nom not in jours_sel:
+                    continue
+                jour_key_cfg = JOURS_KEYS_CFG[jour_date.weekday()]
+                cur_ov = ov_sem_cfg.get(jour_key_cfg, {})
+                cur_deb = cur_ov.get("debut", "08:00")
+                cur_fin = cur_ov.get("fin", "17:00")
+
+                c1, c2, c3 = st.columns([2, 2, 2])
+                with c1:
+                    st.markdown(f"**{jour_nom} {jour_date.strftime('%d/%m')}**")
+                with c2:
+                    hd = st.time_input(
+                        "Début",
+                        value=__import__("datetime").time(int(cur_deb.split(":")[0]), int(cur_deb.split(":")[1])),
+                        key=f"cfg_hd_{sel_sal_cfg}_{i}"
+                    )
+                with c3:
+                    hf = st.time_input(
+                        "Fin",
+                        value=__import__("datetime").time(int(cur_fin.split(":")[0]), int(cur_fin.split(":")[1])),
+                        key=f"cfg_hf_{sel_sal_cfg}_{i}"
+                    )
+                new_overrides[jour_key_cfg] = {
+                    "debut": hd.strftime("%H:%M"),
+                    "fin": hf.strftime("%H:%M")
+                }
+
+            if st.button("💾 Enregistrer les horaires de la semaine", use_container_width=True, key="btn_save_horaires"):
+                try:
+                    ws_planning, err_wp = get_worksheet(user, "planning")
+                    if err_wp:
+                        sh, _ = get_spreadsheet(user)
+                        ws_planning = sh.add_worksheet(title="planning", rows=100, cols=20)
+
+                    blocs = []
+                    for jk, hv in new_overrides.items():
+                        blocs.append(f"{jk}_{hv['debut']}-{hv['fin']}")
+                    cell_value = f"semaine_{num_semaine}:" + ",".join(blocs)
+
+                    all_planning_vals = ws_planning.get_all_values()
+                    if not all_planning_vals:
+                        ws_planning.update_cell(1, 1, sel_sal_cfg)
+                        ws_planning.update_cell(2, 1, cell_value)
                     else:
-                        sem_prefix = f"semaine_{num_semaine}:"
-                        row_found = None
-                        for ri, rv in enumerate(all_planning_vals[1:], start=2):
-                            if len(rv) > sal_col_plan and rv[sal_col_plan].startswith(sem_prefix):
-                                row_found = ri
+                        plan_headers = [h.strip() for h in all_planning_vals[0]]
+                        sal_col_plan = None
+                        for ci, h in enumerate(plan_headers):
+                            if h.strip().lower() == sel_sal_cfg.strip().lower():
+                                sal_col_plan = ci
                                 break
-                        if row_found:
-                            ws_planning.update_cell(row_found, sal_col_plan + 1, cell_value)
+                        if sal_col_plan is None:
+                            sal_col_plan = len(plan_headers)
+                            ws_planning.update_cell(1, sal_col_plan + 1, sel_sal_cfg)
+                            ws_planning.update_cell(2, sal_col_plan + 1, cell_value)
                         else:
-                            next_row = len(all_planning_vals) + 1
-                            ws_planning.update_cell(next_row, sal_col_plan + 1, cell_value)
+                            sem_prefix = f"semaine_{num_semaine}:"
+                            row_found = None
+                            for ri, rv in enumerate(all_planning_vals[1:], start=2):
+                                if len(rv) > sal_col_plan and rv[sal_col_plan].startswith(sem_prefix):
+                                    row_found = ri
+                                    break
+                            if row_found:
+                                ws_planning.update_cell(row_found, sal_col_plan + 1, cell_value)
+                            else:
+                                next_row = len(all_planning_vals) + 1
+                                ws_planning.update_cell(next_row, sal_col_plan + 1, cell_value)
 
-                _load_planning_raw.clear()
-                st.success(f"✅ Horaires semaine {num_semaine} enregistrés pour {sel_sal_cfg}.")
+                    _load_planning_raw.clear()
+                    st.success(f"✅ Horaires semaine {num_semaine} enregistrés pour {sel_sal_cfg}.")
 
-                # ── 2. Met à jour le Google Calendar via Apps Script ────────────────────────
-                sh_main, _ = get_spreadsheet(user)
-                ws_suivie  = sh_main.worksheet("suivie")
-                all_suivie = ws_suivie.get_all_values()
+                    # Mise à jour Google Calendar
+                    sh_main, _ = get_spreadsheet(user)
+                    ws_suivie  = sh_main.worksheet("suivie")
+                    all_suivie = ws_suivie.get_all_values()
 
-                cal_errors  = []
-                cal_success = 0
+                    cal_errors  = []
+                    cal_success = 0
 
-                if all_suivie and len(all_suivie) > 1:
-                    headers_suivie = [h.strip() for h in all_suivie[0]]
+                    if all_suivie and len(all_suivie) > 1:
+                        headers_suivie = [h.strip() for h in all_suivie[0]]
 
-                    def find_col(headers, *kws):
-                        for kw in kws:
-                            for i, h in enumerate(headers):
-                                if kw.lower() in h.strip().lower():
-                                    return i
-                        return -1
+                        def find_col(headers, *kws):
+                            for kw in kws:
+                                for i, h in enumerate(headers):
+                                    if kw.lower() in h.strip().lower():
+                                        return i
+                            return -1
 
-                    idx_sal      = find_col(headers_suivie, "salarié", "salarie", "salar")
-                    idx_eventids = find_col(headers_suivie, "EventIds", "eventids")
+                        idx_sal      = find_col(headers_suivie, "salarié", "salarie", "salar")
+                        idx_eventids = find_col(headers_suivie, "EventIds", "eventids")
 
-                    WEEKDAY_TO_KEY = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+                        WEEKDAY_TO_KEY = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+                        jour_key_to_iso = {}
+                        for j_date in jours_sem:
+                            k = WEEKDAY_TO_KEY[j_date.weekday()]
+                            jour_key_to_iso[k] = j_date.isoformat()
 
-                    jour_key_to_iso = {}
-                    for j_date in jours_sem:
-                        k = WEEKDAY_TO_KEY[j_date.weekday()]
-                        jour_key_to_iso[k] = j_date.isoformat()
-
-                    if idx_sal >= 0 and idx_eventids >= 0:
-                        for row_i, suivie_row in enumerate(all_suivie[1:], start=2):
-                            if len(suivie_row) <= idx_sal:
-                                continue
-                            sal_cell = str(suivie_row[idx_sal]).strip().lower()
-                            sal_cfg_norm = sel_sal_cfg.strip().lower()
-                            if sal_cfg_norm not in sal_cell and sal_cell not in sal_cfg_norm:
-                                continue
-                            if len(suivie_row) <= idx_eventids:
-                                continue
-                            raw_ids = str(suivie_row[idx_eventids]).strip()
-                            if not raw_ids or raw_ids == "{}" or not raw_ids.startswith("{"):
-                                continue
-                            try:
-                                event_ids = json.loads(raw_ids)
-                            except Exception:
-                                continue
-                            for jour_key, hv in new_overrides.items():
-                                date_iso = jour_key_to_iso.get(jour_key)
-                                if not date_iso:
+                        if idx_sal >= 0 and idx_eventids >= 0:
+                            for row_i, suivie_row in enumerate(all_suivie[1:], start=2):
+                                if len(suivie_row) <= idx_sal:
                                     continue
-                                if date_iso not in event_ids:
-                                    cal_errors.append(f"{date_iso} ({jour_key}) : pas d'EventId dans cette ligne")
+                                sal_cell = str(suivie_row[idx_sal]).strip().lower()
+                                sal_cfg_norm = sel_sal_cfg.strip().lower()
+                                if sal_cfg_norm not in sal_cell and sal_cell not in sal_cfg_norm:
                                     continue
-                                payload_as = {
-                                    "spreadsheet_id": "1sHLzdg-76Wpz3oxlEfgP0_qmUp5fzkuiUc-oUMYClY0",
-                                    "row_index":      row_i,
-                                    "date_key":       date_iso,
-                                    "heure_debut":    hv["debut"],
-                                    "heure_fin":      hv["fin"]
-                                }
+                                if len(suivie_row) <= idx_eventids:
+                                    continue
+                                raw_ids = str(suivie_row[idx_eventids]).strip()
+                                if not raw_ids or raw_ids == "{}" or not raw_ids.startswith("{"):
+                                    continue
                                 try:
-                                    resp_as = requests.post(
-                                        APPS_SCRIPT_URL,
-                                        json=payload_as,
-                                        timeout=20,
-                                        headers={"Content-Type": "application/json"}
-                                    )
-                                    result_as = resp_as.json()
-                                    if result_as.get("success"):
-                                        cal_success += 1
-                                        st.caption(f"📅 Calendar mis à jour : {date_iso} → {hv['debut']} à {hv['fin']}")
-                                    else:
-                                        cal_errors.append(f"{date_iso} : {result_as.get('error', '?')}")
-                                except Exception as ex_as:
-                                    cal_errors.append(f"{date_iso} : {str(ex_as)[:80]}")
+                                    event_ids = json.loads(raw_ids)
+                                except Exception:
+                                    continue
+                                for jour_key, hv in new_overrides.items():
+                                    date_iso = jour_key_to_iso.get(jour_key)
+                                    if not date_iso or date_iso not in event_ids:
+                                        continue
+                                    payload_as = {
+                                        "spreadsheet_id": "1sHLzdg-76Wpz3oxlEfgP0_qmUp5fzkuiUc-oUMYClY0",
+                                        "row_index":      row_i,
+                                        "date_key":       date_iso,
+                                        "heure_debut":    hv["debut"],
+                                        "heure_fin":      hv["fin"]
+                                    }
+                                    try:
+                                        resp_as = requests.post(
+                                            APPS_SCRIPT_URL,
+                                            json=payload_as,
+                                            timeout=20,
+                                            headers={"Content-Type": "application/json"}
+                                        )
+                                        result_as = resp_as.json()
+                                        if result_as.get("success"):
+                                            cal_success += 1
+                                            st.caption(f"📅 {date_iso} → {hv['debut']} à {hv['fin']}")
+                                        else:
+                                            cal_errors.append(f"{date_iso} : {result_as.get('error', '?')}")
+                                    except Exception as ex_as:
+                                        cal_errors.append(f"{date_iso} : {str(ex_as)[:80]}")
 
-                if cal_success > 0:
-                    st.success(f"📅 {cal_success} événement(s) Google Calendar mis à jour.")
-                if cal_errors:
-                    with st.expander(f"⚠️ {len(cal_errors)} erreur(s) Calendar", expanded=True):
-                        for err in cal_errors:
-                            st.caption(err)
-                if cal_success == 0 and not cal_errors:
-                    st.info("ℹ️ Aucun EventId trouvé pour ce salarié cette semaine — relance syncSheetToCalendar d'abord.")
+                    if cal_success > 0:
+                        st.success(f"📅 {cal_success} événement(s) Calendar mis à jour.")
+                    if cal_errors:
+                        with st.expander(f"⚠️ {len(cal_errors)} erreur(s) Calendar", expanded=True):
+                            for err in cal_errors:
+                                st.caption(err)
+                    if cal_success == 0 and not cal_errors:
+                        st.info("ℹ️ Aucun EventId trouvé — relance syncSheetToCalendar d'abord.")
 
-                st.rerun()
+                    st.rerun()
 
-            except Exception as ex:
-                st.error(f"Erreur : {ex}")
+                except Exception as ex:
+                    st.error(f"Erreur : {ex}")
 
-        if overrides_cfg:
-            with st.expander("📋 Historique des horaires modifiés", expanded=False):
-                for sem_n, jours_ov in sorted(overrides_cfg.items()):
-                    st.markdown(f"**Semaine {sem_n}**")
-                    for jk, hv in jours_ov.items():
-                        st.caption(f"  {jk} : {hv['debut']} → {hv['fin']}")
+            if overrides_cfg:
+                with st.expander("📋 Historique des horaires modifiés", expanded=False):
+                    for sem_n, jours_ov in sorted(overrides_cfg.items()):
+                        st.markdown(f"**Semaine {sem_n}**")
+                        for jk, hv in jours_ov.items():
+                            st.caption(f"  {jk} : {hv['debut']} → {hv['fin']}")
+
+        # ══════════════════════════════════════════════════════════════════
+        # ONGLET 2 : PAR CHANTIER
+        # ══════════════════════════════════════════════════════════════════
+        with cfg_tab2:
+            st.caption("Modifie les horaires d'un chantier pour un jour précis uniquement.")
+
+            # Sélection salarié
+            sel_sal_ch = st.selectbox("Salarié", salaries_cfg, key="cfg_ch_sal_sel")
+
+            # Chantiers du salarié dans suivie
+            _df_ch_cfg = df.copy()
+            _col_sal_ch = fcol(_df_ch_cfg, "salarié", "salarie", "salar")
+            if _col_sal_ch:
+                _df_ch_cfg["_sal_norm"] = _df_ch_cfg[_col_sal_ch].apply(normalize_name)
+                _df_ch_cfg = _df_ch_cfg[
+                    _df_ch_cfg["_sal_norm"].str.contains(normalize_name(sel_sal_ch), na=False) |
+                    pd.Series([normalize_name(sel_sal_ch) in str(v) for v in _df_ch_cfg[_col_sal_ch]], index=_df_ch_cfg.index)
+                ]
+
+            if _df_ch_cfg.empty:
+                st.info(f"Aucun chantier trouvé pour {sel_sal_ch}.")
+            else:
+                # Labels chantiers
+                def _ch_label(row):
+                    num = str(row.get(COL_NUM, "")).strip() if COL_NUM else ""
+                    cli = str(row.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
+                    obj = str(row.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
+                    parts = [p for p in [num, cli, obj] if p and p.lower() not in ("nan", "none", "")]
+                    return " — ".join(parts) if parts else "Chantier sans nom"
+
+                ch_labels = [_ch_label(row) for _, row in _df_ch_cfg.iterrows()]
+                ch_index  = {lbl: idx for lbl, idx in zip(ch_labels, _df_ch_cfg.index)}
+
+                sel_ch_label = st.selectbox("Chantier", ch_labels, key="cfg_ch_chantier_sel")
+                sel_ch_row   = _df_ch_cfg.loc[ch_index[sel_ch_label]]
+
+                # Récupère les EventIds de ce chantier
+                _col_eventids_ch = None
+                for c in df.columns:
+                    if "eventid" in c.strip().lower():
+                        _col_eventids_ch = c
+                        break
+
+                raw_ids_ch = str(sel_ch_row.get(_col_eventids_ch, "")).strip() if _col_eventids_ch else ""
+                event_ids_ch = {}
+                if raw_ids_ch and raw_ids_ch.startswith("{"):
+                    try:
+                        event_ids_ch = json.loads(raw_ids_ch)
+                    except Exception:
+                        pass
+
+                if not event_ids_ch:
+                    st.warning("Ce chantier n'a pas encore d'EventIds — relance syncSheetToCalendar d'abord.")
+                else:
+                    # Sélection du jour parmi les dates disponibles dans EventIds
+                    dates_dispo = sorted(event_ids_ch.keys())
+                    dates_labels = []
+                    for d in dates_dispo:
+                        try:
+                            dt = datetime.fromisoformat(d)
+                            JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+                            dates_labels.append(f"{JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m/%Y')}")
+                        except Exception:
+                            dates_labels.append(d)
+
+                    sel_date_label = st.selectbox(
+                        "Jour à modifier",
+                        dates_labels,
+                        key="cfg_ch_date_sel"
+                    )
+                    sel_date_iso = dates_dispo[dates_labels.index(sel_date_label)]
+
+                    # Horaires actuels
+                    col_hd2, col_hf2 = st.columns(2)
+                    with col_hd2:
+                        hd_ch = st.time_input(
+                            "Heure de début",
+                            value=__import__("datetime").time(8, 0),
+                            key="cfg_ch_hd"
+                        )
+                    with col_hf2:
+                        hf_ch = st.time_input(
+                            "Heure de fin",
+                            value=__import__("datetime").time(17, 0),
+                            key="cfg_ch_hf"
+                        )
+
+                    # Numéro de ligne dans suivie
+                    _row_index_ch = None
+                    sh_tmp, _ = get_spreadsheet(user)
+                    ws_tmp = sh_tmp.worksheet("suivie")
+                    all_tmp = ws_tmp.get_all_values()
+                    if all_tmp:
+                        hdrs_tmp = [h.strip() for h in all_tmp[0]]
+                        idx_num_tmp = next((i for i, h in enumerate(hdrs_tmp) if "eventid" in h.lower()), -1)
+                        idx_sal_tmp = next((i for i, h in enumerate(hdrs_tmp) if "salar" in h.lower()), -1)
+                        for ri, rv in enumerate(all_tmp[1:], start=2):
+                            raw = str(rv[idx_num_tmp]).strip() if idx_num_tmp >= 0 and len(rv) > idx_num_tmp else ""
+                            if raw == raw_ids_ch and raw_ids_ch:
+                                _row_index_ch = ri
+                                break
+
+                    if st.button("💾 Enregistrer pour ce jour uniquement", use_container_width=True, key="btn_save_ch_horaire"):
+                        if not _row_index_ch:
+                            st.error("Impossible de trouver la ligne dans suivie.")
+                        else:
+                            payload_ch = {
+                                "spreadsheet_id": "1sHLzdg-76Wpz3oxlEfgP0_qmUp5fzkuiUc-oUMYClY0",
+                                "row_index":      _row_index_ch,
+                                "date_key":       sel_date_iso,
+                                "heure_debut":    hd_ch.strftime("%H:%M"),
+                                "heure_fin":      hf_ch.strftime("%H:%M")
+                            }
+                            try:
+                                resp_ch = requests.post(
+                                    APPS_SCRIPT_URL,
+                                    json=payload_ch,
+                                    timeout=20,
+                                    headers={"Content-Type": "application/json"}
+                                )
+                                result_ch = resp_ch.json()
+                                if result_ch.get("success"):
+                                    st.success(f"✅ Horaire mis à jour pour {sel_date_label} : {hd_ch.strftime('%H:%M')} → {hf_ch.strftime('%H:%M')}")
+                                else:
+                                    st.error(f"Erreur Calendar : {result_ch.get('error', '?')}")
+                            except Exception as ex_ch:
+                                st.error(f"Erreur : {ex_ch}")
 
 
  
