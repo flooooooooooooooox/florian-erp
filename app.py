@@ -5848,27 +5848,11 @@ elif page == "Salariés":
         st.markdown("#### ⚙️ Jours de travail & Horaires par salarié")
         st.caption("Configure les jours habituels et les horaires de chaque salarié. Ces informations servent au calcul des heures dans le planning semaine.")
  
-        err_liste, headers_liste, rows_liste = _load_liste_raw(user)
- 
-        if err_liste:
-            st.error(f"Impossible de charger l'onglet 'liste' : {err_liste}")
-            st.stop()
- 
-        if not headers_liste:
-            st.warning("L'onglet 'liste' est vide. Ajoute des salariés.")
-            st.stop()
- 
-        headers_l = [h.strip().lower() for h in headers_liste]
-        sal_idx_cfg = next((i for i, h in enumerate(headers_l) if "salar" in h), 0)
-        jour_idx_cfg = next((i for i, h in enumerate(headers_l) if "jour" in h), None)
- 
-        salaries_cfg = []
-        for r in rows_liste:
-            if len(r) <= sal_idx_cfg:
-                continue
-            nom = r[sal_idx_cfg].strip()
-            if nom:
-                salaries_cfg.append(nom)
+        # Lire les salariés uniques depuis suivie (df_s déjà chargé)
+        salaries_cfg = sorted(
+            list({normalize_name(s): s for s in df_s["_sal"].unique() if s}.values()),
+            key=str.lower
+        )
  
         if not salaries_cfg:
             st.warning("Aucun salarié trouvé dans l'onglet 'liste'.")
