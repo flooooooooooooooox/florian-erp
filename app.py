@@ -6107,9 +6107,14 @@ elif page == "Salariés":
                 # Récupère les EventIds de ce chantier
                 _col_eventids_ch = None
                 for c in df.columns:
-                    if "eventid" in c.strip().lower():
+                    if c.strip().lower() == "eventids":
                         _col_eventids_ch = c
                         break
+                if not _col_eventids_ch:
+                    for c in df.columns:
+                        if "eventids" in c.strip().lower():
+                            _col_eventids_ch = c
+                            break
 
                 raw_ids_ch = str(sel_ch_row.get(_col_eventids_ch, "")).strip() if _col_eventids_ch else ""
                 event_ids_ch = {}
