@@ -2440,8 +2440,9 @@ elif "Notifications" in page:
 
                 # Récupère la date de réalisation depuis chatmemory2
                 # Récupère la durée depuis chatmemory2
+# Récupère la durée depuis chatmemory2
                 duree_raw = _get_duree_travaux(user, numero)
-                    if duree_raw:
+                if duree_raw:
                     duree_str = duree_raw.lower().replace("jours", "").replace("jour", "").strip()
                     try:
                         duree_jours = float(duree_str)
