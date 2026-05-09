@@ -2587,14 +2587,12 @@ elif "Notifications" in page:
 
                     else:
                         st.info("👆 Clique sur un jour dans le calendrier pour choisir la date de début des travaux.")
-                        date_debut_notif = datetime.today().date()
-                        date_fin_notif   = date_debut_notif + timedelta(days=6)
-                        heure_intervention = datetime.strptime("08:00", "%H:%M").time()
-                        heure_fin          = datetime.strptime("17:00", "%H:%M").time()
-                        duree_semaines     = 1
-
-
- 
+                            date_debut_notif = datetime.today().date()
+                            date_fin_notif   = date_debut_notif + timedelta(days=6)
+                            heure_intervention = datetime.strptime("08:00", "%H:%M").time()
+                            heure_fin          = datetime.strptime("17:00", "%H:%M").time()
+                            duree_semaines     = 1
+                        custom_slots = []
 
                     # ── Boutons action ─────────────────────────────────────────
                     col_send, col_del_notif = st.columns([4, 1])
@@ -2623,8 +2621,6 @@ elif "Notifications" in page:
                                 st.error("Sélectionne un(e) salarié(e).")
                             elif not selected_day_iso:
                                 st.error("Clique sur un jour dans le calendrier pour choisir la date de début.")
-                            elif len(custom_slots) == 0:
-                                st.error("Ajoute au moins une tranche horaire.")
                             else:
                                 tranches_json = json.dumps(custom_slots, ensure_ascii=False)
                                 payload_notif = {
