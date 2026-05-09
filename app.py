@@ -6201,6 +6201,11 @@ elif page == "Salariés":
                                     timeout=20,
                                     headers={"Content-Type": "application/json"}
                                 )
+                                st.write(f"Status code : {resp_ch.status_code}")
+                                st.write(f"Réponse brute : {resp_ch.text}")
+                                result_ch = resp_ch.json()
+                                if result_ch.get("success"):
+                                    st.success(...)
                                 result_ch = resp_ch.json()
                                 if result_ch.get("success"):
                                     st.success(f"✅ Horaire mis à jour pour {sel_date_label} : {hd_ch.strftime('%H:%M')} → {hf_ch.strftime('%H:%M')}")
