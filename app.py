@@ -5904,6 +5904,7 @@ elif page == "Salariés":
                     type="primary",
                 ):
                     try:
+                        # ── 1. Sauvegarde dans le Sheet planning ──────────────────
                         ws_pl, err_pl2 = get_worksheet(user, "planning")
                         if err_pl2:
                             sheet_name, gsa_json = get_user_credentials(user)
@@ -5941,16 +5942,65 @@ elif page == "Salariés":
                             new_row = [""] * max(len(headers_pl_cur), col_sal_pl + 1)
                             new_row[col_sal_pl] = cell_val
                             ws_pl.append_row(new_row, value_input_option="USER_ENTERED")
-                        log_activity(
-                            user,
-                            "chantier_modifie",
-                            target=nom_s,
-                            details={"type": "planning_semaine", "semaine": num_semaine, "horaires": new_overrides},
-                        )
+
+                        # ── 2. Mise à jour Google Calendar ────────────────────────
+                        try:
+                            calendars_avail = get_calendars_list(user)
+                            cal_id_sal = None
+                            for cal_name, cal_id in calendars_avail.items():
+                                if cal_name.strip().lower() == nom_s.strip().lower():
+                                    cal_id_sal = cal_id
+                                    break
+
+                            if cal_id_sal:
+                                JOURS_KEYS_FR = {
+                                    "lun": lundi, "mar": lundi + timedelta(days=1),
+                                    "mer": lundi + timedelta(days=2), "jeu": lundi + timedelta(days=3),
+                                    "ven": lundi + timedelta(days=4), "sam": lundi + timedelta(days=5),
+                                    "dim": lundi + timedelta(days=6),
+                                }
+                                _, gsa_json = get_user_credentials(user)
+                                creds_cal = Credentials.from_service_account_info(
+                                    json.loads(gsa_json),
+                                    scopes=["https://www.googleapis.com/auth/calendar"]
+                                )
+                                service_cal = build("calendar", "v3", credentials=creds_cal)
+
+                                for jour_key, jour_date in JOURS_KEYS_FR.items():
+                                    if jour_key not in new_overrides:
+                                        continue
+                                    hdeb = new_overrides[jour_key]["debut"]
+                                    hfin = new_overrides[jour_key]["fin"]
+                                    time_min = f"{jour_date.isoformat()}T00:00:00+02:00"
+                                    time_max = f"{jour_date.isoformat()}T23:59:59+02:00"
+                                    events_result = service_cal.events().list(
+                                        calendarId=cal_id_sal,
+                                        timeMin=time_min,
+                                        timeMax=time_max,
+                                        singleEvents=True,
+                                        orderBy="startTime",
+                                    ).execute()
+                                    for ev in events_result.get("items", []):
+                                        if not ev.get("start", {}).get("dateTime", ""):
+                                            continue
+                                        ev["start"] = {"dateTime": f"{jour_date.isoformat()}T{hdeb}:00", "timeZone": "Europe/Paris"}
+                                        ev["end"]   = {"dateTime": f"{jour_date.isoformat()}T{hfin}:00", "timeZone": "Europe/Paris"}
+                                        service_cal.events().update(calendarId=cal_id_sal, eventId=ev["id"], body=ev).execute()
+
+                                st.success(f"📅 Horaires mis à jour dans le calendrier **{nom_s}**.")
+                            else:
+                                st.warning(f"Calendrier '{nom_s}' non trouvé — seul le Sheet a été mis à jour.")
+
+                        except Exception as ex_cal:
+                            st.warning(f"Sheet sauvegardé mais erreur Calendar : {ex_cal}")
 
                         _load_planning_raw.clear()
+                        _load_liste_raw.clear()
+                        _load_jours_salaries.clear()
+                        log_activity(user, "chantier_modifie", target=nom_s, details={"type": "planning_semaine", "semaine": num_semaine, "horaires": new_overrides})
                         st.success(f"✅ Horaires S{num_semaine} sauvegardés.")
                         st.rerun()
+
                     except Exception as ex:
                         st.error(f"Erreur : {ex}")
 
