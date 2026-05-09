@@ -2593,41 +2593,8 @@ elif "Notifications" in page:
                         heure_fin          = datetime.strptime("17:00", "%H:%M").time()
                         duree_semaines     = 1
 
-                    # ── Tranches horaires par jour ─────────────────────────────
-                    st.markdown(
-                        "<div style='font-weight:700;font-size:0.85rem;color:var(--text-muted);margin:12px 0 6px;'>"
-                        "Tranches horaires par jour de la semaine</div>",
-                        unsafe_allow_html=True,
-                    )
-                    weekday_defs = [
-                        ("lundi", "Lundi"), ("mardi", "Mardi"), ("mercredi", "Mercredi"),
-                        ("jeudi", "Jeudi"), ("vendredi", "Vendredi"), ("samedi", "Samedi"), ("dimanche", "Dimanche"),
-                    ]
-                    custom_slots = []
-                    for day_key, day_label in weekday_defs:
-                        c_day, c_start, c_end = st.columns([2, 2, 2])
-                        with c_day:
-                            use_day = st.checkbox(
-                                day_label,
-                                value=day_key in ["lundi", "mardi", "mercredi", "jeudi", "vendredi"],
-                                key=f"notif_use_{idx}_{day_key}"
-                            )
-                        with c_start:
-                            start_day = st.time_input(
-                                "Début", value=heure_intervention,
-                                key=f"notif_start_{idx}_{day_key}"
-                            )
-                        with c_end:
-                            end_day = st.time_input(
-                                "Fin", value=heure_fin,
-                                key=f"notif_end_{idx}_{day_key}"
-                            )
-                        if use_day:
-                            custom_slots.append({
-                                "jour": day_key,
-                                "debut": start_day.strftime("%H:%M"),
-                                "fin": end_day.strftime("%H:%M"),
-                            })
+
+ 
 
                     # ── Boutons action ─────────────────────────────────────────
                     col_send, col_del_notif = st.columns([4, 1])
