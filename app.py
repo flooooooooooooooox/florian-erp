@@ -5622,64 +5622,141 @@ elif page == "Salariés":
                     # ── Grille 7 jours ─────────────────────────────────────
                     overrides_sal = _get_overrides_for_sal(sal)
                     cols_j = st.columns(7)
-                    for i, (jour, nom_j) in enumerate(zip(jours_sem, jours_noms)):
-                        est_jour_fixe = nom_j in jours_fixes
-                        rows_jour = [
-                            r for _, r in chantiers_sal.iterrows()
-                            if jour in jours_reels(sal, r["_start_d"], r["_end_d"])
-                        ]
-                        nb_j = len(rows_jour)
+for i, (jour, nom_j) in enumerate(zip(jours_sem, jours_noms)):
+    est_jour_fixe = nom_j in jours_fixes
+    rows_jour = [
+        r for _, r in chantiers_sal.iterrows()
+        if jour in jours_reels(sal, r["_start_d"], r["_end_d"])
+    ]
+    nb_j = len(rows_jour)
 
-                        # Calcul heures avec override
-                        h_j = 0.0
-                        for r in rows_jour:
-                            hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal, jour, r, overrides_sal)
-                            if hdeb_eff and hfin_eff:
-                                try:
-                                    h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
-                                    h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
-                                    h_j += max(0, h_fin_f - h_deb_f - PAUSE_H)
-                                except Exception:
-                                    h_j += r["_duree_h"]
-                            else:
-                                h_j += r["_duree_h"]
+    h_j = 0.0
+    for r in rows_jour:
+        hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal, jour, r, overrides_sal)
+        if hdeb_eff and hfin_eff:
+            try:
+                h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
+                h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
+                h_j += max(0, h_fin_f - h_deb_f - PAUSE_H)
+            except Exception:
+                h_j += r["_duree_h"]
+        else:
+            h_j += r["_duree_h"]
 
-                        is_today    = jour == today_s
-                        today_ring  = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
+    is_today   = jour == today_s
+    today_ring = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
 
-                        # Affiche override horaire s'il existe
-                        JOURS_KEYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
-                        jour_key   = JOURS_KEYS[jour.weekday()]
-                        num_sem_j  = jour.isocalendar()[1]
-                        ov_sem     = overrides_sal.get(num_sem_j, {})
-                        ov_badge   = ""
-                        if jour_key in ov_sem:
-                            ov_h = ov_sem[jour_key]
-                            ov_badge = f"<div style='font-size:0.65rem;color:#ffb84d;margin-top:2px;'>✏️ {ov_h['debut']}–{ov_h['fin']}</div>"
+    JOURS_KEYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+    jour_key   = JOURS_KEYS[jour.weekday()]
+    num_sem_j  = jour.isocalendar()[1]
+    ov_sem     = overrides_sal.get(num_sem_j, {})
+    ov_badge   = ""
+    if jour_key in ov_sem:
+        ov_h = ov_sem[jour_key]
+        ov_badge = f"<div style='font-size:0.65rem;color:#ffb84d;margin-top:2px;'>✏️ {ov_h['debut']}–{ov_h['fin']}</div>"
 
-                        if not est_jour_fixe:
-                            bg, border, txt, txt_col = "rgba(0,0,0,0.02)", "var(--border)", "— Repos", "var(--text-dim)"
-                        elif nb_j == 0:
-                            bg, border, txt, txt_col = "rgba(0,214,143,0.06)", "rgba(0,214,143,0.3)", "😴 Libre", "#00d68f"
-                        elif nb_j == 1:
-                            bg, border, txt, txt_col = "rgba(79,142,247,0.08)", "rgba(79,142,247,0.3)", "✅ 1 chantier", "#4f8ef7"
-                        else:
-                            bg, border, txt, txt_col = "rgba(255,92,122,0.1)", "rgba(255,92,122,0.4)", f"⚠️ {nb_j} chantiers", "#ff5c7a"
+    if not est_jour_fixe:
+        bg, border, txt, txt_col = "rgba(0,0,0,0.02)", "var(--border)", "— Repos", "var(--text-dim)"
+    elif nb_j == 0:
+        bg, border, txt, txt_col = "rgba(0,214,143,0.06)", "rgba(0,214,143,0.3)", "😴 Libre", "#00d68f"
+    elif nb_j == 1:
+        bg, border, txt, txt_col = "rgba(79,142,247,0.08)", "rgba(79,142,247,0.3)", "✅ 1 chantier", "#4f8ef7"
+    else:
+        bg, border, txt, txt_col = "rgba(255,92,122,0.1)", "rgba(255,92,122,0.4)", f"⚠️ {nb_j} chantiers", "#ff5c7a"
 
-                        heures_j_str = f"<div style='font-size:0.7rem;color:var(--text-dim);margin-top:2px;'>{h_j:.1f}h</div>" if h_j > 0 else ""
+    heures_j_str = f"<div style='font-size:0.7rem;color:var(--text-dim);margin-top:2px;'>{h_j:.1f}h</div>" if h_j > 0 else ""
 
-                        with cols_j[i]:
-                            st.markdown(
-                                f'<div style="background:{bg};border:1px solid {border};border-radius:8px;'
-                                f'padding:8px 6px;text-align:center;{today_ring}">'
-                                f'<div style="font-weight:700;font-size:0.78rem;color:var(--text-muted);">{nom_j}</div>'
-                                f'<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px;">{jour.strftime("%d/%m")}</div>'
-                                f'<div style="font-size:0.75rem;font-weight:600;color:{txt_col};">{txt}</div>'
-                                f"{heures_j_str}{ov_badge}</div>",
-                                unsafe_allow_html=True,
-                            )
+    with cols_j[i]:
+        st.markdown(
+            f'<div style="background:{bg};border:1px solid {border};border-radius:8px;'
+            f'padding:8px 6px;text-align:center;{today_ring}">'
+            f'<div style="font-weight:700;font-size:0.78rem;color:var(--text-muted);">{nom_j}</div>'
+            f'<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:4px;">{jour.strftime("%d/%m")}</div>'
+            f'<div style="font-size:0.75rem;font-weight:600;color:{txt_col};">{txt}</div>'
+            f"{heures_j_str}{ov_badge}</div>",
+            unsafe_allow_html=True,
+        )
+        # Bouton cliquable sous la carte
+        if nb_j > 0 and est_jour_fixe:
+            selected_key = f"sal_jour_detail_{sal}_{jour.isoformat()}"
+            is_open = st.session_state.get(selected_key, False)
+            btn_label = "▲ Fermer" if is_open else "▼ Détail"
+            if st.button(btn_label, key=f"btn_jour_{sal}_{i}_{jour.isoformat()}", use_container_width=True):
+                st.session_state[selected_key] = not is_open
+                st.rerun()
 
-                    st.markdown("<br>", unsafe_allow_html=True)
+# Détail du jour sélectionné (sous la grille)
+for i, (jour, nom_j) in enumerate(zip(jours_sem, jours_noms)):
+    selected_key = f"sal_jour_detail_{sal}_{jour.isoformat()}"
+    if not st.session_state.get(selected_key, False):
+        continue
+    rows_jour = [
+        r for _, r in chantiers_sal.iterrows()
+        if jour in jours_reels(sal, r["_start_d"], r["_end_d"])
+    ]
+    if not rows_jour:
+        continue
+
+    st.markdown(
+        f"<div style='margin:10px 0 6px;padding:10px 14px;background:rgba(79,142,247,0.06);"
+        f"border:1px solid rgba(79,142,247,0.2);border-radius:10px;'>"
+        f"<div style='font-weight:800;font-size:0.9rem;color:#4f8ef7;margin-bottom:8px;'>"
+        f"📅 {nom_j} {jour.strftime('%d/%m/%Y')}</div>",
+        unsafe_allow_html=True,
+    )
+
+    for r in rows_jour:
+        hdeb_eff, hfin_eff = _get_horaires_pour_jour(sal, jour, r, overrides_sal)
+
+        def _rv(col):
+            if not col or col not in r.index: return ""
+            v = str(r[col]).strip()
+            return "" if v.lower() in ("nan", "none", "") else v
+
+        num_r    = _rv(COL_NUM)
+        client_r = _rv(COL_CLIENT)
+        chant_r  = _rv(COL_CHANTIER)
+        adr_r    = _rv(COL_ADRESSE)
+        mont_r   = _rv(COL_MONTANT)
+
+        duree_eff = 0.0
+        horaire_html = "Horaire non renseigné"
+        if hdeb_eff and hfin_eff:
+            try:
+                h_deb_f = int(hdeb_eff.split(":")[0]) + int(hdeb_eff.split(":")[1]) / 60
+                h_fin_f = int(hfin_eff.split(":")[0]) + int(hfin_eff.split(":")[1]) / 60
+                duree_eff = max(0, h_fin_f - h_deb_f - PAUSE_H)
+            except Exception:
+                duree_eff = r["_duree_h"]
+            horaire_html = (
+                f"<span style='font-size:1.1rem;font-weight:800;color:#ffb84d;'>"
+                f"🕐 {hdeb_eff} → {hfin_eff}</span>"
+                f"<span style='margin-left:10px;font-size:0.82rem;color:var(--text-muted);'>"
+                f"({duree_eff:.1f}h travaillées, pause {PAUSE_H:.0f}h déduite)</span>"
+            )
+
+        # Badge override
+        JOURS_KEYS2 = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+        jour_key2   = JOURS_KEYS2[jour.weekday()]
+        num_sem2    = jour.isocalendar()[1]
+        is_override = jour_key2 in overrides_sal.get(num_sem2, {})
+        ov_badge2   = " <span style='background:rgba(255,184,77,0.2);color:#ffb84d;padding:1px 6px;border-radius:4px;font-size:0.72rem;'>✏️ Horaire modifié</span>" if is_override else ""
+
+        st.markdown(
+            f"<div style='padding:12px 14px;background:var(--bg-card);"
+            f"border:1px solid var(--border);border-radius:8px;margin-bottom:8px;'>"
+            + (f"<span style='background:rgba(79,142,247,0.15);color:#4f8ef7;padding:2px 8px;"
+               f"border-radius:5px;font-size:0.75rem;font-weight:600;margin-right:8px;'>{num_r}</span>" if num_r else "")
+            + (f"<strong style='color:var(--text-main);font-size:0.95rem;'>{client_r}</strong>" if client_r else "")
+            + (f"<div style='font-size:0.85rem;color:var(--text-muted);margin:4px 0 2px;'>{chant_r}</div>" if chant_r else "")
+            + (f"<div style='font-size:0.8rem;color:var(--text-muted);margin-bottom:6px;'>{adr_r}</div>" if adr_r else "")
+            + f"<div style='margin:8px 0 4px;'>{horaire_html}{ov_badge2}</div>"
+            + (f"<div style='font-size:0.8rem;color:#00d68f;font-weight:600;margin-top:6px;'>{mont_r} €</div>" if mont_r else "")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
                     st.markdown(
                         "<div style='font-size:0.82rem;font-weight:700;color:var(--text-muted);"
                         "margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;'>"
