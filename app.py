@@ -14,6 +14,7 @@ import re
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
 from activity_log import log_activity, read_activity_logs
+from googleapiclient.discovery import build
 
 st.set_page_config(
     page_title="Floxia ERP",
@@ -658,6 +659,129 @@ def get_worksheet(username: str, tab_name: str):
         return None, f"Onglet '{tab_name}' introuvable dans le Google Sheet."
     except Exception as e:
         return None, str(e)
+
+def get_calendar_service(username):
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return None
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(gsa_json),
+            scopes=[
+                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/calendar.events",
+            ]
+        )
+        return build("calendar", "v3", credentials=creds)
+    except Exception:
+        return None
+
+@st.cache_data(ttl=120, show_spinner=False)
+def get_calendars_list(username):
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return {}
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(gsa_json),
+            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
+        )
+        service = build("calendar", "v3", credentials=creds)
+        cal_list = service.calendarList().list().execute()
+        calendars = {}
+        for cal in cal_list.get("items", []):
+            calendars[cal["summary"]] = cal["id"]
+        return calendars
+    except Exception:
+        return {}
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_calendar_events(username, calendar_id, date_debut_str, date_fin_str):
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return []
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(gsa_json),
+            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
+        )
+        service = build("calendar", "v3", credentials=creds)
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=f"{date_debut_str}T00:00:00Z",
+            timeMax=f"{date_fin_str}T23:59:59Z",
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+        return events_result.get("items", [])
+    except Exception:
+        return []
+
+def create_calendar_event(username, calendar_id, title, description, location, start_dt, end_dt):
+    _, gsa_json = get_user_credentials(username)
+    if not gsa_json:
+        return None
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(gsa_json),
+            scopes=["https://www.googleapis.com/auth/calendar.events"]
+        )
+        service = build("calendar", "v3", credentials=creds)
+        event = {
+            "summary": title,
+            "description": description,
+            "location": location,
+            "start": {"dateTime": start_dt, "timeZone": "Europe/Paris"},
+            "end":   {"dateTime": end_dt,   "timeZone": "Europe/Paris"},
+        }
+        return service.events().insert(calendarId=calendar_id, body=event).execute()
+    except Exception as e:
+        return None
+
+def render_mini_calendar(events_by_day, semaine_dates, today, sal_name):
+    jours_noms = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    cols = st.columns(7)
+    selected_day = st.session_state.get("cal_selected_day")
+
+    for i, (jour, nom) in enumerate(zip(semaine_dates, jours_noms)):
+        evs = events_by_day.get(jour.isoformat(), [])
+        nb_ev = len(evs)
+        is_today   = jour == today
+        is_sel     = jour.isoformat() == selected_day
+        is_weekend = jour.weekday() >= 5
+
+        if is_sel:
+            bg, border, txt_color = "#1d4ed8", "rgba(29,78,216,0.8)", "#fff"
+        elif nb_ev == 0 and not is_weekend:
+            bg, border, txt_color = "rgba(0,214,143,0.08)", "rgba(0,214,143,0.4)", "#00d68f"
+        elif nb_ev >= 2:
+            bg, border, txt_color = "rgba(255,92,122,0.08)", "rgba(255,92,122,0.4)", "#ff5c7a"
+        elif nb_ev == 1:
+            bg, border, txt_color = "rgba(255,184,77,0.08)", "rgba(255,184,77,0.4)", "#ffb84d"
+        else:
+            bg, border, txt_color = "rgba(0,0,0,0.02)", "var(--border)", "var(--text-dim)"
+
+        today_ring = "box-shadow:0 0 0 2px #ffb84d;" if is_today else ""
+        dispo_txt  = "✅ Libre" if nb_ev == 0 and not is_weekend else (f"⚠️ {nb_ev} event" if nb_ev > 0 else "😴 Repos")
+
+        with cols[i]:
+            st.markdown(
+                f'<div style="background:{bg};border:1px solid {border};border-radius:10px;'
+                f'padding:8px 4px;text-align:center;{today_ring};margin-bottom:4px;">'
+                f'<div style="font-weight:700;font-size:0.78rem;color:var(--text-muted);">{nom}</div>'
+                f'<div style="font-size:0.72rem;color:var(--text-dim);">{jour.strftime("%d/%m")}</div>'
+                f'<div style="font-size:0.72rem;font-weight:600;color:{txt_color};margin-top:3px;">{dispo_txt}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "Choisir" if not is_sel else "✓ Choisi",
+                key=f"cal_day_{jour.isoformat()}_{sal_name}",
+                use_container_width=True,
+                disabled=is_weekend,
+            ):
+                st.session_state["cal_selected_day"] = jour.isoformat()
+                st.rerun()
 
 def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
     """Ouvre la feuille dans le fichier 'e-repporting' (client gspread mis en cache)."""
@@ -2235,70 +2359,9 @@ elif "Notifications" in page:
         return idx
 
     def _upsert_planning_liste(
-        u,
-        numero_devis,
-        nom_client,
-        objet,
-        salarie,
-        date_debut,
-        date_fin,
-        heure_debut,
-        heure_fin,
-        tranches_personnalisees,
+        u, numero_devis, nom_client, objet, salarie,
+        date_debut, date_fin, heure_debut, heure_fin, tranches_personnalisees,
     ):
-        return True, None
-        if err_liste or not ws_liste:
-            return False, f"Impossible d'ouvrir l'onglet liste : {err_liste or 'inconnu'}"
-
-        def _col_to_a1(col_number):
-            out = ""
-            n = int(col_number)
-            while n > 0:
-                n, rem = divmod(n - 1, 26)
-                out = chr(65 + rem) + out
-            return out
-
-        all_vals = ws_liste.get_all_values()
-        if not all_vals:
-            headers = ["numero_devis", "nom_client", "objet", "salarie", "date_debut", "date_fin", "heure_debut", "heure_fin", "tranches_horaires"]
-            ws_liste.append_row(headers, value_input_option="USER_ENTERED")
-            all_vals = [headers]
-        headers = all_vals[0]
-        row_template = [""] * len(headers)
-        idx_num = _ensure_col(headers, row_template, ["numero_devis", "n_devis", "numero"])
-        idx_client = _ensure_col(headers, row_template, ["nom_client", "client"])
-        idx_objet = _ensure_col(headers, row_template, ["objet", "chantier"])
-        idx_sal = _ensure_col(headers, row_template, ["salarie", "salarié"])
-        idx_dd = _ensure_col(headers, row_template, ["date_debut", "date début"])
-        idx_df = _ensure_col(headers, row_template, ["date_fin", "date fin"])
-        idx_hd = _ensure_col(headers, row_template, ["heure_debut", "heure début"])
-        idx_hf = _ensure_col(headers, row_template, ["heure_fin", "heure fin"])
-        idx_slots = _ensure_col(headers, row_template, ["tranches_horaires", "tranches_horaires_personnalisees"])
-
-        row_template[idx_num] = numero_devis
-        row_template[idx_client] = nom_client
-        row_template[idx_objet] = objet
-        row_template[idx_sal] = salarie
-        row_template[idx_dd] = date_debut
-        row_template[idx_df] = date_fin
-        row_template[idx_hd] = heure_debut
-        row_template[idx_hf] = heure_fin
-        row_template[idx_slots] = tranches_personnalisees
-
-        if headers != all_vals[0]:
-            ws_liste.update("1:1", [headers], value_input_option="USER_ENTERED")
-
-        target_row_idx = None
-        for i, row_vals in enumerate(all_vals[1:], start=2):
-            num_val = row_vals[idx_num].strip() if len(row_vals) > idx_num else ""
-            if num_val and num_val == numero_devis:
-                target_row_idx = i
-                break
-        if target_row_idx:
-            last_col = _col_to_a1(len(headers))
-            ws_liste.update(f"A{target_row_idx}:{last_col}{target_row_idx}", [row_template], value_input_option="USER_ENTERED")
-        else:
-            ws_liste.append_row(row_template, value_input_option="USER_ENTERED")
         return True, None
 
     salaries = _load_salaries(user)
@@ -2331,6 +2394,9 @@ elif "Notifications" in page:
 
         st.markdown("---")
 
+        # Chargement des calendriers disponibles
+        calendars_available = get_calendars_list(user)
+
         if nb_attente_notif == 0:
             st.success("Aucune notification en attente.")
         else:
@@ -2342,8 +2408,9 @@ elif "Notifications" in page:
                 date_r  = str(row.get("date_reception", "")).strip()
 
                 with st.container(border=True):
+                    # ── En-tête notification ──────────────────────────────────
                     st.markdown(f"""
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                       <div>
                         <span style="background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;">{numero}</span>
                         <strong style="margin-left:8px;font-size:0.95rem;">{client}</strong>
@@ -2351,163 +2418,316 @@ elif "Notifications" in page:
                       <div style="font-size:0.8rem;color:#64748b;">{date_r}</div>
                     </div>
                     <div style="color:#475569;font-size:0.85rem;margin-bottom:4px;">{objet}</div>
-                    <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:10px;">{montant} €</div>
+                    <div style="color:#1d4ed8;font-weight:700;font-size:0.9rem;margin-bottom:14px;">{montant} €</div>
                     """, unsafe_allow_html=True)
 
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    date_debut_notif = st.date_input(
-                        "Date début travaux",
-                        value=datetime.today(),
-                        key=f"notif_date_{idx}"
-                    )
-                with c2:
-                    heure_intervention = st.time_input(
-                        "Heure de début",
-                        value=datetime.strptime("08:00", "%H:%M").time(),
-                        key=f"notif_heure_{idx}"
-                    )
-                with c3:
-                    heure_fin = st.time_input(
-                        "🕔 Heure de fin",
-                        value=datetime.strptime("17:00", "%H:%M").time(),
-                        key=f"notif_heure_fin_{idx}"
-                    )
-                with c4:
+                    # ── Salarié ───────────────────────────────────────────────
                     salarie_sel = st.selectbox(
-                        "Salarié(e)",
+                        "Salarié assigné",
                         ["— Choisir —"] + salaries,
                         key=f"notif_sal_{idx}"
                     )
 
-                c_week1, c_week2 = st.columns(2)
-                with c_week1:
-                    duree_semaines = st.number_input(
-                        "Durée (semaines)",
-                        min_value=1,
-                        value=1,
-                        step=1,
-                        key=f"notif_semaines_{idx}",
-                    )
-                with c_week2:
-                    date_fin_notif = date_debut_notif + timedelta(days=(int(duree_semaines) * 7) - 1)
-                    st.text_input(
-                        "Date de fin",
-                        value=date_fin_notif.strftime("%d/%m/%Y"),
-                        disabled=True,
-                        key=f"notif_date_fin_txt_{idx}",
+                    # ── Sélection du calendrier à consulter ───────────────────
+                    cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
+                    cal_choisi_nom = st.selectbox(
+                        "Calendrier à consulter (disponibilités)",
+                        cal_options,
+                        key=f"cal_choisi_{idx}",
+                        help="Choisissez le calendrier du salarié pour voir ses disponibilités"
                     )
 
-                st.markdown("Tranches horaires personnalisées par jour")
-                weekday_defs = [
-                    ("lundi", "Lundi"),
-                    ("mardi", "Mardi"),
-                    ("mercredi", "Mercredi"),
-                    ("jeudi", "Jeudi"),
-                    ("vendredi", "Vendredi"),
-                    ("samedi", "Samedi"),
-                    ("dimanche", "Dimanche"),
-                ]
-                custom_slots = []
-                for day_key, day_label in weekday_defs:
-                    c_day, c_start, c_end = st.columns([2, 2, 2])
-                    with c_day:
-                        use_day = st.checkbox(day_label, value=day_key in ["lundi", "mardi", "mercredi", "jeudi", "vendredi"], key=f"notif_use_{idx}_{day_key}")
-                    with c_start:
-                        start_day = st.time_input("Début", value=heure_intervention, key=f"notif_start_{idx}_{day_key}")
-                    with c_end:
-                        end_day = st.time_input("Fin", value=heure_fin, key=f"notif_end_{idx}_{day_key}")
-                    if use_day:
-                        custom_slots.append({
-                            "jour": day_key,
-                            "debut": start_day.strftime("%H:%M"),
-                            "fin": end_day.strftime("%H:%M"),
-                        })
+                    # ── Navigation semaine ────────────────────────────────────
+                    if f"cal_week_offset_{idx}" not in st.session_state:
+                        st.session_state[f"cal_week_offset_{idx}"] = 0
 
-                col_send, col_del_notif = st.columns([4, 1])
-                with col_del_notif:
-                    if st.button("Supprimer", key=f"notif_del_{idx}", use_container_width=True):
-                        try:
-                            ws_del, _ = get_worksheet(user, "notifications")
-                            if ws_del:
-                                ws_del.delete_rows(row_idx + 2)
-                                _load_notifications.clear()
-                                get_pending_notifications_count.clear()
-                                st.success("Notification supprimée.")
-                                st.rerun()
-                        except Exception as ex:
-                            st.error(f"Erreur : {ex}")
-                with col_send:
-                    if st.button("Confirmer et envoyer à n8n", key=f"notif_send_{idx}", use_container_width=True, type="primary"):
-                        if salarie_sel == "— Choisir —":
-                            st.error("Sélectionne un(e) salarié(e).")
-                        elif len(custom_slots) == 0:
-                            st.error("Ajoute au moins une tranche horaire personnalisée.")
+                    offset_cal = st.session_state[f"cal_week_offset_{idx}"]
+                    today_cal  = datetime.now().date()
+                    lundi_cal  = today_cal - timedelta(days=today_cal.weekday()) + timedelta(weeks=offset_cal)
+                    dimanche_cal = lundi_cal + timedelta(days=6)
+                    jours_semaine_cal = [lundi_cal + timedelta(days=i) for i in range(7)]
+
+                    nav1, nav2, nav3 = st.columns([1, 3, 1])
+                    with nav1:
+                        if st.button("◀", key=f"cal_prev_{idx}"):
+                            st.session_state[f"cal_week_offset_{idx}"] -= 1
+                            st.rerun()
+                    with nav2:
+                        st.markdown(
+                            f"<div style='text-align:center;font-weight:700;font-size:0.88rem;color:var(--text-main);'>"
+                            f"Semaine du {lundi_cal.strftime('%d/%m/%Y')} au {dimanche_cal.strftime('%d/%m/%Y')}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with nav3:
+                        if st.button("▶", key=f"cal_next_{idx}"):
+                            st.session_state[f"cal_week_offset_{idx}"] += 1
+                            st.rerun()
+
+                    # ── Chargement et affichage des événements ────────────────
+                    events_by_day = {}
+                    if cal_choisi_nom != "— Choisir un calendrier —":
+                        cal_id = calendars_available[cal_choisi_nom]
+                        raw_events = get_calendar_events(
+                            user, cal_id,
+                            lundi_cal.isoformat(),
+                            dimanche_cal.isoformat()
+                        )
+                        for ev in raw_events:
+                            ev_start = ev.get("start", {})
+                            ev_date  = ev_start.get("date") or ev_start.get("dateTime", "")[:10]
+                            if ev_date:
+                                events_by_day.setdefault(ev_date, []).append(ev)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    render_mini_calendar(events_by_day, jours_semaine_cal, today_cal, f"{idx}_{salarie_sel}")
+
+                    # ── Détail du jour sélectionné ────────────────────────────
+                    selected_day_iso = st.session_state.get("cal_selected_day")
+                    if selected_day_iso:
+                        selected_date = datetime.fromisoformat(selected_day_iso).date()
+                        evs_jour = events_by_day.get(selected_day_iso, [])
+
+                        st.markdown(
+                            f"<div style='margin:12px 0 8px;font-weight:700;font-size:0.9rem;"
+                            f"color:var(--primary);'>📅 {selected_date.strftime('%A %d/%m/%Y').capitalize()}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                        if evs_jour:
+                            st.markdown(
+                                f"<div style='font-size:0.8rem;color:#ffb84d;margin-bottom:8px;'>"
+                                f"⚠️ {len(evs_jour)} événement(s) ce jour</div>",
+                                unsafe_allow_html=True,
+                            )
+                            for ev in evs_jour:
+                                ev_start = ev.get("start", {})
+                                ev_end   = ev.get("end", {})
+                                h_deb    = ev_start.get("dateTime", "")
+                                h_fin    = ev_end.get("dateTime", "")
+                                h_deb_str = datetime.fromisoformat(h_deb).strftime("%H:%M") if h_deb and "T" in h_deb else "Toute la journée"
+                                h_fin_str = datetime.fromisoformat(h_fin).strftime("%H:%M") if h_fin and "T" in h_fin else ""
+                                ev_title  = ev.get("summary", "Sans titre")
+                                st.markdown(
+                                    f'<div style="padding:8px 12px;background:rgba(255,184,77,0.08);'
+                                    f'border:1px solid rgba(255,184,77,0.3);border-radius:8px;margin-bottom:6px;">'
+                                    f'<div style="font-weight:600;font-size:0.85rem;color:var(--text-main);">{ev_title}</div>'
+                                    f'<div style="font-size:0.78rem;color:#ffb84d;">'
+                                    f'{h_deb_str}{" → " + h_fin_str if h_fin_str else ""}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
                         else:
-                            tranches_json = json.dumps(custom_slots, ensure_ascii=False)
-                            payload_notif = {
-                                "numero_devis":       numero,
-                                "nom_client":         client,
-                                "objet":              objet,
-                                "montant":            montant,
-                                "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
-                                "date_fin_travaux":   date_fin_notif.strftime("%Y-%m-%d"),
-                                "duree_semaines":     int(duree_semaines),
-                                "heure_intervention": heure_intervention.strftime("%H:%M"),
-                                "heure_fin":          heure_fin.strftime("%H:%M"),
-                                "tranches_horaires":  custom_slots,
-                                "salarie":            salarie_sel,
-                                "planifie_par":       user,
-                                "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            }
+                            st.markdown(
+                                '<div style="padding:8px 12px;background:rgba(0,214,143,0.08);'
+                                'border:1px solid rgba(0,214,143,0.3);border-radius:8px;margin-bottom:8px;'
+                                'font-size:0.85rem;color:#00d68f;">✅ Salarié disponible ce jour</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        # ── Date de début = jour sélectionné ──────────────────
+                        date_debut_notif = selected_date
+
+                        # ── Horaires rapides ───────────────────────────────────
+                        st.markdown(
+                            "<div style='font-weight:700;font-size:0.85rem;color:var(--text-muted);"
+                            "margin:10px 0 6px;'>Horaires rapides</div>",
+                            unsafe_allow_html=True,
+                        )
+                        HORAIRES_RAPIDES = [
+                            ("07h-16h", "07:00", "16:00"),
+                            ("08h-17h", "08:00", "17:00"),
+                            ("09h-18h", "09:00", "18:00"),
+                            ("10h-19h", "10:00", "19:00"),
+                        ]
+                        cols_h = st.columns(len(HORAIRES_RAPIDES))
+                        heure_sel_key = f"notif_heure_rapide_{idx}"
+                        if heure_sel_key not in st.session_state:
+                            st.session_state[heure_sel_key] = "08h-17h"
+
+                        for i_h, (label_h, hdeb_h, hfin_h) in enumerate(HORAIRES_RAPIDES):
+                            is_active = st.session_state[heure_sel_key] == label_h
+                            with cols_h[i_h]:
+                                if st.button(
+                                    f"{'✓ ' if is_active else ''}{label_h}",
+                                    key=f"hrap_{idx}_{i_h}",
+                                    use_container_width=True,
+                                    type="primary" if is_active else "secondary",
+                                ):
+                                    st.session_state[heure_sel_key] = label_h
+                                    st.session_state[f"notif_hd_val_{idx}"] = hdeb_h
+                                    st.session_state[f"notif_hf_val_{idx}"] = hfin_h
+                                    st.rerun()
+
+                        # ── Horaires manuels ───────────────────────────────────
+                        hd_default = st.session_state.get(f"notif_hd_val_{idx}", "08:00")
+                        hf_default = st.session_state.get(f"notif_hf_val_{idx}", "17:00")
+
+                        col_hd, col_hf = st.columns(2)
+                        with col_hd:
+                            heure_intervention = st.time_input(
+                                "Heure de début",
+                                value=datetime.strptime(hd_default, "%H:%M").time(),
+                                key=f"notif_heure_{idx}"
+                            )
+                        with col_hf:
+                            heure_fin = st.time_input(
+                                "Heure de fin",
+                                value=datetime.strptime(hf_default, "%H:%M").time(),
+                                key=f"notif_heure_fin_{idx}"
+                            )
+
+                        # ── Durée en semaines ──────────────────────────────────
+                        duree_semaines = st.number_input(
+                            "Durée (semaines)",
+                            min_value=1, value=1, step=1,
+                            key=f"notif_semaines_{idx}",
+                        )
+                        date_fin_notif = date_debut_notif + timedelta(days=(int(duree_semaines) * 7) - 1)
+                        st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** · {int(duree_semaines)} semaine(s)")
+
+                    else:
+                        st.info("👆 Clique sur un jour dans le calendrier pour choisir la date de début des travaux.")
+                        date_debut_notif = datetime.today().date()
+                        date_fin_notif   = date_debut_notif + timedelta(days=6)
+                        heure_intervention = datetime.strptime("08:00", "%H:%M").time()
+                        heure_fin          = datetime.strptime("17:00", "%H:%M").time()
+                        duree_semaines     = 1
+
+                    # ── Tranches horaires par jour ─────────────────────────────
+                    st.markdown(
+                        "<div style='font-weight:700;font-size:0.85rem;color:var(--text-muted);margin:12px 0 6px;'>"
+                        "Tranches horaires par jour de la semaine</div>",
+                        unsafe_allow_html=True,
+                    )
+                    weekday_defs = [
+                        ("lundi", "Lundi"), ("mardi", "Mardi"), ("mercredi", "Mercredi"),
+                        ("jeudi", "Jeudi"), ("vendredi", "Vendredi"), ("samedi", "Samedi"), ("dimanche", "Dimanche"),
+                    ]
+                    custom_slots = []
+                    for day_key, day_label in weekday_defs:
+                        c_day, c_start, c_end = st.columns([2, 2, 2])
+                        with c_day:
+                            use_day = st.checkbox(
+                                day_label,
+                                value=day_key in ["lundi", "mardi", "mercredi", "jeudi", "vendredi"],
+                                key=f"notif_use_{idx}_{day_key}"
+                            )
+                        with c_start:
+                            start_day = st.time_input(
+                                "Début", value=heure_intervention,
+                                key=f"notif_start_{idx}_{day_key}"
+                            )
+                        with c_end:
+                            end_day = st.time_input(
+                                "Fin", value=heure_fin,
+                                key=f"notif_end_{idx}_{day_key}"
+                            )
+                        if use_day:
+                            custom_slots.append({
+                                "jour": day_key,
+                                "debut": start_day.strftime("%H:%M"),
+                                "fin": end_day.strftime("%H:%M"),
+                            })
+
+                    # ── Boutons action ─────────────────────────────────────────
+                    col_send, col_del_notif = st.columns([4, 1])
+
+                    with col_del_notif:
+                        if st.button("Supprimer", key=f"notif_del_{idx}", use_container_width=True):
                             try:
-                                resp, send_err = post_n8n(WEBHOOK_REPONSE, payload_notif)
-                                if send_err:
-                                    if send_err == "timeout":
-                                        st.error("Timeout — le webhook n8n ne répond pas.")
-                                    else:
-                                        st.error(f"Erreur réseau : {send_err}")
-                                    continue
-                                if resp.status_code in (200, 201):
-                                    ok_liste, err_liste = _upsert_planning_liste(
-                                        user,
-                                        numero_devis=numero,
-                                        nom_client=client,
-                                        objet=objet,
-                                        salarie=salarie_sel,
-                                        date_debut=date_debut_notif.strftime("%Y-%m-%d"),
-                                        date_fin=date_fin_notif.strftime("%Y-%m-%d"),
-                                        heure_debut=heure_intervention.strftime("%H:%M"),
-                                        heure_fin=heure_fin.strftime("%H:%M"),
-                                        tranches_personnalisees=tranches_json,
-                                    )
-                                    if not ok_liste:
-                                        st.warning(f"Planification envoyée, mais écriture dans liste impossible : {err_liste}")
-                                    ws_n, _ = get_worksheet(user, "notifications")
-                                    if ws_n:
-                                        sheet_row = row_idx + 2
-                                        statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
-                                        if statut_col:
-                                            ws_n.update_cell(sheet_row, statut_col, "planifie")
-                                    log_activity(
-                                        user,
-                                        "chantier_modifie",
-                                        target=numero or client or objet,
-                                        details={
-                                            "type": "planification",
-                                            "salarie": salarie_sel,
-                                            "date_debut": date_debut_notif.strftime("%Y-%m-%d"),
-                                            "date_fin": date_fin_notif.strftime("%Y-%m-%d"),
-                                        },
-                                    )
+                                ws_del, _ = get_worksheet(user, "notifications")
+                                if ws_del:
+                                    ws_del.delete_rows(row_idx + 2)
                                     _load_notifications.clear()
                                     get_pending_notifications_count.clear()
-                                    st.success(f"Planification envoyée à n8n pour {client}.")
+                                    st.success("Notification supprimée.")
                                     st.rerun()
-                                else:
-                                    st.error(f"Erreur n8n : {resp.status_code}")
                             except Exception as ex:
                                 st.error(f"Erreur : {ex}")
+
+                    with col_send:
+                        if st.button(
+                            "✅ Confirmer et envoyer à n8n",
+                            key=f"notif_send_{idx}",
+                            use_container_width=True,
+                            type="primary"
+                        ):
+                            if salarie_sel == "— Choisir —":
+                                st.error("Sélectionne un(e) salarié(e).")
+                            elif not selected_day_iso:
+                                st.error("Clique sur un jour dans le calendrier pour choisir la date de début.")
+                            elif len(custom_slots) == 0:
+                                st.error("Ajoute au moins une tranche horaire.")
+                            else:
+                                tranches_json = json.dumps(custom_slots, ensure_ascii=False)
+                                payload_notif = {
+                                    "numero_devis":       numero,
+                                    "nom_client":         client,
+                                    "objet":              objet,
+                                    "montant":            montant,
+                                    "date_debut_travaux": date_debut_notif.strftime("%Y-%m-%d"),
+                                    "date_fin_travaux":   date_fin_notif.strftime("%Y-%m-%d"),
+                                    "duree_semaines":     int(duree_semaines),
+                                    "heure_intervention": heure_intervention.strftime("%H:%M"),
+                                    "heure_fin":          heure_fin.strftime("%H:%M"),
+                                    "tranches_horaires":  custom_slots,
+                                    "salarie":            salarie_sel,
+                                    "planifie_par":       user,
+                                    "planifie_le":        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                }
+
+                                # Création événement dans le calendrier salarié
+                                if cal_choisi_nom != "— Choisir un calendrier —":
+                                    cal_id_sel = calendars_available[cal_choisi_nom]
+                                    ev_title   = f"{client} - {objet} ({salarie_sel})"
+                                    ev_desc    = f"Client : {client}\nChantier : {objet}\nN° Devis : {numero}\nMontant : {montant} €"
+                                    start_iso  = f"{date_debut_notif.isoformat()}T{heure_intervention.strftime('%H:%M')}:00"
+                                    end_iso    = f"{date_fin_notif.isoformat()}T{heure_fin.strftime('%H:%M')}:00"
+
+                                    created_ev = create_calendar_event(
+                                        user, cal_id_sel,
+                                        ev_title, ev_desc, "",
+                                        start_iso, end_iso
+                                    )
+                                    if created_ev:
+                                        st.success(f"📅 Événement créé dans le calendrier **{cal_choisi_nom}**.")
+                                    else:
+                                        st.warning("Impossible de créer l'événement dans le calendrier (vérifier les droits).")
+
+                                # Envoi n8n
+                                try:
+                                    resp, send_err = post_n8n(WEBHOOK_REPONSE, payload_notif)
+                                    if send_err:
+                                        st.error("Timeout n8n." if send_err == "timeout" else f"Erreur : {send_err}")
+                                    elif resp.status_code in (200, 201):
+                                        ws_n, _ = get_worksheet(user, "notifications")
+                                        if ws_n:
+                                            sheet_row  = row_idx + 2
+                                            statut_col = list(df_notif.columns).index("statut") + 1 if "statut" in df_notif.columns else None
+                                            if statut_col:
+                                                ws_n.update_cell(sheet_row, statut_col, "planifie")
+                                        log_activity(
+                                            user,
+                                            "chantier_modifie",
+                                            target=numero or client or objet,
+                                            details={
+                                                "type": "planification",
+                                                "salarie": salarie_sel,
+                                                "date_debut": date_debut_notif.strftime("%Y-%m-%d"),
+                                                "date_fin": date_fin_notif.strftime("%Y-%m-%d"),
+                                            },
+                                        )
+                                        _load_notifications.clear()
+                                        get_pending_notifications_count.clear()
+                                        get_calendars_list.clear()
+                                        get_calendar_events.clear()
+                                        st.session_state.pop("cal_selected_day", None)
+                                        st.success(f"✅ Planification confirmée pour **{client}**.")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Erreur n8n : {resp.status_code}")
+                                except Exception as ex:
+                                    st.error(f"Erreur : {ex}")
 
     # ── SOUS-ONGLET : E-REPORTING ─────────────────────────────────────────────
     with tab_ereport:
