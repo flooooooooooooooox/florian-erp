@@ -5467,6 +5467,7 @@ elif page == "Salariés":
             s = str(val).strip()
             if not s or s.lower() in ("nan", "none", ""):
                 return 0.0
+            s = re.sub(r'\s*:\s*', ':', s)
             if " " in s and ":" in s:
                 s = s.split(" ")[-1]
             parts = s.split(":")
@@ -5484,6 +5485,8 @@ elif page == "Salariés":
             s = str(val).strip()
             if not s or s.lower() in ("nan", "none", ""):
                 return ""
+            # Nettoyer les espaces autour des ":"
+            s = re.sub(r'\s*:\s*', ':', s)
             if " " in s and ":" in s:
                 s = s.split(" ")[-1]
             parts = s.split(":")
