@@ -5831,8 +5831,6 @@ elif page == "Salariés":
                 st.caption(f"😴 Aucun chantier cette semaine — jours habituels : {', '.join(jours_fixes)}")
 
             st.markdown("<br>", unsafe_allow_html=True)
-                
-
 
 # ── ON REVIENT À LA MARGE POUR LA PAGE SUIVANTE ────────────────────────────────
 # PAGE : RETARDS & AVENANTS
