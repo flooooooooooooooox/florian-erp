@@ -2346,30 +2346,30 @@ elif "Notifications" in page:
             return str(e), pd.DataFrame()
 
     @st.cache_data(ttl=60, show_spinner=False)
-def _get_duree_travaux(u, numero_devis):
-    try:
-        _, gsa_json = get_user_credentials(u)
-        if not gsa_json:
+    def _get_duree_travaux(u, numero_devis):
+        try:
+            _, gsa_json = get_user_credentials(u)
+            if not gsa_json:
+                return None
+            creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
+            gc = gspread.authorize(creds)
+            sh = gc.open("chatmemory2")
+            ws = sh.sheet1
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return None
+            headers = [h.strip().lower() for h in vals[0]]
+            idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
+            idx_duree = next((i for i, h in enumerate(headers) if "dur" in h and "travaux" in h), None)
+            if idx_num is None or idx_duree is None:
+                return None
+            for row in vals[1:]:
+                if len(row) > idx_num and row[idx_num].strip() == numero_devis.strip():
+                    if len(row) > idx_duree and row[idx_duree].strip():
+                        return row[idx_duree].strip()
             return None
-        creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
-        gc = gspread.authorize(creds)
-        sh = gc.open("chatmemory2")
-        ws = sh.sheet1
-        vals = ws.get_all_values()
-        if not vals or len(vals) < 2:
+        except Exception:
             return None
-        headers = [h.strip().lower() for h in vals[0]]
-        idx_num = next((i for i, h in enumerate(headers) if "numero" in h and "devis" in h), None)
-        idx_duree = next((i for i, h in enumerate(headers) if "dur" in h and "travaux" in h), None)
-        if idx_num is None or idx_duree is None:
-            return None
-        for row in vals[1:]:
-            if len(row) > idx_num and row[idx_num].strip() == numero_devis.strip():
-                if len(row) > idx_duree and row[idx_duree].strip():
-                    return row[idx_duree].strip()
-        return None
-    except Exception:
-        return None
         
     def _ensure_col(headers, row_vals, candidates):
         idx = None
