@@ -2940,10 +2940,14 @@ elif page == "Créer un devis":
                         for _j, _l in enumerate(st.session_state["devis_lignes"]):
                             st.session_state[f"_prev_src_{_j}"] = _src_map.get(_l.get("source", "libre"), "Saisie libre")
                             st.session_state[f"src_{_j}"] = _src_map.get(_l.get("source", "libre"), "Saisie libre")
-                        st.session_state["_modele_objet"] = found.get("objet", "")
-                        st.session_state["_modele_duree"] = int(found.get("duree_jours", 5))
-                        st.session_state["_modele_tva"]   = found.get("tva", "10")
-                        st.session_state["_modele_modal"]  = found.get("modalite", "Acompte / Solde")
+                        st.session_state["_modele_objet"]      = found.get("objet", "")
+                        st.session_state["_modele_duree"]      = int(found.get("duree_jours", 5))
+                        st.session_state["_modele_tva"]        = found.get("tva", "10")
+                        st.session_state["_modele_modal"]      = found.get("modalite", "Acompte / Solde")
+                        st.session_state["_modele_nom_client"] = found.get("nom_client", "")
+                        st.session_state["_modele_email"]      = found.get("email_client", "")
+                        st.session_state["_modele_tel"]        = found.get("tel_client", "")
+                        st.session_state["_modele_adr_client"] = found.get("adr_client", "")
                         st.success(f"Modèle '{sel_m}' chargé.")
                         st.rerun()
 
@@ -3048,10 +3052,18 @@ elif page == "Créer un devis":
     st.markdown("#### Informations client")
     c1, c2 = st.columns(2)
     with c1:
+        if "_modele_nom_client" in st.session_state:
+            st.session_state["dv_nom"] = st.session_state.pop("_modele_nom_client")
         client_nom   = st.text_input("Nom complet *", placeholder="Jean Dupont", key="dv_nom")
+        if "_modele_email" in st.session_state:
+            st.session_state["dv_email"] = st.session_state.pop("_modele_email")
         client_email = st.text_input("Email", placeholder="jean.dupont@email.com (optionnel)", key="dv_email")
     with c2:
+        if "_modele_tel" in st.session_state:
+            st.session_state["dv_tel"] = st.session_state.pop("_modele_tel")
         client_tel     = st.text_input("Téléphone", placeholder="06 xx xx xx xx", key="dv_tel")
+        if "_modele_adr_client" in st.session_state:
+            st.session_state["dv_adr_client"] = st.session_state.pop("_modele_adr_client")
         client_adresse = st.text_input("Adresse du client", placeholder="12 rue de la Paix, 75001 Paris", key="dv_adr_client")
 
     st.markdown("---")
@@ -3381,9 +3393,13 @@ elif page == "Créer un devis":
                     modalite_paie,
                     tva_pct_str,
                     json.dumps(lignes_valides, ensure_ascii=False),
+                    client_nom.strip(),
+                    client_email.strip(),
+                    client_tel.strip(),
+                    client_adresse.strip(),
                 ]
                 try:
-                    ws_save_m, err_save_m = get_worksheet(user, "modeles_devis")
+                    ws_save_m.update("A1:J1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json","nom_client","email_client","tel_client","adr_client"]])
                     if err_save_m:
                         sh_save, _ = get_spreadsheet(user)
                         ws_save_m  = sh_save.add_worksheet(title="modeles_devis", rows=100, cols=6)
