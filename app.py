@@ -2329,10 +2329,8 @@ elif page == "Éditeur Google Sheet":
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
-
     WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
-
-@st.cache_data(ttl=180, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
         df_suivie, err = get_sheet_data(u)
         if err or df_suivie.empty:
