@@ -3393,10 +3393,10 @@ elif page == "Créer un devis":
                     modalite_paie,
                     tva_pct_str,
                     json.dumps(lignes_valides, ensure_ascii=False),
-                    client_nom.strip(),
-                    client_email.strip(),
-                    client_tel.strip(),
-                    client_adresse.strip(),
+                    st.session_state.get("dv_nom", "").strip(),
+                    st.session_state.get("dv_email", "").strip(),
+                    st.session_state.get("dv_tel", "").strip(),
+                    st.session_state.get("dv_adr_client", "").strip(),
                 ]
                 try:
                     ws_save_m, err_save_m = get_worksheet(user, "modeles_devis")
