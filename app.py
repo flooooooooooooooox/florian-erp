@@ -3381,6 +3381,27 @@ elif page == "Créer un devis":
                     st.rerun()
                 except Exception as ex:
                     st.error(f"Erreur : {ex}")
+    
+    with st.expander("🗑️ Supprimer un modèle pré-configuré", expanded=False):
+        if not modeles:
+            st.info("Aucun modèle enregistré.")
+        else:
+            noms_del = [m["nom_modele"] for m in modeles]
+            sel_del = st.selectbox("Modèle à supprimer", noms_del, key="del_modele_sel")
+            st.warning(f"Suppression irréversible : **{sel_del}**")
+            if st.button("Confirmer la suppression", key="btn_del_modele_confirm"):
+                try:
+                    ws_del_m, err_del_m = get_worksheet(user, "modeles_devis")
+                    if err_del_m:
+                        st.error(err_del_m)
+                    else:
+                        idx_del = noms_del.index(sel_del)
+                        ws_del_m.delete_rows(idx_del + 2)
+                        _load_modeles.clear()
+                        st.success(f"Modèle '{sel_del}' supprimé.")
+                        st.rerun()
+                except Exception as ex:
+                    st.error(f"Erreur : {ex}")
     if st.button("Prévisualiser le devis", use_container_width=True, key="btn_preview"):
         errs = _validate()
         if errs:
