@@ -2444,7 +2444,13 @@ elif "Notifications" in page:
         st.markdown("---")
 
         calendars_available = get_calendars_list(user)
-        st.write("Calendriers dispo :", list(calendars_available.keys()))
+        st.write("DEBUG calendars:", calendars_available)
+        import traceback
+        try:
+            test = get_calendars_list(user)
+            st.write("test:", test)
+        except Exception as ex:
+            st.error(traceback.format_exc())
 
         if nb_attente_notif == 0:
             st.success("Aucune notification en attente.")
