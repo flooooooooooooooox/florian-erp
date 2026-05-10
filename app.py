@@ -6438,11 +6438,11 @@ elif page == "Retards & Avenants":
 
     delta_r = (nouvelle_date_r - ancienne_date_r).days
     if delta_r > 0:
-        st.info(f"⏱️ Décalage : **{delta_r} jour(s)** — du {ancienne_date_r.strftime('%d/%m/%Y')} au {nouvelle_date_r.strftime('%d/%m/%Y')}")
+        st.info(f"⏱️ Retard : **+{delta_r} jour(s)** — du {ancienne_date_r.strftime('%d/%m/%Y')} au {nouvelle_date_r.strftime('%d/%m/%Y')}")
     elif delta_r == 0:
         st.warning("La nouvelle date est identique à l'ancienne.")
     else:
-        st.error("La nouvelle date est antérieure à l'ancienne — vérifiez les dates.")
+        st.success(f"✂️ Avenant (réduction) : **{delta_r} jour(s)** — fin avancée au {nouvelle_date_r.strftime('%d/%m/%Y')}")
 
     payload_retard = {
         "num_devis":     num_devis_r,
@@ -6451,6 +6451,8 @@ elif page == "Retards & Avenants":
         "email_client":  email_r,
         "ancienne_date": ancienne_date_r.strftime("%d/%m/%Y"),
         "nouvelle_date": nouvelle_date_r.strftime("%d/%m/%Y"),
+        "type_operation": "retard" if delta_r > 0 else "avenant",
+        "delta_jours": delta_r,
         "motif":         motif_r,
         "details":       details_r.strip(),
         "type_paiement": type_pai_r,
@@ -6472,7 +6474,7 @@ elif page == "Retards & Avenants":
             if not nom_client_r:
                 errors_r.append("Nom client manquant.")
             if delta_r <= 0:
-                errors_r.append("La nouvelle date doit être postérieure à l'ancienne.")
+                errors_r.append("La nouvelle date est identique à l'ancienne — aucun changement.")
             if not details_r.strip():
                 errors_r.append("Les détails sont obligatoires.")
 
