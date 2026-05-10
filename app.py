@@ -2494,26 +2494,29 @@ elif "Notifications" in page:
                     )
 
                     # ── Auto-sélection calendrier selon salarié ────────────
+# ── Auto-sélection calendrier selon salarié ────────────
                     cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
                     auto_idx = _auto_cal_index(salarie_sel, list(calendars_available.keys()))
 
                     cal_key = f"cal_choisi_{idx}"
                     prev_sal_key = f"notif_sal_prev_{idx}"
+
                     if st.session_state.get(prev_sal_key) != salarie_sel:
                         st.session_state[prev_sal_key] = salarie_sel
-                        if auto_idx > 0:
-                            st.session_state[cal_key] = cal_options[auto_idx]
+                        st.session_state[cal_key] = auto_idx
 
-                    current_cal = st.session_state.get(cal_key, cal_options[0])
-                    current_idx = cal_options.index(current_cal) if current_cal in cal_options else auto_idx
+                    current_idx = st.session_state.get(cal_key, auto_idx)
+                    if isinstance(current_idx, str):
+                        current_idx = cal_options.index(current_idx) if current_idx in cal_options else auto_idx
 
                     cal_choisi_nom = st.selectbox(
-                    "Calendrier à consulter (disponibilités)",
-                    cal_options,
+                        "Calendrier à consulter (disponibilités)",
+                        cal_options,
                         index=current_idx,
-                    key=cal_key,
-                    help="Calendrier auto-détecté selon le salarié — modifiable"
-                )
+                        key=f"_raw_cal_{idx}",
+                        help="Calendrier auto-détecté selon le salarié — modifiable"
+                    )
+                    st.session_state[cal_key] = cal_options.index(cal_choisi_nom)
 
                     if f"cal_week_offset_{idx}" not in st.session_state:
                         st.session_state[f"cal_week_offset_{idx}"] = 0
