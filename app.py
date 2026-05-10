@@ -2939,6 +2939,7 @@ elif page == "Créer un devis":
                         _src_map = {"catalogue": "Divers", "prestations": "Prestations", "libre": "Saisie libre"}
                         for _j, _l in enumerate(st.session_state["devis_lignes"]):
                             st.session_state[f"_prev_src_{_j}"] = _src_map.get(_l.get("source", "libre"), "Saisie libre")
+                            st.session_state[f"src_{_j}"] = _src_map.get(_l.get("source", "libre"), "Saisie libre")
                         st.session_state["_modele_objet"] = found.get("objet", "")
                         st.session_state["_modele_duree"] = int(found.get("duree_jours", 5))
                         st.session_state["_modele_tva"]   = found.get("tva", "10")
