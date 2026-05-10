@@ -2332,20 +2332,24 @@ elif "Notifications" in page:
 
     WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
 
-    @st.cache_data(ttl=180, show_spinner=False)
+   @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
-        err, vals = get_sheet_values_resilient(u, "liste", f"{u}:liste")
-        if err:
+        df_suivie, err = get_sheet_data(u)
+        if err or df_suivie.empty:
             return []
         try:
-            if not vals or len(vals) < 2:
+            headers = [h.strip().lower() for h in df_suivie.columns]
+            sal_col_idx = None
+            for cand in ["salarié", "salarie", "nom_salarie", "nom salarié"]:
+                if cand in headers:
+                    sal_col_idx = headers.index(cand)
+                    break
+            if sal_col_idx is None:
                 return []
-            headers = [h.strip().lower() for h in vals[0]]
-            sal_col = next((h for h in headers if "salar" in h), None)
-            if not sal_col:
-                sal_col = headers[0]
-            idx = headers.index(sal_col)
-            return [r[idx].strip() for r in vals[1:] if len(r) > idx and r[idx].strip()]
+            col_name = df_suivie.columns[sal_col_idx]
+            noms = df_suivie[col_name].astype(str).str.strip()
+            noms = noms[noms != ""].tolist()
+            return list(dict.fromkeys(noms))
         except Exception:
             return []
 
@@ -2495,13 +2499,23 @@ elif "Notifications" in page:
                     cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
                     auto_idx = _auto_cal_index(salarie_sel, list(calendars_available.keys()))
 
+                    cal_key = f"cal_choisi_{idx}"
+                    prev_sal_key = f"notif_sal_prev_{idx}"
+                    if st.session_state.get(prev_sal_key) != salarie_sel:
+                        st.session_state[prev_sal_key] = salarie_sel
+                        if auto_idx > 0:
+                            st.session_state[cal_key] = cal_options[auto_idx]
+
+                    current_cal = st.session_state.get(cal_key, cal_options[0])
+                    current_idx = cal_options.index(current_cal) if current_cal in cal_options else auto_idx
+
                     cal_choisi_nom = st.selectbox(
-                        "Calendrier à consulter (disponibilités)",
-                        cal_options,
-                        index=auto_idx,
-                        key=f"cal_choisi_{idx}",
-                        help="Calendrier auto-détecté selon le salarié — modifiable"
-                    )
+                    "Calendrier à consulter (disponibilités)",
+                    cal_options,
+                        index=current_idx,
+                    key=cal_key,
+                    help="Calendrier auto-détecté selon le salarié — modifiable"
+                )
 
                     if f"cal_week_offset_{idx}" not in st.session_state:
                         st.session_state[f"cal_week_offset_{idx}"] = 0
