@@ -3060,6 +3060,8 @@ elif page == "Créer un devis":
     with c3:
         if "_modele_objet" in st.session_state:
             st.session_state["dv_objet"] = st.session_state.pop("_modele_objet")
+        elif "dv_objet" not in st.session_state:
+            st.session_state["dv_objet"] = ""
         objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
@@ -3074,8 +3076,9 @@ elif page == "Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-        if "_modele_duree" in st.session_state:
-            st.session_state["dv_duree"] = st.session_state.pop("_modele_duree")
+                        for _k in ["dv_objet", "dv_duree", "dv_modal", "dv_tva"]:
+                            st.session_state.pop(_k, None)
+                        st.rerun()
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, step=1, key="dv_duree")
     pct_acompte   = 30
     pct_solde     = 70
