@@ -2948,9 +2948,12 @@ elif page == "Créer un devis":
                         st.session_state["_modele_email"]      = found.get("email_client", "")
                         st.session_state["_modele_tel"]        = found.get("tel_client", "")
                         st.session_state["_modele_adr_client"] = found.get("adr_client", "")
+                        for _j in range(len(st.session_state["devis_lignes"])):
+                            for _pfx in ["cat_", "prest_", "art_", "desc_", "qte_", "qte2_", "qte3_", "pht2_", "pht3_"]:
+                                st.session_state.pop(f"{_pfx}{_j}", None)
                         st.success(f"Modèle '{sel_m}' chargé.")
                         st.rerun()
-
+    
             if sel_m != "— Choisir un modèle —":
                 found = next((m for m in modeles if m["nom_modele"] == sel_m), None)
                 if found:
