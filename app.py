@@ -2927,7 +2927,7 @@ elif page == "Créer un devis":
                             lignes_m = []
                         st.session_state["devis_lignes"] = [
                             {
-                                "source":      "libre",
+                                "source":      l.get("source", "libre"),
                                 "article":     l.get("article", ""),
                                 "description": l.get("description", ""),
                                 "prix_ht":     float(l.get("prix_ht", 0)),
@@ -2936,6 +2936,9 @@ elif page == "Créer un devis":
                             }
                             for l in lignes_m
                         ]
+                        _src_map = {"catalogue": "Divers", "prestations": "Prestations", "libre": "Saisie libre"}
+                        for _j, _l in enumerate(st.session_state["devis_lignes"]):
+                            st.session_state[f"_prev_src_{_j}"] = _src_map.get(_l.get("source", "libre"), "Saisie libre")
                         st.session_state["_modele_objet"] = found.get("objet", "")
                         st.session_state["_modele_duree"] = int(found.get("duree_jours", 5))
                         st.session_state["_modele_tva"]   = found.get("tva", "10")
@@ -3346,7 +3349,17 @@ elif page == "Créer un devis":
             if not nom_nouveau_modele.strip():
                 st.error("Donne un nom au modèle.")
             else:
-                lignes_valides = [l for l in lignes if l["article"].strip()]
+                lignes_valides = [
+                    {
+                        "source":      l.get("source", "libre"),
+                        "article":     l.get("article", ""),
+                        "description": l.get("description", ""),
+                        "prix_ht":     float(l.get("prix_ht", 0)),
+                        "qte":         float(l.get("qte", 1)),
+                        "categorie":   l.get("categorie", ""),
+                    }
+                    for l in lignes if l.get("article", "").strip()
+                ]
                 new_row = [
                     nom_nouveau_modele.strip(),
                     objet_travaux.strip(),
