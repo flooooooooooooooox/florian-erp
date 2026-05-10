@@ -3399,13 +3399,16 @@ elif page == "Créer un devis":
                     client_adresse.strip(),
                 ]
                 try:
-                    ws_save_m.update("A1:J1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json","nom_client","email_client","tel_client","adr_client"]])
+                    ws_save_m, err_save_m = get_worksheet(user, "modeles_devis")
                     if err_save_m:
                         sh_save, _ = get_spreadsheet(user)
-                        ws_save_m  = sh_save.add_worksheet(title="modeles_devis", rows=100, cols=6)
-                        ws_save_m.update("A1:F1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json"]])
-                    all_save = ws_save_m.get_all_values()
-                    ws_save_m.insert_row(new_row, index=len(all_save)+1, value_input_option="USER_ENTERED")
+                        ws_save_m  = sh_save.add_worksheet(title="modeles_devis", rows=100, cols=10)
+                        ws_save_m.update("A1:J1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json","nom_client","email_client","tel_client","adr_client"]])
+                    if ws_save_m is None:
+                        st.error("Impossible d'accéder à l'onglet modeles_devis.")
+                    else:
+                        all_save = ws_save_m.get_all_values()
+                        ws_save_m.insert_row(new_row, index=len(all_save)+1, value_input_option="USER_ENTERED")
                     _load_modeles.clear()
                     st.success(f"Modèle '{nom_nouveau_modele}' enregistré.")
                     st.rerun()
