@@ -6473,11 +6473,10 @@ elif page == "Retards & Avenants":
                 errors_r.append("Numéro de devis introuvable.")
             if not nom_client_r:
                 errors_r.append("Nom client manquant.")
-            if delta_r <= 0:
+            if delta_r == 0:
                 errors_r.append("La nouvelle date est identique à l'ancienne — aucun changement.")
             if not details_r.strip():
                 errors_r.append("Les détails sont obligatoires.")
-
             if errors_r:
                 for e in errors_r:
                     st.error(e)
