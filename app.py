@@ -744,10 +744,10 @@ def create_calendar_event(username, calendar_id, title, description, location, s
     except Exception as e:
         return None
 
-def render_mini_calendar(events_by_day, semaine_dates, today, sal_name):
+def render_mini_calendar(events_by_day, semaine_dates, today, sal_name, day_key_prefix="cal_selected_day"):
     jours_noms = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     cols = st.columns(7)
-    selected_day = st.session_state.get("cal_selected_day")
+    selected_day = st.session_state.get(day_key_prefix)
 
     for i, (jour, nom) in enumerate(zip(semaine_dates, jours_noms)):
         evs = events_by_day.get(jour.isoformat(), [])
@@ -786,8 +786,18 @@ def render_mini_calendar(events_by_day, semaine_dates, today, sal_name):
                 use_container_width=True,
                 disabled=is_weekend,
             ):
-                st.session_state["cal_selected_day"] = jour.isoformat()
+                st.session_state[day_key_prefix] = jour.isoformat()
                 st.rerun()
+
+
+def _auto_cal_index(sal_name, cal_keys):
+    if not sal_name or sal_name == "— Choisir —":
+        return 0
+    sal_norm = sal_name.strip().lower()
+    for i, k in enumerate(cal_keys):
+        if sal_norm in k.strip().lower() or k.strip().lower() in sal_norm:
+            return i + 1
+    return 0
 
 def get_worksheet_ereporting(username: str, tab_name: str = "Feuille 1"):
     """Ouvre la feuille dans le fichier 'e-repporting' (client gspread mis en cache)."""
@@ -2320,7 +2330,6 @@ elif page == "Éditeur Google Sheet":
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
 
-    WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook-test/reponse-{user_slug}"
     WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
 
     @st.cache_data(ttl=180, show_spinner=False)
@@ -2383,7 +2392,7 @@ elif "Notifications" in page:
             return None
         except Exception:
             return None
-        
+
     def _ensure_col(headers, row_vals, candidates):
         idx = None
         headers_l = [h.strip().lower() for h in headers]
@@ -2407,7 +2416,6 @@ elif "Notifications" in page:
 
     tab_sig, tab_ereport = st.tabs(["✍️ Signature", "📊 E-Reporting"])
 
-    # ── SOUS-ONGLET : SIGNATURE ───────────────────────────────────────────────
     with tab_sig:
         err_n, df_notif = _load_notifications(user)
 
@@ -2445,15 +2453,11 @@ elif "Notifications" in page:
                 montant = str(row.get("montant", "")).strip()
                 date_r  = str(row.get("date_reception", "")).strip()
 
-                # Valeurs par défaut
                 date_debut_notif   = datetime.today().date()
                 date_fin_notif     = date_debut_notif + timedelta(days=6)
                 heure_intervention = datetime.strptime("08:00", "%H:%M").time()
                 heure_fin          = datetime.strptime("17:00", "%H:%M").time()
 
-                # Récupère la date de réalisation depuis chatmemory2
-                # Récupère la durée depuis chatmemory2
-# Récupère la durée depuis chatmemory2
                 _durees_map = _load_chatmemory2_durees(user)
                 duree_raw = _durees_map.get(numero, "")
                 if duree_raw:
@@ -2464,6 +2468,10 @@ elif "Notifications" in page:
                             date_fin_notif = date_debut_notif + timedelta(days=int(duree_jours))
                     except ValueError:
                         pass
+
+                # ── Clé isolée par notif ───────────────────────────────────
+                day_key = f"cal_selected_day_{idx}"
+
                 with st.container(border=True):
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -2483,12 +2491,16 @@ elif "Notifications" in page:
                         key=f"notif_sal_{idx}"
                     )
 
+                    # ── Auto-sélection calendrier selon salarié ────────────
                     cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
+                    auto_idx = _auto_cal_index(salarie_sel, list(calendars_available.keys()))
+
                     cal_choisi_nom = st.selectbox(
                         "Calendrier à consulter (disponibilités)",
                         cal_options,
+                        index=auto_idx,
                         key=f"cal_choisi_{idx}",
-                        help="Choisissez le calendrier du salarié pour voir ses disponibilités"
+                        help="Calendrier auto-détecté selon le salarié — modifiable"
                     )
 
                     if f"cal_week_offset_{idx}" not in st.session_state:
@@ -2531,9 +2543,16 @@ elif "Notifications" in page:
                                 events_by_day.setdefault(ev_date, []).append(ev)
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    render_mini_calendar(events_by_day, jours_semaine_cal, today_cal, f"{idx}_{salarie_sel}")
 
-                    selected_day_iso = st.session_state.get("cal_selected_day")
+                    render_mini_calendar(
+                        events_by_day,
+                        jours_semaine_cal,
+                        today_cal,
+                        f"{idx}_{salarie_sel}",
+                        day_key_prefix=day_key,
+                    )
+
+                    selected_day_iso = st.session_state.get(day_key)
                     if selected_day_iso:
                         selected_date = datetime.fromisoformat(selected_day_iso).date()
                         evs_jour = events_by_day.get(selected_day_iso, [])
@@ -2575,16 +2594,14 @@ elif "Notifications" in page:
                                 unsafe_allow_html=True,
                             )
 
-                        # ── Date de début = jour sélectionné ──────────────────
                         date_debut_notif = selected_date
 
-                        # ── Affichage dates début / fin ────────────────────────
                         if duree_raw:
                             st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}** · {duree_raw}")
                         else:
                             st.warning("⚠️ Durée introuvable dans chatmemory2 — date de fin estimée à J+6.")
                             st.info(f"📅 Du **{date_debut_notif.strftime('%d/%m/%Y')}** au **{date_fin_notif.strftime('%d/%m/%Y')}**")
-                        # ── Horaires rapides ───────────────────────────────────
+
                         st.markdown(
                             "<div style='font-weight:700;font-size:0.85rem;color:var(--text-muted);"
                             "margin:10px 0 6px;'>Horaires rapides</div>",
@@ -2615,7 +2632,6 @@ elif "Notifications" in page:
                                     st.session_state[f"notif_hf_val_{idx}"] = hfin_h
                                     st.rerun()
 
-                        # ── Horaires manuels ───────────────────────────────────
                         hd_default = st.session_state.get(f"notif_hd_val_{idx}", "08:00")
                         hf_default = st.session_state.get(f"notif_hf_val_{idx}", "17:00")
 
@@ -2638,7 +2654,6 @@ elif "Notifications" in page:
 
                     custom_slots = []
 
-                    # ── Boutons action ─────────────────────────────────────────
                     col_send, col_del_notif = st.columns([4, 1])
 
                     with col_del_notif:
@@ -2663,7 +2678,7 @@ elif "Notifications" in page:
                         ):
                             if salarie_sel == "— Choisir —":
                                 st.error("Sélectionne un(e) salarié(e).")
-                            elif not selected_day_iso:
+                            elif not st.session_state.get(day_key):
                                 st.error("Clique sur un jour dans le calendrier pour choisir la date de début.")
                             else:
                                 payload_notif = {
@@ -2725,7 +2740,7 @@ elif "Notifications" in page:
                                         get_pending_notifications_count.clear()
                                         get_calendars_list.clear()
                                         get_calendar_events.clear()
-                                        st.session_state.pop("cal_selected_day", None)
+                                        st.session_state.pop(day_key, None)
                                         st.success(f"✅ Planification confirmée pour **{client}**.")
                                         st.rerun()
                                     else:
@@ -2733,7 +2748,6 @@ elif "Notifications" in page:
                                 except Exception as ex:
                                     st.error(f"Erreur : {ex}")
 
-    # ── SOUS-ONGLET : E-REPORTING ─────────────────────────────────────────────
     with tab_ereport:
 
         @st.cache_data(ttl=60, show_spinner=False)
@@ -2769,7 +2783,6 @@ elif "Notifications" in page:
             _load_ereporting.clear()
             st.rerun()
 
-        # Filtrer uniquement "À envoyer"
         COLS_DISPLAY = ["date_facture", "numero_facture", "nom_client", "montant_TTC", "statut_reporting"]
 
         if "statut_reporting" in df_er.columns:
@@ -2817,11 +2830,9 @@ elif "Notifications" in page:
                             st.error("La feuille 'e-reporting' est vide ou mal formatée.")
                         else:
                             headers_er = [h.strip() for h in all_er_vals[0]]
-                            # Chercher la colonne numero_facture pour identifier la ligne
                             try:
                                 num_col_idx = headers_er.index("numero_facture")
                             except ValueError:
-                                # fallback : cherche approximatif
                                 num_col_idx = next(
                                     (i for i, h in enumerate(headers_er) if "facture" in h.lower() and "num" in h.lower()),
                                     None,
@@ -2838,7 +2849,6 @@ elif "Notifications" in page:
                             if target_sheet_row is None:
                                 st.error(f"Facture '{sel_facture}' introuvable dans la feuille.")
                             else:
-                                # Col L = 12, Col M = 13, Col N = 14
                                 ws_er.update_cell(target_sheet_row, 12, date_paiement_er.strftime("%d/%m/%Y"))
                                 ws_er.update_cell(target_sheet_row, 13, moyen_paiement_er)
                                 ws_er.update_cell(target_sheet_row, 14, "ok")
