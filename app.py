@@ -2444,6 +2444,7 @@ elif "Notifications" in page:
         st.markdown("---")
 
         calendars_available = get_calendars_list(user)
+        st.write("Calendriers dispo :", list(calendars_available.keys()))
 
         if nb_attente_notif == 0:
             st.success("Aucune notification en attente.")
