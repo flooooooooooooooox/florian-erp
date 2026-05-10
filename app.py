@@ -3404,6 +3404,10 @@ elif page == "Créer un devis":
                         sh_save, _ = get_spreadsheet(user)
                         ws_save_m  = sh_save.add_worksheet(title="modeles_devis", rows=100, cols=10)
                         ws_save_m.update("A1:J1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json","nom_client","email_client","tel_client","adr_client"]])
+                    else:
+                        headers_save = ws_save_m.row_values(1)
+                        if "nom_client" not in headers_save:
+                            ws_save_m.update("G1:J1", [["nom_client","email_client","tel_client","adr_client"]])
                     if ws_save_m is None:
                         st.error("Impossible d'accéder à l'onglet modeles_devis.")
                     else:
