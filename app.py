@@ -678,28 +678,25 @@ def get_calendar_service(username):
 
 @st.cache_data(ttl=120, show_spinner=False)
 def get_calendars_list(username):
-    _, gsa_json = get_user_credentials(username)
-    if not gsa_json:
+    df, err = get_sheet_data(username)
+    if err or df.empty:
         return {}
     try:
-        creds = Credentials.from_service_account_info(
-            json.loads(gsa_json),
-            scopes=["https://www.googleapis.com/auth/calendar.readonly"]
-        )
-        service = build("calendar", "v3", credentials=creds)
+        headers = [h.strip().lower() for h in df.columns]
+        sal_col = next((df.columns[i] for i, h in enumerate(headers) if "salar" in h), None)
+        cal_col = next((df.columns[i] for i, h in enumerate(headers) if h == "calendar_id"), None)
+        if not sal_col or not cal_col:
+            return {}
         calendars = {}
-        page_token = None
-        while True:
-            cal_list = service.calendarList().list(pageToken=page_token).execute()
-            for cal in cal_list.get("items", []):
-                calendars[cal["summary"]] = cal["id"]
-            page_token = cal_list.get("nextPageToken")
-            if not page_token:
-                break
+        for _, row in df.iterrows():
+            nom = str(row[sal_col]).strip()
+            cal_id = str(row[cal_col]).strip()
+            if nom and cal_id and cal_id not in ("", "nan") and nom not in calendars:
+                calendars[nom] = cal_id
         return calendars
-    except Exception as e:
-        st.write(f"DEBUG erreur calendars: {e}")
+    except Exception:
         return {}
+    
 @st.cache_data(ttl=300, show_spinner=False)
 def _load_chatmemory2_durees(u):
     """Charge toutes les durées de chatmemory2 en une seule requête."""
