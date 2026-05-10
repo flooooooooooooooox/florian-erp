@@ -3058,7 +3058,9 @@ elif page == "Créer un devis":
     st.markdown("#### Chantier")
     c3, c4 = st.columns(2)
     with c3:
-        objet_travaux       = st.text_input("Objet des travaux *", value=st.session_state.pop("_modele_objet", ""), placeholder="Rénovation salle de bain", key="dv_objet")        
+        if "_modele_objet" in st.session_state:
+            st.session_state["dv_objet"] = st.session_state.pop("_modele_objet")
+        objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
             "Prestation", "Service", "Fourniture", "Fourniture et pose", "Main d'œuvre", "Autre",
@@ -3072,8 +3074,9 @@ elif page == "Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=st.session_state.pop("_modele_duree", 5), step=1, key="dv_duree")
-        
+        if "_modele_duree" in st.session_state:
+            st.session_state["dv_duree"] = st.session_state.pop("_modele_duree")
+        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, step=1, key="dv_duree")
     pct_acompte   = 30
     pct_solde     = 70
     segments      = []
@@ -3122,16 +3125,15 @@ elif page == "Créer un devis":
     st.markdown("#### TVA")
     c_tva1, c_tva2 = st.columns([2, 2])
     with c_tva1:
+        if "_modele_tva" in st.session_state:
+            tva_val = st.session_state.pop("_modele_tva")
+            tva_map = {"5,5": "5,5 % (amélioration énergétique)", "10": "10 % (travaux de rénovation)", "20": "20 % (travaux neufs / autres)"}
+            st.session_state["dv_tva"] = tva_map.get(str(tva_val), "10 % (travaux de rénovation)")
         tva_option = st.radio("Taux TVA applicable", [
             "5,5 % (amélioration énergétique)",
             "10 % (travaux de rénovation)",
             "20 % (travaux neufs / autres)",
         ], key="dv_tva")
-    with c_tva2:
-        tva_debits_option = st.radio("Régime TVA", [
-            "TVA sur encaissements",
-            "TVA sur débits",
-        ], key="dv_tva_debits")
 
     tva_taux        = 0.055 if "5,5" in tva_option else (0.10 if "10 %" in tva_option else 0.20)
     tva_debits_bool = "débits" in tva_debits_option
