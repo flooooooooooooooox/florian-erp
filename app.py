@@ -2889,6 +2889,77 @@ elif page == "Créer un devis":
     import streamlit.components.v1 as components
     page_header("Créer un devis", "Remplis le formulaire — n8n génère le PDF, l'envoie et met à jour Sheets")
 
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _load_modeles(u):
+        ws, err = get_worksheet(u, "modeles_devis")
+        if err:
+            return []
+        try:
+            vals = ws.get_all_values()
+            if not vals or len(vals) < 2:
+                return []
+            headers = [h.strip() for h in vals[0]]
+            result = []
+            for r in vals[1:]:
+                row = dict(zip(headers, r + [""]*(max(0, len(headers)-len(r)))))
+                if row.get("nom_modele","").strip():
+                    result.append(row)
+            return result
+        except Exception:
+            return []
+
+    modeles = _load_modeles(user)
+
+    if modeles:
+        with st.container(border=True):
+            st.markdown("#### ⚡ Charger un modèle pré-configuré")
+            col_sel_m, col_btn_m = st.columns([4, 1])
+            with col_sel_m:
+                noms_m = ["— Choisir un modèle —"] + [m["nom_modele"] for m in modeles]
+                sel_m  = st.selectbox("Modèle", noms_m, key="sel_modele_devis", label_visibility="collapsed")
+            with col_btn_m:
+                if st.button("Charger", key="btn_charger_modele", use_container_width=True, type="primary", disabled=(sel_m == "— Choisir un modèle —")):
+                    found = next((m for m in modeles if m["nom_modele"] == sel_m), None)
+                    if found:
+                        try:
+                            lignes_m = json.loads(found.get("lignes_json", "[]"))
+                        except Exception:
+                            lignes_m = []
+                        st.session_state["devis_lignes"] = [
+                            {
+                                "source":      "libre",
+                                "article":     l.get("article", ""),
+                                "description": l.get("description", ""),
+                                "prix_ht":     float(l.get("prix_ht", 0)),
+                                "qte":         float(l.get("qte", 1)),
+                                "categorie":   l.get("categorie", ""),
+                            }
+                            for l in lignes_m
+                        ]
+                        st.session_state["_modele_objet"] = found.get("objet", "")
+                        st.session_state["_modele_duree"] = int(found.get("duree_jours", 5))
+                        st.session_state["_modele_tva"]   = found.get("tva", "10")
+                        st.session_state["_modele_modal"]  = found.get("modalite", "Acompte / Solde")
+                        st.success(f"Modèle '{sel_m}' chargé.")
+                        st.rerun()
+
+            if sel_m != "— Choisir un modèle —":
+                found = next((m for m in modeles if m["nom_modele"] == sel_m), None)
+                if found:
+                    try:
+                        lignes_preview = json.loads(found.get("lignes_json", "[]"))
+                    except Exception:
+                        lignes_preview = []
+                    total_preview = sum(
+                        float(l.get("prix_ht", 0)) * float(l.get("qte", 1))
+                        for l in lignes_preview
+                    )
+                    st.caption(
+                        f"{found.get('objet','')} · {found.get('duree_jours','')} jours · "
+                        f"TVA {found.get('tva','')}% · {len(lignes_preview)} prestation(s) · "
+                        f"~{total_preview:,.0f} € HT"
+                    )
+
     WEBHOOK_URL = f"https://client1.florianai.fr/webhook/{user_slug}"
 
     def _parse_prix(val):
@@ -2983,7 +3054,7 @@ elif page == "Créer un devis":
     st.markdown("#### Chantier")
     c3, c4 = st.columns(2)
     with c3:
-        objet_travaux       = st.text_input("Objet des travaux *", placeholder="Rénovation salle de bain", key="dv_objet")
+        objet_travaux       = st.text_input("Objet des travaux *", value=st.session_state.pop("_modele_objet", ""), placeholder="Rénovation salle de bain", key="dv_objet")        
         adresse_chantier    = st.text_input("Adresse du chantier *", placeholder="108 rue de Falaise, 14000 Caen", key="dv_adr_chantier")
         categorie_operation = st.selectbox("Catégorie d'opération", [
             "Prestation", "Service", "Fourniture", "Fourniture et pose", "Main d'œuvre", "Autre",
@@ -2997,8 +3068,8 @@ elif page == "Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=5, step=1, key="dv_duree")
-
+        duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, value=st.session_state.pop("_modele_duree", 5), step=1, key="dv_duree")
+        
     pct_acompte   = 30
     pct_solde     = 70
     segments      = []
@@ -3268,6 +3339,35 @@ elif page == "Créer un devis":
             "source":   "streamlit_erp",
         }
 
+
+    with st.expander("💾 Sauvegarder ce devis comme modèle", expanded=False):
+        nom_nouveau_modele = st.text_input("Nom du modèle", placeholder="Ex: Remplacement spots LED", key="save_m_nom")
+        if st.button("Enregistrer le modèle", key="btn_save_new_modele"):
+            if not nom_nouveau_modele.strip():
+                st.error("Donne un nom au modèle.")
+            else:
+                lignes_valides = [l for l in lignes if l["article"].strip()]
+                new_row = [
+                    nom_nouveau_modele.strip(),
+                    objet_travaux.strip(),
+                    str(int(duree_jours)),
+                    modalite_paie,
+                    tva_pct_str,
+                    json.dumps(lignes_valides, ensure_ascii=False),
+                ]
+                try:
+                    ws_save_m, err_save_m = get_worksheet(user, "modeles_devis")
+                    if err_save_m:
+                        sh_save, _ = get_spreadsheet(user)
+                        ws_save_m  = sh_save.add_worksheet(title="modeles_devis", rows=100, cols=6)
+                        ws_save_m.update("A1:F1", [["nom_modele","objet","duree_jours","modalite","tva","lignes_json"]])
+                    all_save = ws_save_m.get_all_values()
+                    ws_save_m.insert_row(new_row, index=len(all_save)+1, value_input_option="USER_ENTERED")
+                    _load_modeles.clear()
+                    st.success(f"Modèle '{nom_nouveau_modele}' enregistré.")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Erreur : {ex}")
     if st.button("Prévisualiser le devis", use_container_width=True, key="btn_preview"):
         errs = _validate()
         if errs:
