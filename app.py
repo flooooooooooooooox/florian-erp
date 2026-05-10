@@ -687,14 +687,19 @@ def get_calendars_list(username):
             scopes=["https://www.googleapis.com/auth/calendar.readonly"]
         )
         service = build("calendar", "v3", credentials=creds)
-        cal_list = service.calendarList().list().execute()
         calendars = {}
-        for cal in cal_list.get("items", []):
-            calendars[cal["summary"]] = cal["id"]
+        page_token = None
+        while True:
+            cal_list = service.calendarList().list(pageToken=page_token).execute()
+            for cal in cal_list.get("items", []):
+                calendars[cal["summary"]] = cal["id"]
+            page_token = cal_list.get("nextPageToken")
+            if not page_token:
+                break
         return calendars
-    except Exception:
+    except Exception as e:
+        st.write(f"DEBUG erreur calendars: {e}")
         return {}
-
 @st.cache_data(ttl=300, show_spinner=False)
 def _load_chatmemory2_durees(u):
     """Charge toutes les durées de chatmemory2 en une seule requête."""
