@@ -3069,6 +3069,8 @@ elif page == "Créer un devis":
         ], key="dv_cat_op")
         siren_client        = st.text_input("SIREN client (optionnel)", placeholder="123 456 789", key="dv_siren")
     with c4:
+        if "_modele_modal" in st.session_state:
+            st.session_state["dv_modal"] = st.session_state.pop("_modele_modal")
         modalite_paie = st.selectbox("Modalité de paiement", [
             "Acompte / Solde",
             "Paiement intégral à la commande",
@@ -3076,9 +3078,8 @@ elif page == "Créer un devis":
             "Paiement échelonné / progressif",
             "Paiement différé / à terme",
         ], key="dv_modal")
-                        for _k in ["dv_objet", "dv_duree", "dv_modal", "dv_tva"]:
-                            st.session_state.pop(_k, None)
-                        st.rerun()
+        if "_modele_duree" in st.session_state:
+            st.session_state["dv_duree"] = st.session_state.pop("_modele_duree")
         duree_jours = st.number_input("Durée estimée (jours ouvrés) *", min_value=1, step=1, key="dv_duree")
     pct_acompte   = 30
     pct_solde     = 70
