@@ -5910,7 +5910,16 @@ elif page == "Salariés":
             st.warning("Aucun salarié trouvé dans l'onglet 'suivie'.")
             st.stop()
 
-        APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw06HmzeuDHgmg5nW19VJyjvQgc7VWLkU0i-srTWGz-rfItxvtUIZ-OfEVcc_sxztIJ/exec"
+        def get_apps_script_url(username):
+            try:
+                from auth import supabase
+                res = supabase.table("users").select("apps_script_url").eq("username", username).single().execute()
+                url = res.data.get("apps_script_url", "") if res.data else ""
+                return url or ""
+            except Exception:
+                return ""
+
+        APPS_SCRIPT_URL = get_apps_script_url(user)
 
         # ══════════════════════════════════════════════════════════════════
         # ONGLET 1 : PAR SALARIÉ
@@ -6221,7 +6230,7 @@ elif page == "Salariés":
                                 _row_index_ch = ri
                                 break
 
-                    if st.button("💾 Enregistrer pour ce jour uniquement", use_container_width=True, key="btn_save_ch_horaire"):
+if st.button("💾 Enregistrer pour ce jour uniquement", use_container_width=True, key="btn_save_ch_horaire"):
                         if not _row_index_ch:
                             st.error("Impossible de trouver la ligne dans suivie.")
                         else:
@@ -6239,11 +6248,6 @@ elif page == "Salariés":
                                     timeout=20,
                                     headers={"Content-Type": "application/json"}
                                 )
-                                st.write(f"Status code : {resp_ch.status_code}")
-                                st.write(f"Réponse brute : {resp_ch.text}")
-                                result_ch = resp_ch.json()
-                                if result_ch.get("success"):
-                                    st.success(...)
                                 result_ch = resp_ch.json()
                                 if result_ch.get("success"):
                                     st.success(f"✅ Horaire mis à jour pour {sel_date_label} : {hd_ch.strftime('%H:%M')} → {hf_ch.strftime('%H:%M')}")
