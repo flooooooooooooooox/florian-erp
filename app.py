@@ -3134,6 +3134,13 @@ elif page == "Créer un devis":
             "10 % (travaux de rénovation)",
             "20 % (travaux neufs / autres)",
         ], key="dv_tva")
+    with c_tva2:
+        tva_debits_option = st.radio("Régime TVA", [
+            "TVA sur encaissements",
+            "TVA sur débits",
+        ], key="dv_tva_debits")
+    tva_taux        = 0.055 if "5,5" in tva_option else (0.10 if "10 %" in tva_option else 0.20)
+    tva_debits_bool = "débits" in tva_debits_option
 
     tva_taux        = 0.055 if "5,5" in tva_option else (0.10 if "10 %" in tva_option else 0.20)
     tva_debits_bool = "débits" in tva_debits_option
