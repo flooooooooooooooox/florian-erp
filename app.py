@@ -4270,15 +4270,19 @@ if page == "Vue Générale":
         )
         if _pdf_err:
             st.warning(_pdf_err)
-        if _pdf_bytes:
+        if _pdf_bytes and isinstance(_pdf_bytes, (bytes, bytearray)) and len(_pdf_bytes) > 0:
             st.download_button(
                 "Télécharger le PDF (vue comptable)",
-                data=_pdf_bytes,
+                data=bytes(_pdf_bytes),          # force le type bytes
                 file_name=f"vue_generale_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                 mime="application/pdf",
                 key="vg_export_pdf_dl",
                 use_container_width=True,
             )
+elif _pdf_err:
+    st.warning(f"PDF non généré : {_pdf_err}")
+else:
+    st.info("PDF indisponible (vérifier que fpdf2 est dans requirements.txt).")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
