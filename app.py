@@ -11,6 +11,8 @@ import os
 import calendar
 import requests
 import re
+import unicodedata
+from pathlib import Path
 from typing import Optional, Tuple
 
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
@@ -1330,6 +1332,48 @@ def build_monthly_ca_aggregates(monthly_df: pd.DataFrame) -> pd.DataFrame:
     return g[cols]
 
 
+def _pdf_text_for_core_font(s: str) -> str:
+    """Helvetica / Times n'acceptent que Latin-1 : normalise tirets typographiques et accents."""
+    if s is None:
+        return ""
+    t = (
+        str(s)
+        .replace("\u2014", "-")
+        .replace("\u2013", "-")
+        .replace("\u2192", "->")
+        .replace("\u00a0", " ")
+    )
+    t = unicodedata.normalize("NFKD", t).encode("latin-1", "replace").decode("latin-1")
+    return t
+
+
+def _register_dejavu_fonts(pdf) -> bool:
+    """DejaVu (fournie avec fpdf2) couvre l'UTF-8 français ; évite FPDFUnicodeEncodingException."""
+    try:
+        import fpdf
+
+        root = Path(fpdf.__file__).resolve().parent
+        for sub in ("font", "fonts"):
+            fd = root / sub
+            reg = fd / "DejaVuSans.ttf"
+            if not reg.is_file():
+                continue
+            bol = fd / "DejaVuSans-Bold.ttf"
+            ita = fd / "DejaVuSans-Oblique.ttf"
+            try:
+                pdf.add_font("DejaVu", style="", fname=str(reg))
+                pdf.add_font("DejaVu", style="B", fname=str(bol) if bol.is_file() else str(reg))
+                pdf.add_font("DejaVu", style="I", fname=str(ita) if ita.is_file() else str(reg))
+            except TypeError:
+                pdf.add_font("DejaVu", "", str(reg))
+                pdf.add_font("DejaVu", "B", str(bol) if bol.is_file() else str(reg))
+                pdf.add_font("DejaVu", "I", str(ita) if ita.is_file() else str(reg))
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def build_vue_generale_pdf_bytes(
     *,
     titre_periode: str,
@@ -1352,70 +1396,89 @@ def build_vue_generale_pdf_bytes(
     except ImportError:
         return None, "Package fpdf2 manquant (pip install fpdf2)."
 
-    class _PDF(FPDF):
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Helvetica", "I", 8)
-            self.cell(0, 10, f"Genere le {datetime.now().strftime('%d/%m/%Y %H:%M')}", align="C")
+    try:
+        _pdf_font_family: list[str] = ["Helvetica"]
 
-    pdf = _PDF()
-    pdf.set_auto_page_break(auto=True, margin=14)
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 9, "Vue generale — Synthese comptable", ln=1)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 7, f"Periode analysee : {titre_periode}", ln=1)
-    pdf.ln(4)
+        class _VG(FPDF):
+            def footer(self):
+                self.set_y(-15)
+                ff = _pdf_font_family[0]
+                self.set_font(ff, style="I", size=8)
+                foot = f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                if ff == "Helvetica":
+                    foot = _pdf_text_for_core_font(foot)
+                self.cell(0, 10, foot, align="C")
 
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Indicateurs principaux", ln=1)
-    pdf.set_font("Helvetica", "", 10)
+        pdf = _VG()
+        if _register_dejavu_fonts(pdf):
+            _pdf_font_family[0] = "DejaVu"
 
-    def row_pdf(label: str, val: str):
-        pdf.cell(95, 7, label, border=0)
-        pdf.cell(0, 7, val, border=0, ln=1)
+        pdf.set_auto_page_break(auto=True, margin=14)
+        pdf.add_page()
 
-    row_pdf("CA signe (confirme)", f"{vg_ca_signe:,.0f} EUR".replace(",", " "))
-    row_pdf("CA en negociation / attente", f"{vg_ca_non_s:,.0f} EUR".replace(",", " "))
-    row_pdf("CA total dossiers (periode)", f"{vg_total_ca:,.0f} EUR".replace(",", " "))
-    row_pdf("Reste a encaisser (signes, fact. non finalisee)", f"{vg_reste:,.0f} EUR".replace(",", " "))
-    row_pdf("Taux de conversion", f"{vg_taux_conv} %")
-    pdf.ln(2)
-    row_pdf("Nombre de devis (periode)", str(vg_nb_devis))
-    row_pdf("  - signes", str(vg_nb_signes))
-    row_pdf("  - en attente", str(vg_nb_attente))
-    row_pdf("Dossiers facturation finalisee", str(vg_nb_fact_ok))
+        def sf(style: str = "", size: int = 10):
+            pdf.set_font(_pdf_font_family[0], style=style, size=size)
 
-    if treso_horizon is not None and treso_total_future is not None:
-        pdf.ln(3)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, f"Prevision tresorerie ({treso_horizon} j.)", ln=1)
-        pdf.set_font("Helvetica", "", 10)
-        row_pdf("Montant total a recevoir (echeances)", f"{treso_total_future:,.0f} EUR".replace(",", " "))
+        def txt(s: str) -> str:
+            return s if _pdf_font_family[0] == "DejaVu" else _pdf_text_for_core_font(s)
 
-    if monthly_table is not None and not monthly_table.empty:
+        sf("B", 16)
+        pdf.cell(0, 9, txt("Vue générale — Synthèse comptable"), ln=1)
+        sf("", 11)
+        pdf.cell(0, 7, txt(f"Période analysée : {titre_periode}"), ln=1)
         pdf.ln(4)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "CA par mois (periode)", ln=1)
-        pdf.set_font("Helvetica", "B", 9)
-        w_m, w_s, w_a, w_t, w_c = 32, 32, 32, 32, 32
-        pdf.cell(w_m, 7, "Mois", border=1)
-        pdf.cell(w_s, 7, "Signe", border=1)
-        pdf.cell(w_a, 7, "Attente", border=1)
-        pdf.cell(w_t, 7, "Total", border=1)
-        pdf.cell(w_c, 7, "Cumul", border=1, ln=1)
-        pdf.set_font("Helvetica", "", 9)
-        for _, r in monthly_table.iterrows():
-            pdf.cell(w_m, 6, str(r["_mois_label"])[:18], border=1)
-            pdf.cell(w_s, 6, f"{float(r['CA Signé']):,.0f}".replace(",", " "), border=1)
-            pdf.cell(w_a, 6, f"{float(r['CA En attente']):,.0f}".replace(",", " "), border=1)
-            pdf.cell(w_t, 6, f"{float(r['CA Total']):,.0f}".replace(",", " "), border=1)
-            pdf.cell(w_c, 6, f"{float(r['CA Cumul']):,.0f}".replace(",", " "), border=1, ln=1)
 
-    raw_out = pdf.output(dest="S")
-    if isinstance(raw_out, str):
-        raw_out = raw_out.encode("latin-1")
-    return raw_out, None
+        sf("B", 12)
+        pdf.cell(0, 8, txt("Indicateurs principaux"), ln=1)
+        sf("", 10)
+
+        def row_pdf(label: str, val: str):
+            pdf.cell(95, 7, txt(label), border=0)
+            pdf.cell(0, 7, txt(val), border=0, ln=1)
+
+        row_pdf("CA signé (confirmé)", f"{vg_ca_signe:,.0f} EUR".replace(",", " "))
+        row_pdf("CA en négociation / attente", f"{vg_ca_non_s:,.0f} EUR".replace(",", " "))
+        row_pdf("CA total dossiers (période)", f"{vg_total_ca:,.0f} EUR".replace(",", " "))
+        row_pdf("Reste à encaisser (signés, fact. non finalisée)", f"{vg_reste:,.0f} EUR".replace(",", " "))
+        row_pdf("Taux de conversion", f"{vg_taux_conv} %")
+        pdf.ln(2)
+        row_pdf("Nombre de devis (période)", str(vg_nb_devis))
+        row_pdf("  - signés", str(vg_nb_signes))
+        row_pdf("  - en attente", str(vg_nb_attente))
+        row_pdf("Dossiers facturation finalisée", str(vg_nb_fact_ok))
+
+        if treso_horizon is not None and treso_total_future is not None:
+            pdf.ln(3)
+            sf("B", 12)
+            pdf.cell(0, 8, txt(f"Prévision trésorerie ({treso_horizon} j.)"), ln=1)
+            sf("", 10)
+            row_pdf("Montant total à recevoir (échéances)", f"{treso_total_future:,.0f} EUR".replace(",", " "))
+
+        if monthly_table is not None and not monthly_table.empty:
+            pdf.ln(4)
+            sf("B", 12)
+            pdf.cell(0, 8, txt("CA par mois (période)"), ln=1)
+            sf("B", 9)
+            w_m, w_s, w_a, w_t, w_c = 32, 32, 32, 32, 32
+            pdf.cell(w_m, 7, txt("Mois"), border=1)
+            pdf.cell(w_s, 7, txt("Signé"), border=1)
+            pdf.cell(w_a, 7, txt("Attente"), border=1)
+            pdf.cell(w_t, 7, txt("Total"), border=1)
+            pdf.cell(w_c, 7, txt("Cumul"), border=1, ln=1)
+            sf("", 9)
+            for _, r in monthly_table.iterrows():
+                pdf.cell(w_m, 6, txt(str(r["_mois_label"])[:18]), border=1)
+                pdf.cell(w_s, 6, f"{float(r['CA Signé']):,.0f}".replace(",", " "), border=1)
+                pdf.cell(w_a, 6, f"{float(r['CA En attente']):,.0f}".replace(",", " "), border=1)
+                pdf.cell(w_t, 6, f"{float(r['CA Total']):,.0f}".replace(",", " "), border=1)
+                pdf.cell(w_c, 6, f"{float(r['CA Cumul']):,.0f}".replace(",", " "), border=1, ln=1)
+
+        raw_out = pdf.output(dest="S")
+        if isinstance(raw_out, str):
+            raw_out = raw_out.encode("latin-1")
+        return raw_out, None
+    except Exception as ex:
+        return None, f"PDF : {ex}"
 
 
 def convert_df_to_csv(df_export: pd.DataFrame) -> bytes:
