@@ -4561,123 +4561,54 @@ elif page == "Factures & Paiements":
     st.markdown("<br>", unsafe_allow_html=True)
     cols = [c for c in [COL_CLIENT, COL_CHANTIER, COL_MONTANT, COL_ACOMPTE1, COL_ACOMPTE2, "_reste", COL_FACT_FIN, COL_PV, COL_RESERVE, COL_MODALITE, COL_TVA, COL_STATUT] if c]
 
-    with st.container(border=True):
-        st.markdown("### Export comptable intelligent")
-        if not COL_DATE:
-            st.info("Colonne 'Date' introuvable : export indisponible.")
+with st.container(border=True):
+        st.markdown("##### Export comptable (PDF)")
+        st.caption("Synthèse des indicateurs pour la période filtrée ci-dessus, le détail CA par mois et la ligne trésorerie issue du bloc « Prévisions ».")
+        _m_pdf = None
+        _d_pdf = df_vg.copy()
+        if "_date_parsed" in _d_pdf.columns:
+            _d_pdf["_dagg"] = _d_pdf["_date_parsed"]
+        elif "_date_parsed_main" in _d_pdf.columns:
+            _d_pdf["_dagg"] = _d_pdf["_date_parsed_main"]
+        elif COL_DATE:
+            _d_pdf["_dagg"] = parse_flexible_series(_d_pdf[COL_DATE])
         else:
-            mois_fr = [
-                "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-                "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
-            ]
-            df_export = df.copy()
-            if "_date_parsed_main" in df_export.columns:
-                df_export["_date_export"] = df_export["_date_parsed_main"]
-            else:
-                df_export["_date_export"] = parse_flexible_series(df_export[COL_DATE])
-            df_export = df_export.dropna(subset=["_date_export"]).copy()
-
-            if df_export.empty:
-                st.info("Aucune date exploitable pour l'export comptable.")
-            else:
-                years = sorted(df_export["_date_export"].dt.year.dropna().astype(int).unique().tolist(), reverse=True)
-                if not years:
-                    years = [datetime.now().year]
-                current_month = datetime.now().month
-                current_year = datetime.now().year
-
-                col_per_1, col_per_2 = st.columns(2)
-                with col_per_1:
-                    selected_month = st.selectbox(
-                        "Mois",
-                        options=list(range(1, 13)),
-                        format_func=lambda m: mois_fr[m - 1],
-                        index=max(0, min(11, current_month - 1)),
-                        key="export_compta_month",
-                    )
-                with col_per_2:
-                    selected_year = st.selectbox(
-                        "Année",
-                        options=years,
-                        index=years.index(current_year) if current_year in years else 0,
-                        key="export_compta_year",
-                    )
-
-                valid_mask = pd.Series(False, index=df_export.index)
-                if "_pv" in df_export.columns:
-                    valid_mask = valid_mask | df_export["_pv"].astype(bool)
-                if COL_RESERVE:
-                    valid_mask = valid_mask | df_export[COL_RESERVE].apply(is_checked)
-
-                df_export = df_export[
-                    (df_export["_date_export"].dt.month == int(selected_month))
-                    & (df_export["_date_export"].dt.year == int(selected_year))
-                    & valid_mask
-                ].copy()
-
-                if df_export.empty:
-                    st.warning("Aucune ligne validée (PV signé / sans réserve) pour cette période.")
-                else:
-                    # Priorité à la nouvelle colonne TVA_choisi (taux), sinon fallback sur la TVA existante.
-                    col_tva_export = fcol(df_export, "tva_choisi", "tva choisi")
-                    if not col_tva_export:
-                        col_tva_export = COL_TVA
-
-                    def _parse_tva_rate(val):
-                        if pd.isna(val) or str(val).strip() == "":
-                            return 0.0
-                        s = (
-                            str(val).strip().lower()
-                            .replace("%", "")
-                            .replace("tva", "")
-                            .replace(",", ".")
-                            .replace(" ", "")
-                        )
-                        try:
-                            num = float(s)
-                        except Exception:
-                            return 0.0
-                        if num <= 1:
-                            return max(0.0, num)
-                        if num <= 100:
-                            return max(0.0, num / 100)
-                        return 0.0
-
-                    montant_ttc = df_export["_montant"].apply(clean_amount)
-                    tva_rates = (
-                        df_export[col_tva_export].apply(_parse_tva_rate)
-                        if col_tva_export else pd.Series([0.0] * len(df_export), index=df_export.index)
-                    )
-
-                    tva_amounts = []
-                    ht_amounts = []
-                    for ttc, rate in zip(montant_ttc.tolist(), tva_rates.tolist()):
-                        rate = max(rate, 0.0)
-                        ht_amt = ttc / (1 + rate) if rate > 0 else ttc
-                        tva_amt = ttc - ht_amt
-                        ht_amounts.append(ht_amt)
-                        tva_amounts.append(tva_amt)
-
-                    export_table = pd.DataFrame({
-                        "Date": df_export["_date_export"].dt.strftime("%d/%m/%Y"),
-                        "Numéro": df_export[COL_NUM] if COL_NUM else "",
-                        "Client": df_export[COL_CLIENT] if COL_CLIENT else "",
-                        "Objet": df_export[COL_CHANTIER] if COL_CHANTIER else "",
-                        "Montant HT": ht_amounts,
-                        "TVA": tva_amounts,
-                        "TTC": montant_ttc,
-                    })
-
-                    csv_data = convert_df_to_csv(export_table)
-                    mois_label = mois_fr[int(selected_month) - 1]
-                    mois_file = mois_label.upper().replace("É", "E").replace("È", "E").replace("Ê", "E").replace("Û", "U").replace("Ù", "U").replace("À", "A").replace("Â", "A").replace("Ô", "O").replace("Î", "I").replace("Ï", "I").replace("Ç", "C")
-                    filename = f"export_compta_{mois_file}_{int(selected_year)}.csv"
-                    st.download_button(
-                        label=f"📥 Export Comptable (PV signés - {mois_label} {selected_year})",
-                        data=csv_data,
-                        file_name=filename,
-                        mime="text/csv",
-                        use_container_width=True,
+            _d_pdf = None
+        if _d_pdf is not None and not _d_pdf.empty and "_dagg" in _d_pdf.columns:
+            _d_pdf2 = _d_pdf.dropna(subset=["_dagg"]).copy()
+            if not _d_pdf2.empty:
+                _m_pdf = build_monthly_ca_aggregates(
+                    _d_pdf2.assign(_date=_d_pdf2["_dagg"])[["_date", "_montant", "_signe"]]
+                )
+        _treso_h, _treso_tot = st.session_state.get("_vg_pdf_treso", (None, None))
+        _pdf_bytes, _pdf_err = build_vue_generale_pdf_bytes(
+            titre_periode=vg_periode_titre,
+            vg_nb_devis=vg_nb_devis,
+            vg_nb_signes=vg_nb_signes,
+            vg_nb_attente=vg_nb_attente,
+            vg_nb_fact_ok=vg_nb_fact_ok,
+            vg_ca_signe=float(vg_ca_signe),
+            vg_ca_non_s=float(vg_ca_non_s),
+            vg_total_ca=float(vg_total_ca),
+            vg_taux_conv=int(vg_taux_conv),
+            vg_reste=float(vg_reste),
+            monthly_table=_m_pdf,
+            treso_horizon=_treso_h,
+            treso_total_future=_treso_tot,
+        )
+        if _pdf_err:
+            st.warning(_pdf_err)
+        if _pdf_bytes and isinstance(_pdf_bytes, (bytes, bytearray)) and len(_pdf_bytes) > 0:
+            st.download_button(
+                "Télécharger le PDF (vue comptable)",
+                data=bytes(_pdf_bytes),
+                file_name=f"vue_generale_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                key="vg_export_pdf_dl",
+                use_container_width=True,
+            )
+        elif not _pdf_err:
+            st.info("PDF indisponible — vérifier que fpdf2 est dans requirements.txt.")
                         key="btn_export_comptable_intelligent",
                     )
 
