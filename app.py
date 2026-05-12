@@ -11,6 +11,8 @@ import os
 import calendar
 import requests
 import re
+from typing import Optional, Tuple
+
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
 from activity_log import log_activity, read_activity_logs
@@ -1274,6 +1276,148 @@ def get_main_dataset(username: str):
 def fmt(v):
     return f"{v:,.0f} €".replace(",", " ")
 
+
+_FR_MOIS_SHORT = (
+    "",
+    "janv.",
+    "févr.",
+    "mars",
+    "avr.",
+    "mai",
+    "juin",
+    "juil.",
+    "août",
+    "sept.",
+    "oct.",
+    "nov.",
+    "déc.",
+)
+
+
+def build_monthly_ca_aggregates(monthly_df: pd.DataFrame) -> pd.DataFrame:
+    """Agrège le CA par mois (colonnes _date, _montant, _signe) pour les graphiques Vue générale."""
+    cols = ["_mois_label", "CA En attente", "CA Signé", "CA Total", "CA Cumul"]
+    if monthly_df is None or monthly_df.empty:
+        return pd.DataFrame(columns=cols)
+
+    work = monthly_df.copy()
+    work["_date"] = pd.to_datetime(work["_date"], errors="coerce")
+    work = work.dropna(subset=["_date"])
+    if work.empty:
+        return pd.DataFrame(columns=cols)
+
+    work["_montant"] = pd.to_numeric(work["_montant"], errors="coerce").fillna(0.0)
+    sig = work["_signe"].fillna(False)
+    if sig.dtype != bool:
+        sig = sig.astype(str).str.strip().str.lower().isin(("1", "true", "oui", "yes", "v", "x"))
+
+    work["_ca_signe"] = work["_montant"].where(sig, 0.0)
+    work["_ca_attente"] = work["_montant"].where(~sig, 0.0)
+    work["_ym"] = work["_date"].dt.to_period("M")
+
+    g = (
+        work.groupby("_ym", sort=True)
+        .agg(_s=("_ca_signe", "sum"), _a=("_ca_attente", "sum"))
+        .reset_index()
+    )
+    g["CA Signé"] = g["_s"]
+    g["CA En attente"] = g["_a"]
+    g["CA Total"] = g["CA Signé"] + g["CA En attente"]
+    g["CA Cumul"] = g["CA Total"].cumsum()
+    g["_mois_label"] = g["_ym"].apply(
+        lambda p: f"{_FR_MOIS_SHORT[p.month]} {p.year}" if hasattr(p, "month") else str(p)
+    )
+    return g[cols]
+
+
+def build_vue_generale_pdf_bytes(
+    *,
+    titre_periode: str,
+    vg_nb_devis: int,
+    vg_nb_signes: int,
+    vg_nb_attente: int,
+    vg_nb_fact_ok: int,
+    vg_ca_signe: float,
+    vg_ca_non_s: float,
+    vg_total_ca: float,
+    vg_taux_conv: int,
+    vg_reste: float,
+    monthly_table: pd.DataFrame | None,
+    treso_horizon: int | None,
+    treso_total_future: float | None,
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """Retourne (pdf_bytes, erreur). Erreur non nulle si fpdf2 absent ou échec."""
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None, "Package fpdf2 manquant (pip install fpdf2)."
+
+    class _PDF(FPDF):
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.cell(0, 10, f"Genere le {datetime.now().strftime('%d/%m/%Y %H:%M')}", align="C")
+
+    pdf = _PDF()
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 9, "Vue generale — Synthese comptable", ln=1)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, f"Periode analysee : {titre_periode}", ln=1)
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Indicateurs principaux", ln=1)
+    pdf.set_font("Helvetica", "", 10)
+
+    def row_pdf(label: str, val: str):
+        pdf.cell(95, 7, label, border=0)
+        pdf.cell(0, 7, val, border=0, ln=1)
+
+    row_pdf("CA signe (confirme)", f"{vg_ca_signe:,.0f} EUR".replace(",", " "))
+    row_pdf("CA en negociation / attente", f"{vg_ca_non_s:,.0f} EUR".replace(",", " "))
+    row_pdf("CA total dossiers (periode)", f"{vg_total_ca:,.0f} EUR".replace(",", " "))
+    row_pdf("Reste a encaisser (signes, fact. non finalisee)", f"{vg_reste:,.0f} EUR".replace(",", " "))
+    row_pdf("Taux de conversion", f"{vg_taux_conv} %")
+    pdf.ln(2)
+    row_pdf("Nombre de devis (periode)", str(vg_nb_devis))
+    row_pdf("  - signes", str(vg_nb_signes))
+    row_pdf("  - en attente", str(vg_nb_attente))
+    row_pdf("Dossiers facturation finalisee", str(vg_nb_fact_ok))
+
+    if treso_horizon is not None and treso_total_future is not None:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, f"Prevision tresorerie ({treso_horizon} j.)", ln=1)
+        pdf.set_font("Helvetica", "", 10)
+        row_pdf("Montant total a recevoir (echeances)", f"{treso_total_future:,.0f} EUR".replace(",", " "))
+
+    if monthly_table is not None and not monthly_table.empty:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "CA par mois (periode)", ln=1)
+        pdf.set_font("Helvetica", "B", 9)
+        w_m, w_s, w_a, w_t, w_c = 32, 32, 32, 32, 32
+        pdf.cell(w_m, 7, "Mois", border=1)
+        pdf.cell(w_s, 7, "Signe", border=1)
+        pdf.cell(w_a, 7, "Attente", border=1)
+        pdf.cell(w_t, 7, "Total", border=1)
+        pdf.cell(w_c, 7, "Cumul", border=1, ln=1)
+        pdf.set_font("Helvetica", "", 9)
+        for _, r in monthly_table.iterrows():
+            pdf.cell(w_m, 6, str(r["_mois_label"])[:18], border=1)
+            pdf.cell(w_s, 6, f"{float(r['CA Signé']):,.0f}".replace(",", " "), border=1)
+            pdf.cell(w_a, 6, f"{float(r['CA En attente']):,.0f}".replace(",", " "), border=1)
+            pdf.cell(w_t, 6, f"{float(r['CA Total']):,.0f}".replace(",", " "), border=1)
+            pdf.cell(w_c, 6, f"{float(r['CA Cumul']):,.0f}".replace(",", " "), border=1, ln=1)
+
+    raw_out = pdf.output(dest="S")
+    if isinstance(raw_out, str):
+        raw_out = raw_out.encode("latin-1")
+    return raw_out, None
+
+
 def convert_df_to_csv(df_export: pd.DataFrame) -> bytes:
     return df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
 
@@ -2446,13 +2590,6 @@ elif "Notifications" in page:
         st.markdown("---")
 
         calendars_available = get_calendars_list(user)
-        st.write("DEBUG calendars:", calendars_available)
-        import traceback
-        try:
-            test = get_calendars_list(user)
-            st.write("test:", test)
-        except Exception as ex:
-            st.error(traceback.format_exc())
 
         if nb_attente_notif == 0:
             st.success("Aucune notification en attente.")
@@ -2503,7 +2640,6 @@ elif "Notifications" in page:
                     )
 
                     # ── Auto-sélection calendrier selon salarié ────────────
-# ── Auto-sélection calendrier selon salarié ────────────
                     cal_options = ["— Choisir un calendrier —"] + list(calendars_available.keys())
                     auto_idx = _auto_cal_index(salarie_sel, list(calendars_available.keys()))
 
@@ -3854,15 +3990,15 @@ if page == "Vue Générale":
     vg_taux_conv   = int((vg_nb_signes / vg_nb_devis) * 100) if vg_nb_devis > 0 else 0
     vg_reste       = df_vg[(df_vg["_signe"]) & (~df_vg["_fact_fin"])]["_reste"].sum()
 
+    vg_periode_titre = "Sans filtre période (tous les dossiers du fichier)"
     if periode_active:
-        label_periode = ""
         if date_debut_vg and date_fin_vg:
-            label_periode = f"{date_debut_vg.strftime('%d/%m/%Y')} → {date_fin_vg.strftime('%d/%m/%Y')}"
+            vg_periode_titre = f"{date_debut_vg.strftime('%d/%m/%Y')} → {date_fin_vg.strftime('%d/%m/%Y')}"
         elif date_debut_vg:
-            label_periode = f"Depuis le {date_debut_vg.strftime('%d/%m/%Y')}"
+            vg_periode_titre = f"Depuis le {date_debut_vg.strftime('%d/%m/%Y')}"
         else:
-            label_periode = f"Jusqu'au {date_fin_vg.strftime('%d/%m/%Y')}"
-        st.info(f"📅 Période active : **{label_periode}** — {vg_nb_devis} dossier(s)")
+            vg_periode_titre = f"Jusqu'au {date_fin_vg.strftime('%d/%m/%Y')}"
+        st.info(f"📅 Période active : **{vg_periode_titre}** — {vg_nb_devis} dossier(s)")
 
     render_kpi_cards([
         {"label": "CA Sécurisé", "value": fmt(vg_ca_signe), "delta": f"{vg_nb_signes} devis signés", "icon": "€", "fill_pct": 100 if vg_total_ca <= 0 else int((vg_ca_signe / max(vg_total_ca, 1)) * 100), "accent": "#00d68f", "accent_bg": "rgba(0,214,143,0.18)", "delta_color": "#00d68f"},
@@ -3931,6 +4067,7 @@ if page == "Vue Générale":
         st.markdown("### Prévisions de Trésorerie à 30 jours")
         if not COL_DATE:
             st.info("Colonne 'Date' introuvable pour calculer les échéances.")
+            st.session_state["_vg_pdf_treso"] = (None, None)
         else:
             horizon_days = st.slider(
                 "Durée de la prévision (jours)",
@@ -3988,6 +4125,7 @@ if page == "Vue Générale":
             total_past = float(df_past["_montant"].sum()) if not df_past.empty else 0.0
             delta_value = total_future - total_past
             st.metric(f"Montant total à recevoir ({horizon_days} jours)", fmt(total_future), delta=f"{delta_value:,.0f} €".replace(",", " "))
+            st.session_state["_vg_pdf_treso"] = (int(horizon_days), float(total_future))
 
             if df_future.empty:
                 st.info(f"Aucune échéance attendue entre aujourd'hui et les {horizon_days} prochains jours.")
@@ -4031,6 +4169,53 @@ if page == "Vue Générale":
                     margin=dict(t=60, b=30, l=20, r=20),
                 )
                 st.plotly_chart(fig_tres, use_container_width=True)
+
+    with st.container(border=True):
+        st.markdown("##### Export comptable (PDF)")
+        st.caption("Synthèse des indicateurs pour la période filtrée ci-dessus, le détail CA par mois et la ligne trésorerie issue du bloc « Prévisions ».")
+        _m_pdf = None
+        _d_pdf = df_vg.copy()
+        if "_date_parsed" in _d_pdf.columns:
+            _d_pdf["_dagg"] = _d_pdf["_date_parsed"]
+        elif "_date_parsed_main" in _d_pdf.columns:
+            _d_pdf["_dagg"] = _d_pdf["_date_parsed_main"]
+        elif COL_DATE:
+            _d_pdf["_dagg"] = parse_flexible_series(_d_pdf[COL_DATE])
+        else:
+            _d_pdf = None
+        if _d_pdf is not None and not _d_pdf.empty and "_dagg" in _d_pdf.columns:
+            _d_pdf2 = _d_pdf.dropna(subset=["_dagg"]).copy()
+            if not _d_pdf2.empty:
+                _m_pdf = build_monthly_ca_aggregates(
+                    _d_pdf2.assign(_date=_d_pdf2["_dagg"])[["_date", "_montant", "_signe"]]
+                )
+        _treso_h, _treso_tot = st.session_state.get("_vg_pdf_treso", (None, None))
+        _pdf_bytes, _pdf_err = build_vue_generale_pdf_bytes(
+            titre_periode=vg_periode_titre,
+            vg_nb_devis=vg_nb_devis,
+            vg_nb_signes=vg_nb_signes,
+            vg_nb_attente=vg_nb_attente,
+            vg_nb_fact_ok=vg_nb_fact_ok,
+            vg_ca_signe=float(vg_ca_signe),
+            vg_ca_non_s=float(vg_ca_non_s),
+            vg_total_ca=float(vg_total_ca),
+            vg_taux_conv=int(vg_taux_conv),
+            vg_reste=float(vg_reste),
+            monthly_table=_m_pdf,
+            treso_horizon=_treso_h,
+            treso_total_future=_treso_tot,
+        )
+        if _pdf_err:
+            st.warning(_pdf_err)
+        if _pdf_bytes:
+            st.download_button(
+                "Télécharger le PDF (vue comptable)",
+                data=_pdf_bytes,
+                file_name=f"vue_generale_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                key="vg_export_pdf_dl",
+                use_container_width=True,
+            )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -6293,7 +6478,7 @@ elif page == "Salariés":
         # ONGLET 2 : PAR CHANTIER
         # ══════════════════════════════════════════════════════════════════
         with cfg_tab2:
-            st.caption("Modifie les horaires d'un chantier pour un jour précis uniquement.")
+            st.caption("Consulte les jours synchronisés avec le calendrier pour un chantier. Les horaires se modifient par semaine dans l’onglet « Par salarié ».")
 
             # Sélection salarié
             sel_sal_ch = st.selectbox("Salarié", salaries_cfg, key="cfg_ch_sal_sel")
@@ -6359,76 +6544,14 @@ elif page == "Salariés":
                         except Exception:
                             dates_labels.append(d)
 
-                    sel_date_label = st.selectbox(
-                        "Jour à modifier",
-                        dates_labels,
-                        key="cfg_ch_date_sel"
+                    st.caption(f"{len(dates_dispo)} jour(s) synchronisé(s) avec le calendrier pour ce chantier.")
+                    with st.expander("Voir les dates synchronisées", expanded=False):
+                        for lbl in dates_labels:
+                            st.text(lbl)
+                    st.info(
+                        "L’enregistrement « pour ce jour uniquement » a été retiré. "
+                        "Utilisez l’onglet « Par salarié » pour ajuster les horaires de la semaine (mise à jour Calendar incluse)."
                     )
-                    sel_date_iso = dates_dispo[dates_labels.index(sel_date_label)]
-
-                    # Horaires actuels
-                    col_hd2, col_hf2 = st.columns(2)
-                    with col_hd2:
-                        hd_ch = st.time_input(
-                            "Heure de début",
-                            value=__import__("datetime").time(8, 0),
-                            key="cfg_ch_hd"
-                        )
-                    with col_hf2:
-                        hf_ch = st.time_input(
-                            "Heure de fin",
-                            value=__import__("datetime").time(17, 0),
-                            key="cfg_ch_hf"
-                        )
-
-                    # Numéro de ligne dans suivie
-                    _row_index_ch = None
-                    sh_tmp, _ = get_spreadsheet(user)
-                    ws_tmp = sh_tmp.worksheet("suivie")
-                    all_tmp = ws_tmp.get_all_values()
-                    if all_tmp:
-                        hdrs_tmp = [h.strip() for h in all_tmp[0]]
-                        idx_num_tmp = next((i for i, h in enumerate(hdrs_tmp) if "eventid" in h.lower()), -1)
-                        idx_sal_tmp = next((i for i, h in enumerate(hdrs_tmp) if "salar" in h.lower()), -1)
-                        # Cherche la colonne numéro de devis
-                        idx_num_devis = next(
-                            (i for i, h in enumerate(hdrs_tmp) if "n°" in h.lower() or "num" in h.lower() or "devis" in h.lower()),
-                        -1
-                        )
-                        # Récupère le numéro du chantier sélectionné
-                        num_devis_sel = str(sel_ch_row.get(COL_NUM, "")).strip() if COL_NUM else ""
-
-                        for ri, rv in enumerate(all_tmp[1:], start=2):
-                            raw = str(rv[idx_num_devis]).strip() if idx_num_devis >= 0 and len(rv) > idx_num_devis else ""
-                            if raw == num_devis_sel and num_devis_sel:
-                                _row_index_ch = ri
-                                break
-
-if st.button("💾 Enregistrer pour ce jour uniquement", use_container_width=True, key="btn_save_ch_horaire"):
-                        if not _row_index_ch:
-                            st.error("Impossible de trouver la ligne dans suivie.")
-                        else:
-                            payload_ch = {
-                                "spreadsheet_id": "1sHLzdg-76Wpz3oxlEfgP0_qmUp5fzkuiUc-oUMYClY0",
-                                "row_index":      _row_index_ch,
-                                "date_key":       sel_date_iso,
-                                "heure_debut":    hd_ch.strftime("%H:%M"),
-                                "heure_fin":      hf_ch.strftime("%H:%M")
-                            }
-                            try:
-                                resp_ch = requests.post(
-                                    APPS_SCRIPT_URL,
-                                    json=payload_ch,
-                                    timeout=20,
-                                    headers={"Content-Type": "application/json"}
-                                )
-                                result_ch = resp_ch.json()
-                                if result_ch.get("success"):
-                                    st.success(f"✅ Horaire mis à jour pour {sel_date_label} : {hd_ch.strftime('%H:%M')} → {hf_ch.strftime('%H:%M')}")
-                                else:
-                                    st.error(f"Erreur Calendar : {result_ch.get('error', '?')}")
-                            except Exception as ex_ch:
-                                st.error(f"Erreur : {ex_ch}")
 
 
  
