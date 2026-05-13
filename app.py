@@ -6860,7 +6860,7 @@ elif page == "Retards & Avenants":
                     st.error(f"Erreur réseau : {ex}")
 
     st.markdown("---")
-st.markdown("## 📋 Créer un Avenant")
+    st.markdown("## 📋 Créer un Avenant")
 
     WEBHOOK_AVENANT = f"https://client1.florianai.fr/webhook/avenant-{user_slug}"
 
