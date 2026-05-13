@@ -6931,7 +6931,7 @@ elif page == "Retards & Avenants":
     page_header("Retards & Avenants", "Signalement de retard chantier")
     # ... reste du code
 
-    WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook/retard-{user_slug}"
+    WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook-test/retard-{user_slug}"
 
     def _parse_tva_av(val):
         if val is None or str(val).strip() == "":
