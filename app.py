@@ -6894,7 +6894,18 @@ elif page == "Retards & Avenants":
             cli = str(row.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
             obj = str(row.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
             parts = [p for p in [num, cli, obj] if p and p.lower() not in ("nan","none","")]
-            return " — ".join(parts) if parts else f"Ligne {row.name + 2}"
+            label = " — ".join(parts) if parts else f"Ligne {row.name + 2}"
+            # Détection type pour le label
+            fact_fin = bool(row.get("_fact_fin", False))
+            a1 = bool(row.get("_acompte1", False))
+            a2 = bool(row.get("_acompte2", False))
+            if fact_fin:
+                type_badge = "📄 Type 3"
+            elif a1 or a2:
+                type_badge = "🔧 Type 2"
+            else:
+                type_badge = "✨ Type 1"
+            return f"{type_badge} | {label}"
 
         av_labels = [_av_label(row) for _, row in df_av_source.iterrows()]
         av_index  = {lbl: idx for lbl, idx in zip(av_labels, df_av_source.index)}
