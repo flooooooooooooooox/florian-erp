@@ -6630,6 +6630,26 @@ elif page == "Retards & Avenants":
 
     WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook/retard-{user_slug}"
 
+    def _parse_tva_av(val):
+        if val is None or str(val).strip() == "":
+            return 0.20
+        s = (
+            str(val).strip().lower()
+            .replace("%", "")
+            .replace("tva", "")
+            .replace(",", ".")
+            .replace(" ", "")
+        )
+        try:
+            num = float(s)
+        except Exception:
+            return 0.20
+        if num <= 1:
+            return max(0.0, num)
+        if num <= 100:
+            return max(0.0, num / 100)
+        return 0.20
+    
     @st.cache_data(ttl=60, show_spinner=False)
     def _load_envoie_pv(u):
         cache_bucket = st.session_state.setdefault("_offline_tab_values_cache", {})
