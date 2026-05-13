@@ -6895,7 +6895,6 @@ elif page == "Retards & Avenants":
             obj = str(row.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
             parts = [p for p in [num, cli, obj] if p and p.lower() not in ("nan","none","")]
             label = " — ".join(parts) if parts else f"Ligne {row.name + 2}"
-            # Détection type pour le label
             fact_fin = bool(row.get("_fact_fin", False))
             a1 = bool(row.get("_acompte1", False))
             a2 = bool(row.get("_acompte2", False))
@@ -6913,20 +6912,37 @@ elif page == "Retards & Avenants":
         sel_av_label = st.selectbox("Dossier concerné", av_labels, key="avenant_sel_dossier")
         row_av = df_av_source.loc[av_index[sel_av_label]]
 
-        # ── Détection type ─────────────────────────────────────────────
+        # ── Détection automatique ──────────────────────────────────────
         _signe    = bool(row_av.get("_signe", False))
         _fact_fin = bool(row_av.get("_fact_fin", False))
         _a1       = bool(row_av.get("_acompte1", False))
         _a2       = bool(row_av.get("_acompte2", False))
 
+        # Type détecté automatiquement
         if not _signe:
-            avenant_type = None
+            avenant_type_auto = None
         elif not _fact_fin and not _a1 and not _a2:
-            avenant_type = 1
+            avenant_type_auto = 1
         elif not _fact_fin and (_a1 or _a2):
-            avenant_type = 2
+            avenant_type_auto = 2
         else:
+            avenant_type_auto = 3
+
+        # Si facture finale pas envoyée → l'artisan peut choisir entre 1 et 2
+        # Si facture finale envoyée → forcé en Type 3
+        if _fact_fin:
             avenant_type = 3
+            st.session_state["avenant_type_choix"] = 3
+        else:
+            # Initialiser le choix avec la détection auto
+            if "avenant_type_choix" not in st.session_state:
+                st.session_state["avenant_type_choix"] = avenant_type_auto
+            # Reset si on change de dossier
+            prev_dossier_key = "avenant_prev_dossier"
+            if st.session_state.get(prev_dossier_key) != sel_av_label:
+                st.session_state[prev_dossier_key] = sel_av_label
+                st.session_state["avenant_type_choix"] = avenant_type_auto
+            avenant_type = st.session_state["avenant_type_choix"]
 
         num_av        = str(row_av.get(COL_NUM, "")).strip() if COL_NUM else ""
         nom_client_av = str(row_av.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
@@ -6939,26 +6955,35 @@ elif page == "Retards & Avenants":
         a2_label      = "✅ Envoyé" if _a2 else "— Non envoyé"
         fact_label    = "✅ Envoyée" if _fact_fin else "— Non envoyée"
 
-        # ── Tableau résumé ─────────────────────────────────────────────
+        # ── Tableau résumé avec sélection cliquable ────────────────────
         def _row_style(t, detected):
             if t == detected:
                 return "border-left:4px solid var(--primary);background:rgba(79,142,247,0.08);"
             return "opacity:0.4;"
 
         type_data = [
-            (1, "Nouveaux travaux indépendants",       "Nouvelle facture / nouveau devis"),
+            (1, "Nouveaux travaux indépendants",       "Nouvelle facture complémentaire"),
             (2, "Modification de travaux déjà prévus", "Modifier devis ou facture"),
             (3, "Facture déjà envoyée",                "Faire un avoir (positif ou négatif)"),
         ]
         rows_html = ""
         for t, situation, action in type_data:
+            is_active = t == avenant_type
+            # Type 1 et 2 cliquables seulement si pas de facture finale
+            # Type 3 affiché en lecture seule si facture finale
+            if _fact_fin:
+                cursor = "cursor:default;"
+            else:
+                cursor = "cursor:pointer;" if t in [1, 2] else "cursor:not-allowed;opacity:0.3;"
+
             badge = (
                 "<span style='background:var(--primary);color:#fff;padding:2px 10px;"
                 "border-radius:99px;font-size:0.7rem;font-weight:700;margin-left:8px;'>"
                 "← Votre cas</span>"
-            ) if t == avenant_type else ""
+            ) if is_active else ""
+
             rows_html += f"""
-            <tr style="{_row_style(t, avenant_type)}">
+            <tr style="{_row_style(t, avenant_type)}{cursor}">
               <td style="padding:12px 16px;font-weight:800;font-size:1.1rem;
                          color:var(--primary);text-align:center;width:60px;">{t}</td>
               <td style="padding:12px 16px;color:var(--text-main);font-size:0.88rem;
@@ -6993,6 +7018,31 @@ elif page == "Retards & Avenants":
           </table>
         </div>
         """, unsafe_allow_html=True)
+
+        # ── Boutons de sélection Type 1 / Type 2 (si pas facture finale) ─
+        if not _fact_fin:
+            st.markdown("<div style='font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;'>Choisissez le type d'avenant :</div>", unsafe_allow_html=True)
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                btn_t1_style = "primary" if avenant_type == 1 else "secondary"
+                if st.button(
+                    "✨ Type 1 — Nouveaux travaux",
+                    key="btn_select_type1",
+                    use_container_width=True,
+                    type=btn_t1_style
+                ):
+                    st.session_state["avenant_type_choix"] = 1
+                    st.rerun()
+            with col_t2:
+                btn_t2_style = "primary" if avenant_type == 2 else "secondary"
+                if st.button(
+                    "🔧 Type 2 — Modifier le devis",
+                    key="btn_select_type2",
+                    use_container_width=True,
+                    type=btn_t2_style
+                ):
+                    st.session_state["avenant_type_choix"] = 2
+                    st.rerun()
 
         # ── Carte récap dossier ─────────────────────────────────────────
         st.markdown(f"""
@@ -7049,8 +7099,8 @@ elif page == "Retards & Avenants":
             st.warning("Ce dossier n'a pas de devis signé. Un avenant n'est possible que sur un devis signé.")
 
         elif avenant_type == 1:
-            st.markdown("#### Type 1 — Nouveaux travaux indépendants")
-            st.caption("Le devis est signé mais aucune facture n'a encore été émise.")
+            st.markdown("#### ✨ Type 1 — Nouveaux travaux indépendants")
+            st.caption("Génère une facture complémentaire séparée liée au devis original.")
 
             if "avenant_lignes" not in st.session_state:
                 st.session_state["avenant_lignes"] = [{"designation":"","prix_ht":0.0,"qte":1.0}]
@@ -7113,8 +7163,8 @@ elif page == "Retards & Avenants":
             """, unsafe_allow_html=True)
 
         elif avenant_type == 2:
-            st.markdown("#### Type 2 — Modification travaux en cours")
-            st.caption("Acompte(s) émis, facture finale non encore envoyée.")
+            st.markdown("#### 🔧 Type 2 — Modification travaux en cours")
+            st.caption("Modifie le montant ou l'objet du dossier existant. Les prochaines factures seront recalculées.")
 
             nouveau_ttc_av = st.number_input(
                 "Nouveau montant TTC (€)", min_value=0.0,
@@ -7155,7 +7205,7 @@ elif page == "Retards & Avenants":
             """, unsafe_allow_html=True)
 
         elif avenant_type == 3:
-            st.markdown("#### Type 3 — Avoir sur facture finale")
+            st.markdown("#### 📄 Type 3 — Avoir sur facture finale")
             st.caption("La facture finale a déjà été envoyée.")
 
             sens_avoir = st.radio(
@@ -7222,6 +7272,7 @@ elif page == "Retards & Avenants":
                     base_payload = {
                         "type_avenant":        avenant_type,
                         "numero_devis":        num_av,
+                        "numero_avenant":      f"{num_av}-AV",
                         "nom_client":          nom_client_av,
                         "objet":               objet_av,
                         "email":               email_av_input.strip(),
@@ -7283,6 +7334,8 @@ elif page == "Retards & Avenants":
                                 "ttc": nouveau_ttc_av,
                                 "obj": nouvel_objet_av.strip(),
                             }
+                        # Reset choix après envoi
+                        st.session_state.pop("avenant_type_choix", None)
                     else:
                         st.error(f"Erreur n8n : HTTP {resp_av.status_code}")
 
