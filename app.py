@@ -6860,236 +6860,407 @@ elif page == "Retards & Avenants":
                     st.error(f"Erreur réseau : {ex}")
 
     st.markdown("---")
-    st.markdown("## 📋 Créer un Avenant")
+st.markdown("## 📋 Créer un Avenant")
+
     WEBHOOK_AVENANT = f"https://client1.florianai.fr/webhook/avenant-{user_slug}"
 
-    sel_label_av = st.selectbox(
-        "Devis concerné (avenant)",
-        chantier_labels_r,
-        key="avenant_chantier_sel",
-    )
-    sel_row_av = df_retard.loc[chantier_index_r[sel_label_av]]
-    num_av = str(sel_row_av.get(PV_NUM, "")).strip() if PV_NUM else ""
-    nom_client_av = str(sel_row_av.get(PV_CLIENT, "")).strip() if PV_CLIENT else ""
-    email_av = str(sel_row_av.get(PV_EMAIL, "")).strip() if PV_EMAIL else ""
-    type_paiement_av = str(sel_row_av.get(PV_TYPE_PAI, "")).strip() if PV_TYPE_PAI else ""
+    df_av_source = df[df["_signe"]].copy()
 
-    _prev_av_sel = "_avenant_prev_chantier_label"
-    if "avenant_lignes" not in st.session_state:
-        st.session_state["avenant_lignes"] = [{"designation": "", "prix_ht": 0.0, "qte": 1.0}]
-    if _prev_av_sel not in st.session_state:
-        st.session_state[_prev_av_sel] = sel_label_av
-    elif st.session_state[_prev_av_sel] != sel_label_av:
-        st.session_state["avenant_lignes"] = [{"designation": "", "prix_ht": 0.0, "qte": 1.0}]
-        st.session_state[_prev_av_sel] = sel_label_av
+    if df_av_source.empty:
+        st.info("Aucun devis signé disponible pour créer un avenant.")
+    else:
+        def _av_label(row):
+            num = str(row.get(COL_NUM, "")).strip() if COL_NUM else ""
+            cli = str(row.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
+            obj = str(row.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
+            parts = [p for p in [num, cli, obj] if p and p.lower() not in ("nan","none","")]
+            return " — ".join(parts) if parts else f"Ligne {row.name + 2}"
 
-    def _parse_tva_av(val):
-        if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
-            return 0.20
-        s = (
-            str(val).strip().lower()
-            .replace("%", "")
-            .replace("tva", "")
-            .replace(",", ".")
-            .replace(" ", "")
-        )
-        try:
-            num = float(s)
-        except Exception:
-            return 0.20
-        if num <= 1:
-            return max(0.0, min(1.0, num))
-        if num <= 100:
-            return max(0.0, min(1.0, num / 100.0))
-        return 0.20
+        av_labels = [_av_label(row) for _, row in df_av_source.iterrows()]
+        av_index  = {lbl: idx for lbl, idx in zip(av_labels, df_av_source.index)}
 
-    row_df_av = None
-    if COL_NUM and num_av:
-        _mnum = df[COL_NUM].astype(str).str.strip() == num_av
-        if _mnum.any():
-            row_df_av = df.loc[_mnum].iloc[0]
+        sel_av_label = st.selectbox("Dossier concerné", av_labels, key="avenant_sel_dossier")
+        row_av = df_av_source.loc[av_index[sel_av_label]]
 
-    if row_df_av is None:
-        st.warning("Ligne « suivie » introuvable pour ce numéro de devis — avenants limités (pas de garde-fou facture finale ni TVA dossier).")
+        # ── Détection type ─────────────────────────────────────────────
+        _signe    = bool(row_av.get("_signe", False))
+        _fact_fin = bool(row_av.get("_fact_fin", False))
+        _a1       = bool(row_av.get("_acompte1", False))
+        _a2       = bool(row_av.get("_acompte2", False))
 
-    tva_rate_dossier = _parse_tva_av(row_df_av[COL_TVA]) if row_df_av is not None and COL_TVA else 0.20
-
-    opt_t1 = "Type 1 (Ajout de travaux)"
-    opt_t2 = "Type 2 (Modification V2)"
-    type_av = st.radio("Type d'avenant", [opt_t1, opt_t2], horizontal=True, key="avenant_type_r")
-
-    fact_fin_ok = bool(row_df_av.get("_fact_fin", False)) if row_df_av is not None else False
-    eligible_t2 = row_df_av is not None and not fact_fin_ok
-    if type_av == opt_t2 and not eligible_t2:
-        st.error("Facture finale déjà émise. Seul un avenant Type 1 est possible.")
-
-    show_type2_form = type_av == opt_t2 and eligible_t2
-    show_type1_form = (type_av == opt_t1) or (type_av == opt_t2 and not eligible_t2)
-
-    if show_type1_form:
-        st.markdown("#### Type 1 — Ajout de travaux (lignes supplémentaires)")
-        lignes_av = st.session_state["avenant_lignes"]
-        to_del_av = []
-        for i_av, ligne_av in enumerate(lignes_av):
-            with st.container(border=True):
-                c1a, c2a = st.columns([5, 1])
-                with c1a:
-                    ligne_av["designation"] = st.text_input(
-                        "Désignation",
-                        value=ligne_av.get("designation", ""),
-                        key=f"av_des_{i_av}",
-                        placeholder="Ex. : Extension terrasse",
-                    )
-                    cpx, cqx = st.columns(2)
-                    ligne_av["prix_ht"] = float(
-                        cpx.number_input("Prix HT (€)", min_value=0.0, value=float(ligne_av.get("prix_ht", 0.0)), step=10.0, key=f"av_pht_{i_av}")
-                    )
-                    ligne_av["qte"] = float(
-                        cqx.number_input("Quantité", min_value=0.01, value=float(ligne_av.get("qte", 1.0)), step=1.0, key=f"av_qte_{i_av}")
-                    )
-                with c2a:
-                    if len(lignes_av) > 1 and st.button("Supprimer", key=f"av_del_{i_av}"):
-                        to_del_av.append(i_av)
-        for _idx in sorted(to_del_av, reverse=True):
-            st.session_state["avenant_lignes"].pop(_idx)
-        if to_del_av:
-            st.rerun()
-        if st.button("➕ Ajouter une ligne", key="av_add_ligne"):
-            st.session_state["avenant_lignes"].append({"designation": "", "prix_ht": 0.0, "qte": 1.0})
-            st.rerun()
-
-        total_ht_av = sum(float(l["prix_ht"]) * float(l["qte"]) for l in lignes_av)
-        total_tva_av = round(total_ht_av * tva_rate_dossier, 2)
-        total_ttc_av = round(total_ht_av + total_tva_av, 2)
-        st.caption(f"Total HT : **{total_ht_av:,.2f} €** — TVA ({tva_rate_dossier * 100:.2f} %) : **{total_tva_av:,.2f} €** — Total TTC : **{total_ttc_av:,.2f} €**")
-
-        if st.button("Envoyer à n8n (Type 1)", type="primary", key="btn_avenant_t1"):
-            errs_av = []
-            if not num_av:
-                errs_av.append("Numéro de devis manquant.")
-            if not any(str(l.get("designation", "")).strip() for l in lignes_av):
-                errs_av.append("Au moins une ligne avec désignation est requise.")
-            if errs_av:
-                for e in errs_av:
-                    st.error(e)
-            else:
-                lignes_payload = []
-                for l in lignes_av:
-                    des = str(l.get("designation", "")).strip()
-                    if not des:
-                        continue
-                    ph = float(l.get("prix_ht", 0))
-                    qt = float(l.get("qte", 0))
-                    l_ht = round(ph * qt, 2)
-                    lignes_payload.append(
-                        {
-                            "designation": des,
-                            "prix_ht": ph,
-                            "quantite": qt,
-                            "total_ht_ligne": l_ht,
-                        }
-                    )
-                sum_ht_pl = round(sum(x["total_ht_ligne"] for x in lignes_payload), 2)
-                sum_tva_pl = round(sum_ht_pl * tva_rate_dossier, 2)
-                sum_ttc_pl = round(sum_ht_pl + sum_tva_pl, 2)
-                payload_type1 = {
-                    "type_avenant": "type1",
-                    "numero_devis": num_av,
-                    "nom_client": nom_client_av,
-                    "email": email_av,
-                    "type_paiement": type_paiement_av,
-                    "lignes": lignes_payload,
-                    "totalHT": sum_ht_pl,
-                    "TVA": sum_tva_pl,
-                    "totalTTC": sum_ttc_pl,
-                    "taux_tva": tva_rate_dossier,
-                    "cree_par": user,
-                    "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                try:
-                    resp_av, err_av = post_n8n(WEBHOOK_AVENANT, payload_type1)
-                    if err_av:
-                        st.error(f"Erreur envoi : {err_av}")
-                    elif resp_av and resp_av.status_code in (200, 201):
-                        st.success(f"Avenant Type 1 envoyé pour le devis **{num_av}**.")
-                        log_activity(user, "avenant_type1_webhook", target=num_av, details={"client": nom_client_av})
-                    else:
-                        st.error(f"Erreur n8n : HTTP {getattr(resp_av, 'status_code', '?')}")
-                except Exception as ex_av:
-                    st.error(str(ex_av))
-
-    if show_type2_form:
-        st.markdown("#### Type 2 — Modification (V2)")
-        if row_df_av is None or not COL_MONTANT:
-            st.warning("Données dossier incomplètes pour la modification V2.")
+        if not _signe:
+            avenant_type = None
+        elif not _fact_fin and not _a1 and not _a2:
+            avenant_type = 1
+        elif not _fact_fin and (_a1 or _a2):
+            avenant_type = 2
         else:
-            ancien_ttc = float(clean_amount(row_df_av[COL_MONTANT]))
-            obj_actuel = str(row_df_av.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
-            nouvel_objet = st.text_input("Objet", value=obj_actuel, key="avenant_t2_objet")
-            taux_pct_in = st.number_input(
-                "Taux TVA (%)",
-                min_value=0.0,
-                max_value=100.0,
-                value=float(round(tva_rate_dossier * 100, 3)),
-                step=0.5,
-                key="avenant_t2_tva_pct",
-            )
-            taux_dec = max(0.0, min(1.0, float(taux_pct_in) / 100.0))
-            nouveau_ttc = float(
-                st.number_input(
-                    "Montant TTC (€)",
-                    min_value=0.0,
-                    value=float(ancien_ttc),
-                    step=100.0,
-                    key="avenant_t2_ttc",
-                )
-            )
-            ht_new = round(nouveau_ttc / (1 + taux_dec), 2) if taux_dec > 0 else round(nouveau_ttc, 2)
-            tva_new = round(nouveau_ttc - ht_new, 2)
-            st.caption(f"Recalcul : HT **{ht_new:,.2f} €** — TVA **{tva_new:,.2f} €** — TTC **{nouveau_ttc:,.2f} €**")
-            motif_v2 = st.text_area("Motif de la modification V2 *", height=100, key="avenant_t2_motif")
-            if st.button("Valider V2 et envoyer", type="primary", key="btn_avenant_t2"):
-                if not motif_v2.strip():
-                    st.error("Le motif de la modification V2 est obligatoire.")
+            avenant_type = 3
+
+        num_av        = str(row_av.get(COL_NUM, "")).strip() if COL_NUM else ""
+        nom_client_av = str(row_av.get(COL_CLIENT, "")).strip() if COL_CLIENT else ""
+        objet_av      = str(row_av.get(COL_CHANTIER, "")).strip() if COL_CHANTIER else ""
+        montant_av    = float(row_av.get("_montant", 0))
+        reste_av      = float(row_av.get("_reste", 0))
+        modalite_av   = str(row_av.get(COL_MODALITE, "")).strip() if COL_MODALITE else ""
+        tva_rate_av   = _parse_tva_av(row_av[COL_TVA]) if COL_TVA else 0.20
+        a1_label      = "✅ Envoyé" if _a1 else "— Non envoyé"
+        a2_label      = "✅ Envoyé" if _a2 else "— Non envoyé"
+        fact_label    = "✅ Envoyée" if _fact_fin else "— Non envoyée"
+
+        # ── Tableau résumé ─────────────────────────────────────────────
+        def _row_style(t, detected):
+            if t == detected:
+                return "border-left:4px solid var(--primary);background:rgba(79,142,247,0.08);"
+            return "opacity:0.4;"
+
+        type_data = [
+            (1, "Nouveaux travaux indépendants",       "Nouvelle facture / nouveau devis"),
+            (2, "Modification de travaux déjà prévus", "Modifier devis ou facture"),
+            (3, "Facture déjà envoyée",                "Faire un avoir (positif ou négatif)"),
+        ]
+        rows_html = ""
+        for t, situation, action in type_data:
+            badge = (
+                "<span style='background:var(--primary);color:#fff;padding:2px 10px;"
+                "border-radius:99px;font-size:0.7rem;font-weight:700;margin-left:8px;'>"
+                "← Votre cas</span>"
+            ) if t == avenant_type else ""
+            rows_html += f"""
+            <tr style="{_row_style(t, avenant_type)}">
+              <td style="padding:12px 16px;font-weight:800;font-size:1.1rem;
+                         color:var(--primary);text-align:center;width:60px;">{t}</td>
+              <td style="padding:12px 16px;color:var(--text-main);font-size:0.88rem;
+                         font-weight:500;">{situation}{badge}</td>
+              <td style="padding:12px 16px;color:var(--text-muted);
+                         font-size:0.85rem;">{action}</td>
+            </tr>"""
+
+        st.markdown(f"""
+        <div style="border:1px solid var(--border);border-radius:14px;
+                    overflow:hidden;margin:16px 0;">
+          <div style="padding:12px 18px;background:var(--bg-surface);
+                      font-weight:800;font-size:0.95rem;color:var(--text-main);
+                      border-bottom:1px solid var(--border);">
+            ✦ Résumé — Type d'avenant détecté
+          </div>
+          <table style="width:100%;border-collapse:collapse;background:var(--bg-card);">
+            <thead>
+              <tr style="background:var(--bg-surface);">
+                <th style="padding:8px 16px;color:var(--text-muted);font-size:0.72rem;
+                           text-transform:uppercase;letter-spacing:0.06em;font-weight:700;
+                           width:60px;">Type</th>
+                <th style="padding:8px 16px;color:var(--text-muted);font-size:0.72rem;
+                           text-transform:uppercase;letter-spacing:0.06em;
+                           font-weight:700;">Situation</th>
+                <th style="padding:8px 16px;color:var(--text-muted);font-size:0.72rem;
+                           text-transform:uppercase;letter-spacing:0.06em;
+                           font-weight:700;">Action</th>
+              </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+          </table>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Carte récap dossier ─────────────────────────────────────────
+        st.markdown(f"""
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+                    padding:18px;background:var(--bg-surface);
+                    border:1px solid var(--border);border-radius:12px;margin-bottom:20px;">
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              N° Devis</div>
+            <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);">
+              {num_av or "—"}</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              Client</div>
+            <div style="font-weight:700;font-size:0.95rem;color:var(--text-main);">
+              {nom_client_av or "—"}</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              Montant TTC</div>
+            <div style="font-weight:700;font-size:0.95rem;color:#00d68f;">
+              {montant_av:,.2f} €</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              Acompte 1</div>
+            <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);">
+              {a1_label}</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              Acompte 2</div>
+            <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);">
+              {a2_label}</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+                        text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+              Facture finale</div>
+            <div style="font-weight:600;font-size:0.88rem;color:var(--text-main);">
+              {fact_label}</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Formulaires conditionnels ───────────────────────────────────
+        if avenant_type is None:
+            st.warning("Ce dossier n'a pas de devis signé. Un avenant n'est possible que sur un devis signé.")
+
+        elif avenant_type == 1:
+            st.markdown("#### Type 1 — Nouveaux travaux indépendants")
+            st.caption("Le devis est signé mais aucune facture n'a encore été émise.")
+
+            if "avenant_lignes" not in st.session_state:
+                st.session_state["avenant_lignes"] = [{"designation":"","prix_ht":0.0,"qte":1.0}]
+
+            to_del_av = []
+            for i_av, ligne_av in enumerate(st.session_state["avenant_lignes"]):
+                with st.container(border=True):
+                    col_a, col_b = st.columns([5,1])
+                    with col_a:
+                        ligne_av["designation"] = st.text_input(
+                            "Désignation *", value=ligne_av.get("designation",""),
+                            placeholder="Ex : Extension terrasse", key=f"avenant_des_{i_av}")
+                        cp, cq = st.columns(2)
+                        ligne_av["prix_ht"] = float(cp.number_input(
+                            "Prix unitaire HT (€)", min_value=0.0,
+                            value=float(ligne_av.get("prix_ht",0.0)),
+                            step=10.0, key=f"avenant_pht_{i_av}"))
+                        ligne_av["qte"] = float(cq.number_input(
+                            "Quantité", min_value=0.01,
+                            value=float(ligne_av.get("qte",1.0)),
+                            step=1.0, key=f"avenant_qte_{i_av}"))
+                    with col_b:
+                        if len(st.session_state["avenant_lignes"]) > 1:
+                            if st.button("Supprimer", key=f"avenant_del_{i_av}"):
+                                to_del_av.append(i_av)
+
+            for _idx in sorted(to_del_av, reverse=True):
+                st.session_state["avenant_lignes"].pop(_idx)
+            if to_del_av:
+                st.rerun()
+
+            if st.button("➕ Ajouter une ligne", key="avenant_add_ligne"):
+                st.session_state["avenant_lignes"].append({"designation":"","prix_ht":0.0,"qte":1.0})
+                st.rerun()
+
+            date_intervention = st.date_input(
+                "Date d'intervention prévue", value=datetime.today().date(), key="avenant_t1_date")
+            note_interne = st.text_area("Note interne (optionnel)", height=80, key="avenant_t1_note")
+
+            total_ht_av  = sum(float(l["prix_ht"]) * float(l["qte"]) for l in st.session_state["avenant_lignes"])
+            total_tva_av = round(total_ht_av * tva_rate_av, 2)
+            total_ttc_av = round(total_ht_av + total_tva_av, 2)
+
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-end;margin:10px 0;">
+              <div style="min-width:260px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">Total HT</span>
+                  <strong>{total_ht_av:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">TVA ({tva_rate_av*100:.1f} %)</span>
+                  <strong>{total_tva_av:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;
+                            background:#1d4ed8;color:#fff;font-weight:700;font-size:1rem;">
+                  <span>TOTAL TTC</span><span>{total_ttc_av:,.2f} €</span></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        elif avenant_type == 2:
+            st.markdown("#### Type 2 — Modification travaux en cours")
+            st.caption("Acompte(s) émis, facture finale non encore envoyée.")
+
+            nouveau_ttc_av = st.number_input(
+                "Nouveau montant TTC (€)", min_value=0.0,
+                value=float(montant_av), step=100.0, key="avenant_t2_nouveau_ttc")
+            nouvel_objet_av = st.text_input("Objet (modifiable)", value=objet_av, key="avenant_t2_objet")
+            motif_av = st.text_area("Motif de la modification *", height=100, key="avenant_t2_motif")
+
+            ht_new  = round(nouveau_ttc_av / (1 + tva_rate_av), 2) if tva_rate_av > 0 else nouveau_ttc_av
+            tva_new = round(nouveau_ttc_av - ht_new, 2)
+            delta   = round(nouveau_ttc_av - montant_av, 2)
+            delta_color = "#00d68f" if delta >= 0 else "#ff5c7a"
+            delta_sign  = "+" if delta >= 0 else ""
+
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-end;margin:10px 0;">
+              <div style="min-width:260px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">Ancien TTC</span>
+                  <strong>{montant_av:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">Nouveau HT</span>
+                  <strong>{ht_new:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">TVA ({tva_rate_av*100:.1f} %)</span>
+                  <strong>{tva_new:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;
+                            background:#1d4ed8;color:#fff;font-weight:700;font-size:1rem;">
+                  <span>Nouveau TTC</span><span>{nouveau_ttc_av:,.2f} €</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">Delta</span>
+                  <strong style="color:{delta_color};">{delta_sign}{delta:,.2f} €</strong></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        elif avenant_type == 3:
+            st.markdown("#### Type 3 — Avoir sur facture finale")
+            st.caption("La facture finale a déjà été envoyée.")
+
+            sens_avoir = st.radio(
+                "Sens de l'avoir",
+                ["Avoir positif (remboursement client)", "Avoir négatif (supplément à facturer)"],
+                horizontal=True, key="avenant_t3_sens")
+            montant_avoir = st.number_input(
+                "Montant de l'avoir TTC (€)", min_value=0.01,
+                value=float(montant_av), step=100.0, key="avenant_t3_montant")
+            motif_avoir = st.text_area("Motif de l'avoir *", height=100, key="avenant_t3_motif")
+
+            ht_avoir    = round(montant_avoir / (1 + tva_rate_av), 2) if tva_rate_av > 0 else montant_avoir
+            tva_avoir   = round(montant_avoir - ht_avoir, 2)
+            sens_sign   = "+" if "positif" in sens_avoir else "-"
+            avoir_color = "#00d68f" if "positif" in sens_avoir else "#ff5c7a"
+
+            st.markdown(f"""
+            <div style="display:flex;justify-content:flex-end;margin:10px 0;">
+              <div style="min-width:260px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">HT avoir</span>
+                  <strong>{ht_avoir:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 14px;
+                            background:var(--bg-surface);font-size:0.85rem;">
+                  <span style="color:var(--text-muted);">TVA ({tva_rate_av*100:.1f} %)</span>
+                  <strong>{tva_avoir:,.2f} €</strong></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;
+                            background:var(--bg-surface);border-top:1px solid var(--border);
+                            font-weight:700;font-size:1rem;">
+                  <span style="color:var(--text-main);">Total avoir TTC</span>
+                  <span style="color:{avoir_color};">{sens_sign}{montant_avoir:,.2f} €</span></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ── Bouton envoi unique ─────────────────────────────────────────
+        if avenant_type is not None:
+            st.markdown("<br>", unsafe_allow_html=True)
+            email_av_input = st.text_input(
+                "Email client (pour l'envoi du document)",
+                value="", placeholder="jean.dupont@email.com",
+                key="avenant_email_input")
+
+            if st.button("📤 Envoyer l'avenant à n8n", type="primary",
+                         use_container_width=True, key="btn_avenant_send"):
+                errors_av = []
+                if not num_av:
+                    errors_av.append("Numéro de devis introuvable.")
+                if avenant_type == 1 and not any(
+                    str(l.get("designation","")).strip()
+                    for l in st.session_state.get("avenant_lignes", [])
+                ):
+                    errors_av.append("Au moins une ligne avec désignation est requise.")
+                if avenant_type == 2 and not motif_av.strip():
+                    errors_av.append("Le motif de modification est obligatoire.")
+                if avenant_type == 3 and not motif_avoir.strip():
+                    errors_av.append("Le motif de l'avoir est obligatoire.")
+
+                if errors_av:
+                    for e in errors_av:
+                        st.error(e)
                 else:
-                    payload_type2 = {
-                        "type_avenant": "type2",
-                        "numero_devis": num_av,
-                        "nom_client": nom_client_av,
-                        "email": email_av,
-                        "type_paiement": type_paiement_av,
-                        "ancien_montant": ancien_ttc,
-                        "nouveau_montant": nouveau_ttc,
-                        "nouveau_totalHT": ht_new,
-                        "nouveau_tva": tva_new,
-                        "taux_tva": taux_dec,
-                        "nouvel_objet": nouvel_objet.strip(),
-                        "motif": motif_v2.strip(),
-                        "cree_par": user,
-                        "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    base_payload = {
+                        "type_avenant":        avenant_type,
+                        "numero_devis":        num_av,
+                        "nom_client":          nom_client_av,
+                        "objet":               objet_av,
+                        "email":               email_av_input.strip(),
+                        "modalite":            modalite_av,
+                        "montant_ttc_initial": montant_av,
+                        "taux_tva":            tva_rate_av,
+                        "cree_par":            user,
+                        "cree_le":             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     }
-                    try:
-                        resp_t2, err_t2 = post_n8n(WEBHOOK_AVENANT, payload_type2)
-                        if err_t2:
-                            st.error(f"Erreur envoi : {err_t2}")
-                        elif resp_t2 and resp_t2.status_code in (200, 201):
-                            st.success(f"Avenant Type 2 envoyé pour le devis **{num_av}**.")
-                            log_activity(user, "avenant_type2_webhook", target=num_av, details={"nouveau_ttc": nouveau_ttc})
+                    if avenant_type == 1:
+                        lignes_payload = [
+                            {
+                                "designation":    l["designation"].strip(),
+                                "prix_ht":        float(l["prix_ht"]),
+                                "quantite":       float(l["qte"]),
+                                "total_ht_ligne": round(float(l["prix_ht"]) * float(l["qte"]), 2),
+                            }
+                            for l in st.session_state["avenant_lignes"]
+                            if str(l.get("designation","")).strip()
+                        ]
+                        extra = {
+                            "lignes":            lignes_payload,
+                            "totalHT":           total_ht_av,
+                            "TVA":               total_tva_av,
+                            "totalTTC":          total_ttc_av,
+                            "date_intervention": date_intervention.strftime("%Y-%m-%d"),
+                            "note_interne":      note_interne.strip(),
+                        }
+                    elif avenant_type == 2:
+                        extra = {
+                            "nouveau_montant_ttc": nouveau_ttc_av,
+                            "nouveau_ht":          ht_new,
+                            "nouvelle_tva":        tva_new,
+                            "delta":               delta,
+                            "nouvel_objet":        nouvel_objet_av.strip(),
+                            "motif":               motif_av.strip(),
+                        }
+                    else:
+                        extra = {
+                            "sens_avoir":    sens_avoir,
+                            "montant_avoir": montant_avoir,
+                            "ht_avoir":      ht_avoir,
+                            "tva_avoir":     tva_avoir,
+                            "motif_avoir":   motif_avoir.strip(),
+                        }
+
+                    payload_av = {**base_payload, **extra}
+                    resp_av, err_av = post_n8n(WEBHOOK_AVENANT, payload_av)
+
+                    if err_av:
+                        st.error("Timeout — n8n ne répond pas." if err_av == "timeout" else f"Erreur réseau : {err_av}")
+                    elif resp_av.status_code in (200, 201):
+                        st.success(f"✅ Avenant Type {avenant_type} envoyé pour **{nom_client_av}** — Devis `{num_av}`.")
+                        log_activity(user, f"avenant_type{avenant_type}_webhook",
+                                     target=num_av, details={"client": nom_client_av, "type": avenant_type})
+                        if avenant_type == 2:
                             st.session_state["_avenant_t2_sheet_pending"] = {
                                 "num": num_av,
-                                "ttc": nouveau_ttc,
-                                "obj": nouvel_objet.strip(),
+                                "ttc": nouveau_ttc_av,
+                                "obj": nouvel_objet_av.strip(),
                             }
-                        else:
-                            st.error(f"Erreur n8n : HTTP {getattr(resp_t2, 'status_code', '?')}")
-                    except Exception as ex_t2:
-                        st.error(str(ex_t2))
+                    else:
+                        st.error(f"Erreur n8n : HTTP {resp_av.status_code}")
 
+    # ── Mise à jour sheet après Type 2 ─────────────────────────────────────
     _pend = st.session_state.get("_avenant_t2_sheet_pending")
     if _pend and isinstance(_pend, dict):
         st.markdown("##### Mise à jour Google Sheet")
-        st.caption("Proposition après envoi Type 2 réussi : écrire le nouveau montant TTC (et l'objet) dans l'onglet « suivie ».")
-        if st.button("Mettre à jour suivie (COL_MONTANT + objet)", key="btn_avenant_sheet_apply"):
+        st.caption("Proposition après envoi Type 2 réussi : écrire le nouveau montant TTC dans l'onglet « suivie ».")
+        if st.button("Mettre à jour suivie", key="btn_avenant_sheet_apply"):
             ws_s, err_ws = get_worksheet(user, "suivie")
             if err_ws or not ws_s:
                 st.error(err_ws or "Feuille suivie introuvable.")
@@ -7100,42 +7271,36 @@ elif page == "Retards & Avenants":
                         st.error("Feuille vide.")
                     else:
                         hdrs = [str(h).strip() for h in all_v[0]]
-
                         def _idx_col(hlist, col_obj):
-                            if not col_obj:
-                                return -1
+                            if not col_obj: return -1
                             want = str(col_obj).strip().lower()
                             for j, h in enumerate(hlist):
-                                if str(h).strip().lower() == want:
-                                    return j
+                                if str(h).strip().lower() == want: return j
                             for j, h in enumerate(hlist):
                                 hn = str(h).strip().lower()
-                                if want in hn or hn in want:
-                                    return j
+                                if want in hn or hn in want: return j
                             return -1
-
                         ic_num = _idx_col(hdrs, COL_NUM)
                         ic_mnt = _idx_col(hdrs, COL_MONTANT)
                         ic_obj = _idx_col(hdrs, COL_CHANTIER) if COL_CHANTIER else -1
                         if ic_num < 0 or ic_mnt < 0:
-                            st.error("Colonnes numéro de devis ou montant introuvables dans suivie.")
+                            st.error("Colonnes introuvables dans suivie.")
                         else:
-                            target_num = str(_pend.get("num", "")).strip()
+                            target_num = str(_pend.get("num","")).strip()
                             row_found = None
                             for ri, rv in enumerate(all_v[1:], start=2):
-                                if len(rv) <= ic_num:
-                                    continue
-                                if str(rv[ic_num]).strip() == target_num and target_num:
+                                if len(rv) > ic_num and str(rv[ic_num]).strip() == target_num:
                                     row_found = ri
                                     break
                             if not row_found:
-                                st.error("Ligne suivie non trouvée pour ce numéro de devis.")
+                                st.error("Ligne non trouvée.")
                             else:
-                                ws_s.update_cell(row_found, ic_mnt + 1, str(_pend.get("ttc", "")).replace(".", ","))
-                                if ic_obj >= 0 and str(_pend.get("obj", "")).strip():
-                                    ws_s.update_cell(row_found, ic_obj + 1, str(_pend.get("obj", "")))
+                                ws_s.update_cell(row_found, ic_mnt + 1, str(_pend.get("ttc","")).replace(".",","))
+                                if ic_obj >= 0 and str(_pend.get("obj","")).strip():
+                                    ws_s.update_cell(row_found, ic_obj + 1, str(_pend.get("obj","")))
                                 st.success("Feuille « suivie » mise à jour.")
-                                log_activity(user, "avenant_type2_sheet_update", target=target_num, details={"montant": _pend.get("ttc")})
+                                log_activity(user, "avenant_type2_sheet_update",
+                                             target=target_num, details={"montant": _pend.get("ttc")})
                                 get_main_dataset.clear()
                                 get_sheet_data.clear()
                                 st.session_state.pop("_avenant_t2_sheet_pending", None)
