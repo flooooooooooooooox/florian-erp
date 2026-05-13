@@ -100,24 +100,35 @@ else:
 _desktop_shell_bg = (
     """
 [data-testid="stAppViewContainer"] {
-  background: radial-gradient(ellipse 100% 85% at 12% -15%, rgba(79,142,247,0.22), transparent 52%),
-              radial-gradient(ellipse 70% 55% at 102% 8%, rgba(255,184,77,0.07), transparent 48%),
-              linear-gradient(168deg, #040a12 0%, #0b1829 42%, #060d16 100%) !important;
+  background:
+    radial-gradient(ellipse 55% 45% at 0% 100%, rgba(79,142,247,0.14), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 0%, rgba(0,214,143,0.08), transparent 50%),
+    radial-gradient(ellipse 100% 85% at 12% -15%, rgba(79,142,247,0.22), transparent 52%),
+    radial-gradient(ellipse 70% 55% at 102% 8%, rgba(255,184,77,0.07), transparent 48%),
+    linear-gradient(168deg, #030810 0%, #0b1829 44%, #050c14 100%) !important;
 }
 """
     if st.session_state.themes == "dark"
     else """
 [data-testid="stAppViewContainer"] {
-  background: radial-gradient(ellipse 90% 75% at 10% -8%, rgba(37,99,235,0.10), transparent 52%),
-              linear-gradient(178deg, #f6f8fc 0%, #eef4ff 50%, #fafcfe 100%) !important;
+  background:
+    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(37,99,235,0.08), transparent 55%),
+    radial-gradient(ellipse 90% 75% at 10% -8%, rgba(37,99,235,0.10), transparent 52%),
+    linear-gradient(178deg, #f4f7fd 0%, #eef4ff 48%, #fafcfe 100%) !important;
 }
 """
+)
+
+_desk_hero_title_bg = (
+    "background: linear-gradient(105deg, #f8fbff 0%, #7ab8ff 38%, #4f8ef7 58%, #ffb84d 100%);"
+    if st.session_state.themes == "dark"
+    else "background: linear-gradient(105deg, #0b1220 0%, #1d4ed8 44%, #6d28d9 72%, #c2410c 100%);"
 )
 
 # ── CSS PREMIUM ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {{
     {theme_css_vars}
@@ -194,22 +205,85 @@ button[title*="sidebar" i] {{
 
 .floxia-desk-hero {{
     text-align: center;
-    padding: 8px 8px 18px;
+    padding: clamp(12px, 3vw, 28px) 12px clamp(8px, 2vw, 22px);
+    font-family: 'DM Sans', 'Inter', sans-serif;
+}}
+.floxia-desk-hero .floxia-desk-badge {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-card) 70%, transparent);
+    backdrop-filter: blur(10px);
+    margin-bottom: 14px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
+}}
+.floxia-desk-hero .floxia-desk-badge span {{
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #00d68f, #4f8ef7);
+    box-shadow: 0 0 12px rgba(0,214,143,0.55);
+    animation: floxia-pulse-dot 2.2s ease-in-out infinite;
+}}
+@keyframes floxia-pulse-dot {{
+  0%, 100% {{ opacity: 1; transform: scale(1); }}
+  50% {{ opacity: 0.65; transform: scale(0.92); }}
 }}
 .floxia-desk-hero h1 {{
-    font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+    font-family: 'DM Sans', 'Inter', sans-serif;
+    font-size: clamp(1.55rem, 4.2vw, 2.35rem);
     font-weight: 800;
-    letter-spacing: -0.03em;
-    margin: 0 0 6px 0;
-    background: linear-gradient(92deg, #eaf2ff, #9ec5ff, #ffb84d);
+    letter-spacing: -0.04em;
+    margin: 0 0 10px 0;
+    line-height: 1.12;
+    {_desk_hero_title_bg}
+    background-size: 180% 180%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    animation: floxia-hero-shimmer 14s ease-in-out infinite alternate;
+}}
+@keyframes floxia-hero-shimmer {{
+  0% {{ background-position: 0% 50%; }}
+  100% {{ background-position: 100% 50%; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+  .floxia-desk-hero .floxia-desk-badge span {{ animation: none !important; }}
+  .floxia-desk-hero h1 {{ animation: none !important; background-size: 100% 100%; }}
 }}
 .floxia-desk-hero p {{
-    margin: 0;
+    margin: 0 auto;
+    max-width: 36rem;
     color: var(--text-muted);
-    font-size: 0.95rem;
+    font-size: clamp(0.88rem, 2.1vw, 1.02rem);
+    line-height: 1.55;
+    font-weight: 500;
+}}
+.floxia-desk-hero .floxia-desk-meta {{
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}}
+
+/* Chrome barre module (premier bloc bordé = barre du haut) */
+section.main [data-testid="stVerticalBlockBorderWrapper"]:first-of-type {{
+    background: linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 88%, transparent), color-mix(in srgb, var(--bg-app) 75%, transparent)) !important;
+    border: 1px solid color-mix(in srgb, var(--border) 120%, transparent) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(255,255,255,0.04) inset !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }}
 
 /* Mobile: flèche/sidebar toggle plus grande et facile à toucher */
@@ -1667,33 +1741,113 @@ def safe_radio_index(options, key, default=0):
     return default
 
 
+_LAUNCH_SUB = {
+    "Vue Générale": "KPI & alertes",
+    "Créer un devis": "n8n & PDF",
+    "Devis": "Pipeline commercial",
+    "Factures & Paiements": "Encaissements",
+    "Chantiers": "Suivi opérationnel",
+    "Planning": "Charge & calendrier",
+    "Salariés": "Ressources humaines",
+    "Notifications": "À traiter",
+    "Espace Clients": "Dossiers & relances",
+    "Tous les dossiers": "Vue liste",
+    "Éditeur Google Sheet": "Données brutes",
+    "Dépenses": "Charges & TVA",
+    "Retards & Avenants": "Risques & avenants",
+    "Coordonnées & RGPD": "Mentions légales",
+    "Utilisateurs": "Administration",
+}
+
 _LAUNCHPAD_CARD_CSS = """
 <style>
-/* Uniquement injecté sur l'écran Bureau : les boutons « primary » = tuiles glass */
-section.main button[kind="primary"] {
-  min-height: 118px !important;
-  border-radius: 24px !important;
-  font-weight: 700 !important;
-  font-size: 1.02rem !important;
-  line-height: 1.28 !important;
-  white-space: normal !important;
-  padding: 14px 10px !important;
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(255,255,255,0.14) !important;
-  color: var(--text-main) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.25) !important;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+@keyframes floxia-tile-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes floxia-shine {
+  0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+  15% { opacity: 0.35; }
+  40% { transform: translateX(120%) skewX(-12deg); opacity: 0; }
+  100% { opacity: 0; }
+}
+/* Bureau uniquement : boutons primary = tuiles glass (QNAP / iOS-like) */
+section.main button[kind="primary"] {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 128px !important;
+  border-radius: 24px !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 0.78rem !important;
+  font-weight: 650 !important;
+  line-height: 1.32 !important;
+  letter-spacing: 0.01em !important;
+  white-space: pre-line !important;
+  text-align: center !important;
+  padding: 16px 12px 14px !important;
+  color: var(--text-main) !important;
+  background: linear-gradient(165deg,
+    rgba(255,255,255,0.11) 0%,
+    rgba(255,255,255,0.04) 48%,
+    rgba(0,0,0,0.12) 100%) !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.12) inset,
+    0 18px 48px rgba(0,0,0,0.28) !important;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s ease, border-color 0.22s ease, filter 0.22s ease !important;
+}
+section.main button[kind="primary"]::first-line {
+  font-size: clamp(1.35rem, 3.2vw, 1.75rem);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+section.main button[kind="primary"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  background: radial-gradient(ellipse 90% 55% at 50% -10%, rgba(79,142,247,0.35), transparent 62%);
+  pointer-events: none;
+  opacity: 0.85;
+}
+section.main button[kind="primary"]::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 42%; height: 100%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.14), transparent);
+  animation: floxia-shine 7s ease-in-out infinite;
+  pointer-events: none;
+}
+section.main div[data-testid="column"] {
+  animation: floxia-tile-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+section.main div[data-testid="column"]:nth-child(1) { animation-delay: 0.04s; }
+section.main div[data-testid="column"]:nth-child(2) { animation-delay: 0.08s; }
+section.main div[data-testid="column"]:nth-child(3) { animation-delay: 0.12s; }
+section.main div[data-testid="column"]:nth-child(4) { animation-delay: 0.16s; }
+section.main div[data-testid="column"]:nth-child(5) { animation-delay: 0.2s; }
 section.main button[kind="primary"]:hover {
-  transform: scale(1.04) !important;
-  border-color: rgba(79,142,247,0.45) !important;
-  box-shadow: 0 12px 40px rgba(79,142,247,0.18) !important;
+  transform: translateY(-3px) scale(1.025) !important;
+  border-color: rgba(79,142,247,0.55) !important;
+  filter: brightness(1.06);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.16) inset,
+    0 22px 56px rgba(79,142,247,0.18),
+    0 18px 48px rgba(0,0,0,0.32) !important;
 }
 section.main button[kind="primary"]:active {
-  transform: scale(0.97) !important;
+  transform: scale(0.97) translateY(0) !important;
+  transition-duration: 0.08s !important;
 }
+section.main div[data-testid="column"]:nth-child(5n+1) button[kind="primary"] { border-color: rgba(79,142,247,0.28) !important; }
+section.main div[data-testid="column"]:nth-child(5n+2) button[kind="primary"] { border-color: rgba(0,214,143,0.22) !important; }
+section.main div[data-testid="column"]:nth-child(5n+3) button[kind="primary"] { border-color: rgba(255,184,77,0.26) !important; }
+section.main div[data-testid="column"]:nth-child(5n+4) button[kind="primary"] { border-color: rgba(147, 112, 219, 0.28) !important; }
+section.main div[data-testid="column"]:nth-child(5n+5) button[kind="primary"] { border-color: rgba(56, 189, 248, 0.28) !important; }
 @media (max-width: 900px) {
   section.main div[data-testid="column"] {
     flex: 1 1 calc(50% - 10px) !important;
@@ -1701,9 +1855,34 @@ section.main button[kind="primary"]:active {
     min-width: calc(50% - 6px) !important;
   }
   section.main button[kind="primary"] {
-    min-height: 132px !important;
-    font-size: 1.05rem !important;
+    min-height: 138px !important;
+    font-size: 0.8rem !important;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  section.main button[kind="primary"]::after { animation: none !important; opacity: 0 !important; }
+  section.main div[data-testid="column"] { animation: none !important; }
+  section.main button[kind="primary"] { transition: none !important; }
+}
+</style>
+"""
+
+_HOME_DOCK_CSS = """
+<style>
+section.main button[kind="secondary"] {
+  border-radius: 14px !important;
+  font-weight: 600 !important;
+  min-height: 48px !important;
+  border: 1px solid var(--border) !important;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 90%, transparent), color-mix(in srgb, var(--bg-app) 70%, transparent)) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.12) !important;
+  transition: transform 0.15s ease, border-color 0.15s ease !important;
+}
+section.main button[kind="secondary"]:hover {
+  transform: translateY(-1px);
+  border-color: rgba(79,142,247,0.35) !important;
 }
 </style>
 """
@@ -1715,6 +1894,15 @@ def render_launchpad(launch_rows: list):
     Chaque carte est un st.button primary pleine largeur (styles injectés sur l'écran Bureau uniquement).
     """
     st.markdown(_LAUNCHPAD_CARD_CSS, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="font-family:'DM Sans',Inter,sans-serif;font-size:0.72rem;font-weight:800;
+          letter-spacing:0.14em;text-transform:uppercase;color:var(--text-dim);margin:8px 0 14px 2px;">
+          Applications
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     per_row = 5
     for i in range(0, len(launch_rows), per_row):
         chunk = launch_rows[i : i + per_row]
@@ -1722,8 +1910,13 @@ def render_launchpad(launch_rows: list):
         for j, col in enumerate(cols):
             with col:
                 if j < len(chunk):
-                    page_id, icon, caption = chunk[j]
-                    label = f"{icon}  {caption}"
+                    page_id, icon, caption = chunk[j][:3]
+                    sub = _LAUNCH_SUB.get(page_id, "")
+                    cap = caption if len(caption) <= 40 else (caption[:37] + "…")
+                    if sub:
+                        label = f"{icon}\n{cap}\n{sub}"
+                    else:
+                        label = f"{icon}\n{cap}"
                     if st.button(
                         label,
                         key="lp_" + hashlib.md5(page_id.encode("utf-8")).hexdigest()[:18],
@@ -1736,27 +1929,45 @@ def render_launchpad(launch_rows: list):
 
 def render_desktop_top_bar(module_title: str, user_name: str):
     """Barre supérieure module : Home, marque, titre, heure, utilisateur (session / confort)."""
-    now_s = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    now_s = datetime.now().strftime("%H:%M")
+    now_d = datetime.now().strftime("%d/%m/%Y")
     safe_title = html_module.escape(str(module_title))
     with st.container(border=True):
-        h0, h1, h2, h3, h4 = st.columns([0.62, 1.35, 3.4, 1.85, 1.75])
+        h0, h1, h2, h3, h4 = st.columns([0.62, 1.35, 3.4, 1.1, 1.9])
         with h0:
             if st.button("🏠", key="floxia_nav_home", help="Retour au bureau"):
                 st.session_state["current_page"] = "Home"
                 st.rerun()
         with h1:
-            st.markdown("**Floxia ERP**")
+            st.markdown(
+                "<span style='font-family:DM Sans,Inter,sans-serif;font-weight:800;font-size:0.95rem;"
+                "background:linear-gradient(92deg,var(--text-main),#4f8ef7);-webkit-background-clip:text;"
+                "background-clip:text;color:transparent;'>Floxia</span>",
+                unsafe_allow_html=True,
+            )
         with h2:
             st.markdown(
-                f"<div style='font-size:1.12rem;font-weight:800;line-height:1.25;color:var(--text-main);'>{safe_title}</div>",
+                f"<div style='font-family:DM Sans,Inter,sans-serif;font-size:1.05rem;font-weight:800;"
+                f"line-height:1.2;color:var(--text-main);'>{safe_title}</div>",
                 unsafe_allow_html=True,
             )
         with h3:
-            st.caption(now_s)
+            st.markdown(
+                f"<div style='text-align:right;font-family:DM Sans,Inter,sans-serif;'>"
+                f"<div style='font-size:1.35rem;font-weight:800;line-height:1;color:var(--text-main);'>{now_s}</div>"
+                f"<div style='font-size:0.72rem;font-weight:600;color:var(--text-muted);margin-top:2px;'>{now_d}</div></div>",
+                unsafe_allow_html=True,
+            )
         with h4:
-            st.caption(user_name or "—")
+            st.markdown(
+                f"<div style='text-align:right;font-family:DM Sans,Inter,sans-serif;'>"
+                f"<div style='font-size:0.78rem;font-weight:700;color:var(--text-main);'>"
+                f"{html_module.escape(user_name or '—')}</div>"
+                f"<div style='font-size:0.7rem;color:var(--text-muted);'>Session</div></div>",
+                unsafe_allow_html=True,
+            )
 
-    with st.expander("Affichage & session", expanded=False):
+    with st.expander("⚙ Affichage & session", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.button("Basculer thème", on_click=toggle_theme, use_container_width=True, key="desk_theme_btn")
@@ -1831,11 +2042,21 @@ if _cp != "Home" and _cp not in allowed_module_ids:
     st.rerun()
 
 if st.session_state.current_page == "Home":
+    st.markdown(_HOME_DOCK_CSS, unsafe_allow_html=True)
+    _wd = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"][datetime.now().weekday()]
+    _now = datetime.now()
+    _months_fr = (
+        "janvier", "février", "mars", "avril", "mai", "juin",
+        "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+    )
+    _meta = f"{_now.day} {_months_fr[_now.month - 1]} {_now.year} · {_now.strftime('%H:%M')}"
     st.markdown(
-        """
+        f"""
         <div class="floxia-desk-hero">
+            <div class="floxia-desk-badge"><span></span> Espace sécurisé</div>
             <h1>Floxia ERP</h1>
-            <p>Bureau — choisissez un module pour ouvrir une fenêtre plein écran</p>
+            <p>Un bureau unique pour piloter devis, chantiers, facturation et équipes — ouvrez un module pour travailler en plein écran.</p>
+            <div class="floxia-desk-meta">{html_module.escape(_wd)} · {_meta}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1874,17 +2095,22 @@ if st.session_state.current_page == "Home":
 
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:12px;margin-top:18px;padding:12px 14px;
-            border-radius:16px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);">
-            <div style="width:36px;height:36px;background:linear-gradient(135deg,#132238,#1e3a5f);
-                border-radius:50%;display:flex;align-items:center;justify-content:center;
-                font-size:0.9rem;border:1px solid rgba(79,142,247,0.3);color:#fff;">
-                {user[0].upper() if user else "?"}
+        <div class="floxia-dock-profile" style="font-family:'DM Sans',Inter,sans-serif;margin-top:22px;padding:16px 18px;
+          border-radius:20px;border:1px solid var(--border);
+          background:linear-gradient(135deg,color-mix(in srgb,var(--bg-card) 88%,transparent),color-mix(in srgb,var(--bg-app) 72%,transparent));
+          box-shadow:0 12px 40px rgba(0,0,0,0.14),0 0 0 1px rgba(255,255,255,0.05) inset;backdrop-filter:blur(12px);">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:44px;height:44px;flex-shrink:0;background:linear-gradient(135deg,#1e3a5f,#4f8ef7);
+              border-radius:14px;display:flex;align-items:center;justify-content:center;
+              font-size:1rem;font-weight:800;color:#fff;border:1px solid rgba(255,255,255,0.2);
+              box-shadow:0 6px 20px rgba(79,142,247,0.35);">
+              {user[0].upper() if user else "?"}
             </div>
-            <div>
-                <div style="font-weight:700;font-size:0.9rem;color:var(--text-main);">{html_module.escape(user or "—")}</div>
-                <div style="font-size:0.78rem;color:var(--text-muted);">{html_module.escape(role)}</div>
+            <div style="min-width:0;">
+              <div style="font-weight:800;font-size:0.95rem;color:var(--text-main);letter-spacing:-0.02em;">{html_module.escape(user or "—")}</div>
+              <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">{html_module.escape(role)} · connecté</div>
             </div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
