@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 import json
+import hashlib
 import os
 import calendar
 import requests
@@ -14,6 +15,7 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Optional, Tuple
+import html as html_module
 
 from auth import check_login, logout, admin_panel, get_user_credentials, AVAILABLE_PAGES
 import streamlit.components.v1 as components
@@ -24,7 +26,7 @@ st.set_page_config(
     page_title="Floxia ERP",
     page_icon="F",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── THEME (WHITE / DARK MODE) ──────────────────────────────────────────────────
@@ -95,6 +97,23 @@ else:
     chart_font = "#e8f0fe"
     chart_grid = "rgba(255,255,255,0.06)"
 
+_desktop_shell_bg = (
+    """
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse 100% 85% at 12% -15%, rgba(79,142,247,0.22), transparent 52%),
+              radial-gradient(ellipse 70% 55% at 102% 8%, rgba(255,184,77,0.07), transparent 48%),
+              linear-gradient(168deg, #040a12 0%, #0b1829 42%, #060d16 100%) !important;
+}
+"""
+    if st.session_state.themes == "dark"
+    else """
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse 90% 75% at 10% -8%, rgba(37,99,235,0.10), transparent 52%),
+              linear-gradient(178deg, #f6f8fc 0%, #eef4ff 50%, #fafcfe 100%) !important;
+}
+"""
+)
+
 # ── CSS PREMIUM ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
@@ -156,11 +175,42 @@ label,
     transition: background 0.2s ease;
 }}
 
+{_desktop_shell_bg}
+
+/* Bureau : sidebar Streamlit masquée (navigation = launchpad) */
 [data-testid="stSidebar"] {{
-    background: var(--bg-surface) !important;
-    border-right: 1px solid var(--border) !important;
+    display: none !important;
+    min-width: 0 !important;
+    width: 0 !important;
+    visibility: hidden !important;
 }}
 [data-testid="stSidebar"] > div {{ padding: 0 !important; }}
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapseButton"],
+button[aria-label*="sidebar" i],
+button[title*="sidebar" i] {{
+    display: none !important;
+}}
+
+.floxia-desk-hero {{
+    text-align: center;
+    padding: 8px 8px 18px;
+}}
+.floxia-desk-hero h1 {{
+    font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0 0 6px 0;
+    background: linear-gradient(92deg, #eaf2ff, #9ec5ff, #ffb84d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
+.floxia-desk-hero p {{
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}}
 
 /* Mobile: flèche/sidebar toggle plus grande et facile à toucher */
 @media (max-width: 900px) {{
@@ -1616,193 +1666,233 @@ def safe_radio_index(options, key, default=0):
         return options.index(val)
     return default
 
-# ── SIDEBAR ────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("<div style='padding: 20px 16px 8px;'>", unsafe_allow_html=True)
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=120)
-    else:
-        st.markdown("""
-        <div style='display:flex;align-items:center;gap:10px;padding-bottom:8px;'>
-            <div style='width:36px;height:36px;background:linear-gradient(135deg,#4f8ef7,#2563eb);
-                border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;'>⚡</div>
-            <div>
-                <div style='font-family:Inter,sans-serif;font-weight:800;font-size:0.95rem;color:var(--text-main);'>Floxia</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.button("Basculer thème", on_click=toggle_theme, use_container_width=True)
-    density_choice = st.selectbox(
-        "Confort d'affichage",
-        ["Compact", "Normal", "Large"],
-        index=["Compact", "Normal", "Large"].index(st.session_state.get("ui_density", "Normal")),
-        key="ui_density_select",
-        help="Ajuste la taille des textes, espacements et zones tactiles.",
-    )
-    if density_choice != st.session_state.get("ui_density", "Normal"):
-        st.session_state.ui_density = density_choice
-        st.rerun()
-    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+_LAUNCHPAD_CARD_CSS = """
+<style>
+/* Uniquement injecté sur l'écran Bureau : les boutons « primary » = tuiles glass */
+section.main button[kind="primary"] {
+  min-height: 118px !important;
+  border-radius: 24px !important;
+  font-weight: 700 !important;
+  font-size: 1.02rem !important;
+  line-height: 1.28 !important;
+  white-space: normal !important;
+  padding: 14px 10px !important;
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  color: var(--text-main) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+}
+section.main button[kind="primary"]:hover {
+  transform: scale(1.04) !important;
+  border-color: rgba(79,142,247,0.45) !important;
+  box-shadow: 0 12px 40px rgba(79,142,247,0.18) !important;
+}
+section.main button[kind="primary"]:active {
+  transform: scale(0.97) !important;
+}
+@media (max-width: 900px) {
+  section.main div[data-testid="column"] {
+    flex: 1 1 calc(50% - 10px) !important;
+    max-width: calc(50% - 6px) !important;
+    min-width: calc(50% - 6px) !important;
+  }
+  section.main button[kind="primary"] {
+    min-height: 132px !important;
+    font-size: 1.05rem !important;
+  }
+}
+</style>
+"""
 
-    user = st.session_state.get("username", "")
-    user_slug = safe_slug(user)
-    role = st.session_state.get("role", "viewer")
 
-    st.markdown("<div style='padding: 0 12px;'>", unsafe_allow_html=True)
+def render_launchpad(launch_rows: list):
+    """
+    Grille type launchpad : launch_rows = liste de (page_id, icône, libellé carte).
+    Chaque carte est un st.button primary pleine largeur (styles injectés sur l'écran Bureau uniquement).
+    """
+    st.markdown(_LAUNCHPAD_CARD_CSS, unsafe_allow_html=True)
+    per_row = 5
+    for i in range(0, len(launch_rows), per_row):
+        chunk = launch_rows[i : i + per_row]
+        cols = st.columns(per_row)
+        for j, col in enumerate(cols):
+            with col:
+                if j < len(chunk):
+                    page_id, icon, caption = chunk[j]
+                    label = f"{icon}  {caption}"
+                    if st.button(
+                        label,
+                        key="lp_" + hashlib.md5(page_id.encode("utf-8")).hexdigest()[:18],
+                        use_container_width=True,
+                        type="primary",
+                    ):
+                        st.session_state["current_page"] = page_id
+                        st.rerun()
 
-    notif_label = "Notifications"
-    pending_badge = get_pending_notifications_count(user) if user else 0
-    if pending_badge > 0:
-        notif_label = f"🔴 Notifications ({pending_badge})"
 
-    st.markdown("<div class='ceo-section-title' style='padding:0 2px;'>Navigation Executive</div>", unsafe_allow_html=True)
-    page_items = [
-        ("Vue Générale", "◈ Vue Générale"),
-        ("Créer un devis", "✦ Créer un devis"),
-        ("Devis", "◉ Devis"),
-        ("Factures & Paiements", "◌ Factures & Paiements"),
-        ("Chantiers", "◆ Chantiers"),
-        ("Planning", "▣ Planning"),
-        ("Salariés", "◍ Salariés"),
-        ("Notifications", f"✉ {notif_label}"),
-        ("Espace Clients", "⌂ Espace Clients"),
-        ("Tous les dossiers", "▤ Tous les dossiers"),
-        ("Éditeur Google Sheet", "⌘ Éditeur Google Sheet"),
-        ("Dépenses", "◐ Dépenses"),
-        ("Retards & Avenants", "△ Retards & Avenants"),
-        ("Coordonnées & RGPD", "☰ Coordonnées & RGPD"),
-    ]
-    if role == "admin":
-        page_items.append(("Utilisateurs", "☷ Utilisateurs"))
+def render_desktop_top_bar(module_title: str, user_name: str):
+    """Barre supérieure module : Home, marque, titre, heure, utilisateur (session / confort)."""
+    now_s = datetime.now().strftime("%H:%M · %d/%m/%Y")
+    safe_title = html_module.escape(str(module_title))
+    with st.container(border=True):
+        h0, h1, h2, h3, h4 = st.columns([0.62, 1.35, 3.4, 1.85, 1.75])
+        with h0:
+            if st.button("🏠", key="floxia_nav_home", help="Retour au bureau"):
+                st.session_state["current_page"] = "Home"
+                st.rerun()
+        with h1:
+            st.markdown("**Floxia ERP**")
+        with h2:
+            st.markdown(
+                f"<div style='font-size:1.12rem;font-weight:800;line-height:1.25;color:var(--text-main);'>{safe_title}</div>",
+                unsafe_allow_html=True,
+            )
+        with h3:
+            st.caption(now_s)
+        with h4:
+            st.caption(user_name or "—")
 
-    allowed_pages = st.session_state.get("allowed_pages", AVAILABLE_PAGES.copy())
-    if role != "admin":
-        page_items = [p for p in page_items if p[0] in allowed_pages]
+    with st.expander("Affichage & session", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.button("Basculer thème", on_click=toggle_theme, use_container_width=True, key="desk_theme_btn")
+        with c2:
+            density_choice = st.selectbox(
+                "Confort",
+                ["Compact", "Normal", "Large"],
+                index=["Compact", "Normal", "Large"].index(st.session_state.get("ui_density", "Normal")),
+                key="ui_density_select_desk",
+                label_visibility="collapsed",
+            )
+            if density_choice != st.session_state.get("ui_density", "Normal"):
+                st.session_state.ui_density = density_choice
+                st.rerun()
+        with c3:
+            if st.button("Actualiser", use_container_width=True, key="desk_refresh_btn", help="Actualiser"):
+                st.cache_data.clear()
+                st.rerun()
+        with c4:
+            if st.button("Déconnexion", use_container_width=True, key="desk_logout_btn"):
+                logout()
+                st.rerun()
 
-    pages = [p[1] for p in page_items]
-    page_key_map = {p[1]: p[0] for p in page_items}
-    if not pages:
-        st.error("Aucun onglet autorisé pour ce compte.")
-        st.stop()
 
-    if "nav_override" in st.session_state:
-        _override = st.session_state.pop("nav_override")
-        if _override in pages:
-            st.session_state["_page_index"] = pages.index(_override)
+# ── NAVIGATION BUREAU (Launchpad + st.session_state.current_page) ─────────────
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "Home"
 
-    if "_page_index" not in st.session_state:
-        st.session_state["_page_index"] = 0
-    if st.session_state["_page_index"] >= len(pages):
-        st.session_state["_page_index"] = 0
+user = st.session_state.get("username", "")
+user_slug = safe_slug(user)
+role = st.session_state.get("role", "viewer")
 
-    def _on_nav_change():
-        val = st.session_state.get("nav_radio")
-        if val and val in pages:
-            st.session_state["_page_index"] = pages.index(val)
+notif_label = "Notifications"
+pending_badge = get_pending_notifications_count(user) if user else 0
+if pending_badge > 0:
+    notif_label = f"🔴 Notifications ({pending_badge})"
 
-    page = st.radio(
-        "Navigation",
-        pages,
-        label_visibility="collapsed",
-        index=st.session_state["_page_index"],
-        key="nav_radio",
-        on_change=_on_nav_change,
-    )
-    if page in pages:
-        st.session_state["_page_index"] = pages.index(page)
-    page = page_key_map.get(page, page)
+page_items = [
+    ("Vue Générale", "◈", "Vue Générale"),
+    ("Créer un devis", "✦", "Créer un devis"),
+    ("Devis", "◉", "Devis"),
+    ("Factures & Paiements", "◌", "Factures & Paiements"),
+    ("Chantiers", "◆", "Chantiers"),
+    ("Planning", "▣", "Planning"),
+    ("Salariés", "◍", "Salariés"),
+    ("Notifications", "✉", notif_label),
+    ("Espace Clients", "⌂", "Espace Clients"),
+    ("Tous les dossiers", "▤", "Tous les dossiers"),
+    ("Éditeur Google Sheet", "⌘", "Éditeur Google Sheet"),
+    ("Dépenses", "◐", "Dépenses"),
+    ("Retards & Avenants", "△", "Retards & Avenants"),
+    ("Coordonnées & RGPD", "☰", "Coordonnées & RGPD"),
+]
+if role == "admin":
+    page_items.append(("Utilisateurs", "☷", "Utilisateurs"))
+
+allowed_pages = st.session_state.get("allowed_pages", AVAILABLE_PAGES.copy())
+if role != "admin":
+    page_items = [p for p in page_items if p[0] in allowed_pages]
+
+allowed_module_ids = [p[0] for p in page_items]
+if not allowed_module_ids:
+    st.error("Aucun onglet autorisé pour ce compte.")
+    st.stop()
+
+render_sync_badge()
+
+_cp = st.session_state.current_page
+if _cp != "Home" and _cp not in allowed_module_ids:
+    st.session_state.current_page = "Home"
+    st.warning("Module non autorisé ou indisponible pour ce compte.")
+    st.rerun()
+
+if st.session_state.current_page == "Home":
     st.markdown(
         """
-        <script>
-        (function () {
-          const d = window.parent.document;
-          if (window.__floxiaShortcutsBound) return;
-          window.__floxiaShortcutsBound = true;
-          let chord = "";
-          let chordTimer = null;
-
-          function inInput(el) {
-            if (!el) return false;
-            const tag = (el.tagName || "").toLowerCase();
-            return tag === "input" || tag === "textarea" || el.isContentEditable;
-          }
-          function clickNav(labelContains) {
-            const radios = Array.from(d.querySelectorAll('[data-testid="stSidebar"] label p'));
-            const target = radios.find(p => (p.textContent || "").toLowerCase().includes(labelContains));
-            if (target) target.closest("label")?.click();
-          }
-          function focusSearch() {
-            const selectors = [
-              'input[placeholder*="Rechercher"]',
-              'input[placeholder*="rechercher"]',
-              'input[placeholder*="Filtrer"]',
-              'input[placeholder*="filtrer"]'
-            ];
-            for (const s of selectors) {
-              const el = d.querySelector(s);
-              if (el) { el.focus(); el.select?.(); return; }
-            }
-          }
-
-          d.addEventListener("keydown", function (e) {
-            if (inInput(e.target)) return;
-            const k = (e.key || "").toLowerCase();
-            if (k === "/") {
-              e.preventDefault();
-              focusSearch();
-              return;
-            }
-            if (k === "g") {
-              chord = "g";
-              clearTimeout(chordTimer);
-              chordTimer = setTimeout(() => { chord = ""; }, 900);
-              return;
-            }
-            if (chord === "g") {
-              if (k === "d") clickNav("devis");
-              if (k === "p") clickNav("planning");
-              if (k === "f") clickNav("factures");
-              chord = "";
-            }
-          }, true);
-        })();
-        </script>
+        <div class="floxia-desk-hero">
+            <h1>Floxia ERP</h1>
+            <p>Bureau — choisissez un module pour ouvrir une fenêtre plein écran</p>
+        </div>
         """,
         unsafe_allow_html=True,
     )
+    if os.path.exists("logo.png"):
+        c_logo, _ = st.columns([1, 5])
+        with c_logo:
+            st.image("logo.png", width=96)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    render_launchpad(page_items)
 
-    st.markdown("<div style='position:absolute;bottom:0;left:0;right:0;padding:16px;border-top:1px solid rgba(128,128,128,0.15);'>", unsafe_allow_html=True)
-    st.markdown(f"""
-    <div style='display:flex;align-items:center;gap:10px;margin-bottom:12px;'>
-        <div style='width:32px;height:32px;background:linear-gradient(135deg,#132238,#1e3a5f);
-            border-radius:50%;display:flex;align-items:center;justify-content:center;
-            font-size:0.85rem;border:1px solid rgba(79,142,247,0.3); color:#fff;'>
-            {user[0].upper() if user else '?'}
-        </div>
-        <div>
-            <div style='font-weight:600;font-size:0.85rem;color:var(--text-main);'>{user}</div>
-            <div style='font-size:0.72rem;color:var(--text-muted);'>{role}</div>
-        </div>
-        <div style='margin-left:auto;'>
-            <span class="pulse-dot"></span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_r, col_l = st.columns(2)
-    with col_r:
-        if st.button("Actualiser", use_container_width=True, help="Actualiser"):
+    st.divider()
+    st.caption("Session & confort d'affichage")
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        st.button("Basculer thème", on_click=toggle_theme, use_container_width=True, key="home_theme_btn")
+    with r2:
+        density_choice_h = st.selectbox(
+            "Confort d'affichage",
+            ["Compact", "Normal", "Large"],
+            index=["Compact", "Normal", "Large"].index(st.session_state.get("ui_density", "Normal")),
+            key="ui_density_select_home",
+            help="Ajuste la taille des textes, espacements et zones tactiles.",
+        )
+        if density_choice_h != st.session_state.get("ui_density", "Normal"):
+            st.session_state.ui_density = density_choice_h
+            st.rerun()
+    with r3:
+        if st.button("Actualiser", use_container_width=True, key="home_refresh_btn", help="Actualiser"):
             st.cache_data.clear()
             st.rerun()
-    with col_l:
-        if st.button("🚪", use_container_width=True, help="Déconnexion"):
+    with r4:
+        if st.button("Déconnexion", use_container_width=True, key="home_logout_btn"):
             logout()
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:12px;margin-top:18px;padding:12px 14px;
+            border-radius:16px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);">
+            <div style="width:36px;height:36px;background:linear-gradient(135deg,#132238,#1e3a5f);
+                border-radius:50%;display:flex;align-items:center;justify-content:center;
+                font-size:0.9rem;border:1px solid rgba(79,142,247,0.3);color:#fff;">
+                {user[0].upper() if user else "?"}
+            </div>
+            <div>
+                <div style="font-weight:700;font-size:0.9rem;color:var(--text-main);">{html_module.escape(user or "—")}</div>
+                <div style="font-size:0.78rem;color:var(--text-muted);">{html_module.escape(role)}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+page = st.session_state.current_page
+render_desktop_top_bar(page, user)
 
 if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
     with st.expander("Diagnostic n8n (endpoints & logs)", expanded=False):
@@ -1824,8 +1914,6 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
                 st.caption(f"Affichage de {logs_limit} / {len(send_logs)} logs.")
         else:
             st.caption("Aucun envoi loggé dans cette session.")
-
-render_sync_badge()
 
 # ── PAGES SPÉCIALES ────────────────────────────────────────────────────────────
 if page == "Utilisateurs":
@@ -4410,18 +4498,7 @@ if page == "Vue Générale":
                     with btn_col:
                         if st.button("↗", key=f"goto_client_{idx}_{client}", help=f"Ouvrir dossier {client}"):
                             st.session_state["_prefill_client_search"] = client
-                            # La sidebar affiche des labels décorés (ex: "⌂ Espace Clients").
-                            # On retrouve donc l'index via `page_key_map` plutôt qu'en dur.
-                            target_label = next((p for p in pages if page_key_map.get(p) == "Espace Clients"), None)
-                            if target_label is not None:
-                                st.session_state["_page_index"] = pages.index(target_label)
-                                # Streamlit ne laisse pas toujours forcer la valeur d'un widget via
-                                # `session_state` (ex: clé d'un `st.radio`). On passe donc par un
-                                # mécanisme d'override déjà utilisé pour la navigation.
-                                st.session_state["nav_override"] = target_label
-                            else:
-                                # Fallback : si jamais la structure sidebar change
-                                st.session_state["nav_override"] = "Espace Clients"
+                            st.session_state["current_page"] = "Espace Clients"
                             st.rerun()
 
                 if vg_nb_attente > ALERT_PREVIEW:
