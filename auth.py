@@ -301,7 +301,7 @@ def _generate_password(length: int = 12) -> str:
 
 def get_user_credentials(username: str):
     """
-    Retourne (sheet_name, google_sa_json_str) pour le user connecté.
+    Retourne (sheet_name, google_sa_json_str, n8n_base_url) pour le user connecté.
     - florian → st.secrets (SHEET_NAME + GOOGLE_SERVICE_ACCOUNT)
     - autres  → valeurs dans Supabase
     """
@@ -309,11 +309,16 @@ def get_user_credentials(username: str):
         return (
             st.secrets.get("SHEET_NAME", ""),
             st.secrets.get("GOOGLE_SERVICE_ACCOUNT", ""),
+            st.secrets.get("N8N_BASE_URL", "https://client1.florianai.fr"),
         )
     u = _sb_get(username)
     if not u:
-        return "", ""
-    return u.get("sheet_name", ""), u.get("google_sa", "")
+        return "", "", "https://client1.florianai.fr"
+    return (
+        u.get("sheet_name", ""),
+        u.get("google_sa", ""),
+        u.get("n8n_base_url", "https://client1.florianai.fr"),
+    )
 
 # ── CSS login ──────────────────────────────────────────────────────────────────
 _LOGIN_CSS = """
