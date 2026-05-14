@@ -749,7 +749,7 @@ SCOPES = [
 
 @st.cache_resource(show_spinner=False)
 def get_spreadsheet(username: str):
-    sheet_name, gsa_json = get_user_credentials(username)
+    sheet_name, gsa_json, _ = get_user_credentials(username)
     if not sheet_name or not gsa_json:
         return None, "Credentials non configurés."
     try:
@@ -763,7 +763,7 @@ def get_spreadsheet(username: str):
 @st.cache_resource(show_spinner=False)
 def _get_ereporting_spreadsheet(username: str):
     """Client gspread mis en cache pour le fichier e-repporting — évite le handshake OAuth à chaque action."""
-    _, gsa_json = get_user_credentials(username)
+    _, gsa_json, _ = get_user_credentials(username)
     if not gsa_json:
         return None, "Credentials non configurés."
     try:
@@ -789,7 +789,7 @@ def get_worksheet(username: str, tab_name: str):
         return None, str(e)
 
 def get_calendar_service(username):
-    _, gsa_json = get_user_credentials(username)
+    _, gsa_json, _ = get_user_credentials(username)
     if not gsa_json:
         return None
     try:
@@ -829,7 +829,7 @@ def get_calendars_list(username):
 def _load_chatmemory2_durees(u):
     """Charge toutes les durées de chatmemory2 en une seule requête."""
     try:
-        _, gsa_json = get_user_credentials(u)
+        _, gsa_json, _ = get_user_credentials(u)
         if not gsa_json:
             return {}
         creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
@@ -854,7 +854,7 @@ def _load_chatmemory2_durees(u):
         return {}
 
 def create_calendar_event(username, calendar_id, title, description, location, start_dt, end_dt):
-    _, gsa_json = get_user_credentials(username)
+    _, gsa_json, _ = get_user_credentials(username)
     if not gsa_json:
         return None
     try:
@@ -1292,7 +1292,7 @@ def get_sheet_values_resilient(username: str, tab_name: str, cache_slot: str, re
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_calendar_events(username, calendar_id, date_debut_str, date_fin_str):
-    _, gsa_json = get_user_credentials(username)
+    _, gsa_json, _ = get_user_credentials(username)
     if not gsa_json:
         return []
     try:
@@ -1998,6 +1998,15 @@ def get_meteo(ville: str = "Paris") -> dict:
         }
     except Exception:
         return {}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_n8n_base(username: str) -> str:
+    try:
+        _, _, base_url = get_user_credentials(username)
+        return (base_url or "https://client1.florianai.fr").rstrip("/")
+    except Exception:
+        return "https://client1.florianai.fr"
+
 def render_desktop_top_bar(module_title: str, user_name: str):
     """Barre supérieure module : Home, marque, titre, météo, heure, utilisateur."""
     now_s = datetime.now().strftime("%H:%M")
@@ -2159,7 +2168,7 @@ if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
 
 user = st.session_state.get("username", "")
-user_slug = safe_slug(user)
+_N8N_BASE = get_n8n_base(user)
 role = st.session_state.get("role", "viewer")
 
 notif_label = "Notifications"
@@ -2287,10 +2296,9 @@ if st.secrets.get("SHOW_N8N_DIAGNOSTIC", "") == "1":
         st.caption("Endpoints actifs pour ce compte :")
         st.code(
             "\n".join([
-                f"reponse:  https://client1.florianai.fr/webhook-test/reponse-{user_slug}",
-                f"reponse:  https://client1.florianai.fr/webhook/reponse-{user_slug}",
-                f"devis:    https://client1.florianai.fr/webhook/{user_slug}",
-                f"retard:   https://client1.florianai.fr/webhook/retard-{user_slug}",
+                f"reponse:  {_N8N_BASE}/webhook/reponse-{safe_slug(user)}",
+                f"devis:    {_N8N_BASE}/webhook/{safe_slug(user)}",
+                f"retard:   {_N8N_BASE}/webhook-test/retard-{safe_slug(user)}",
             ])
         )
         send_logs = st.session_state.get("_send_logs", [])
@@ -2532,7 +2540,7 @@ elif page == "Espace Clients":
     try:
         from googleapiclient.discovery import build
 
-        sheet_name, gsa_json = get_user_credentials(user)
+        sheet_name, gsa_json, _ = get_user_credentials(user)
         if not gsa_json:
             st.error("Identifiants Google introuvables pour ce compte.")
             st.stop()
@@ -3014,7 +3022,7 @@ elif page == "Éditeur Google Sheet":
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Notifications" in page:
     page_header("Notifications", "Devis signés en attente de planification")
-    WEBHOOK_REPONSE = f"https://client1.florianai.fr/webhook/reponse-{user_slug}"
+    WEBHOOK_REPONSE = f"{_N8N_BASE}/webhook/reponse-{user_slug}"
     @st.cache_data(ttl=180, show_spinner=False)
     def _load_salaries(u):
         df_suivie, err = get_sheet_data(u)
@@ -3057,7 +3065,7 @@ elif "Notifications" in page:
     @st.cache_data(ttl=60, show_spinner=False)
     def _get_duree_travaux(u, numero_devis):
         try:
-            _, gsa_json = get_user_credentials(u)
+            _, gsa_json, _ = get_user_credentials(u)
             if not gsa_json:
                 return None
             creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
@@ -3646,7 +3654,7 @@ elif page == "Créer un devis":
                         f"~{total_preview:,.0f} € HT"
                     )
 
-    WEBHOOK_URL = f"https://client1.florianai.fr/webhook/{user_slug}"
+    WEBHOOK_URL = f"{_N8N_BASE}/webhook/{user_slug}"
 
     def _parse_prix(val):
         try:
@@ -7093,7 +7101,7 @@ elif page == "Retards & Avenants":
     page_header("Retards & Avenants", "Signalement de retard chantier")
     # ... reste du code
 
-    WEBHOOK_RETARD = f"https://client1.florianai.fr/webhook-test/retard-{user_slug}"
+    WEBHOOK_RETARD = f"{_N8N_BASE}/webhook-test/retard-{user_slug}"
 
     def _parse_tva_av(val):
         if val is None or str(val).strip() == "":
@@ -7122,7 +7130,7 @@ elif page == "Retards & Avenants":
         try:
             creds_data = get_user_credentials(u)
             # get_user_credentials retourne (sheet_name, gsa_json)
-            _, gsa_json = creds_data
+            _, gsa_json, _ = creds_data
             if not gsa_json:
                 return "Credentials non configurés.", pd.DataFrame()
             creds = Credentials.from_service_account_info(json.loads(gsa_json), scopes=SCOPES)
@@ -7347,7 +7355,7 @@ elif page == "Retards & Avenants":
     st.markdown("---")
     st.markdown("## 📋 Créer un Avenant")
 
-    WEBHOOK_AVENANT = f"https://client1.florianai.fr/webhook-test/avenant-{user_slug}"
+    WEBHOOK_AVENANT = f"{_N8N_BASE}/webhook-test/avenant-{user_slug}"
 
     df_av_source = df[df["_signe"]].copy()
 
