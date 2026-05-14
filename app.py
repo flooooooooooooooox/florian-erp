@@ -2169,6 +2169,7 @@ if "current_page" not in st.session_state:
 
 user = st.session_state.get("username", "")
 _N8N_BASE = get_n8n_base(user)
+user_slug = safe_slug(user)
 role = st.session_state.get("role", "viewer")
 
 notif_label = "Notifications"
