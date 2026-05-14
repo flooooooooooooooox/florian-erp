@@ -1926,18 +1926,108 @@ def render_launchpad(launch_rows: list):
                         st.session_state["current_page"] = page_id
                         st.rerun()
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_meteo(ville: str = "Paris") -> dict:
+    """
+    Récupère la météo via Open-Meteo (gratuit, sans clé API).
+    Retourne un dict avec les données actuelles + 3 jours.
+    """
+    try:
+        # Géocodage
+        geo = requests.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": ville, "count": 1, "language": "fr", "format": "json"},
+            timeout=5,
+        ).json()
+        if not geo.get("results"):
+            return {}
+        loc = geo["results"][0]
+        lat, lon = loc["latitude"], loc["longitude"]
 
+        # Météo
+        meteo = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,weathercode,windspeed_10m,precipitation",
+                "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum",
+                "timezone": "Europe/Paris",
+                "forecast_days": 3,
+            },
+            timeout=5,
+        ).json()
+
+        current = meteo.get("current", {})
+        daily   = meteo.get("daily", {})
+
+        def wmo_to_label(code):
+            if code is None: return "—"
+            code = int(code)
+            if code == 0:             return "Ensoleillé", "☀️"
+            if code in (1, 2):        return "Peu nuageux", "🌤️"
+            if code == 3:             return "Couvert", "☁️"
+            if code in range(51, 68): return "Pluie", "🌧️"
+            if code in range(71, 78): return "Neige", "❄️"
+            if code in range(80, 83): return "Averses", "🌦️"
+            if code in range(95, 100):return "Orage", "⛈️"
+            return "Variable", "🌥️"
+
+        label_c, icon_c = wmo_to_label(current.get("weathercode"))
+
+        jours = []
+        for i in range(min(3, len(daily.get("time", [])))):
+            lbl, ico = wmo_to_label(daily["weathercode"][i])
+            jours.append({
+                "date":    daily["time"][i],
+                "label":   lbl,
+                "icon":    ico,
+                "t_max":   daily["temperature_2m_max"][i],
+                "t_min":   daily["temperature_2m_min"][i],
+                "precip":  daily["precipitation_sum"][i],
+            })
+
+        return {
+            "ville":       loc.get("name", ville),
+            "temp":        current.get("temperature_2m"),
+            "wind":        current.get("windspeed_10m"),
+            "precip":      current.get("precipitation"),
+            "icon":        icon_c,
+            "label":       label_c,
+            "jours":       jours,
+        }
+    except Exception:
+        return {}
 def render_desktop_top_bar(module_title: str, user_name: str):
-    """Barre supérieure module : Home, marque, titre, heure, utilisateur (session / confort)."""
+    """Barre supérieure module : Home, marque, titre, météo, heure, utilisateur."""
     now_s = datetime.now().strftime("%H:%M")
     now_d = datetime.now().strftime("%d/%m/%Y")
     safe_title = html_module.escape(str(module_title))
+
+    # ── Météo ──────────────────────────────────────────────────────────────
+    METEO_VILLE = st.session_state.get("meteo_ville", "Paris")
+    meteo = get_meteo(METEO_VILLE)
+
+    def _wind_color(v):
+        if v is None: return "#6b84a3"
+        if v >= 50:   return "#ff5c7a"
+        if v >= 30:   return "#ffb84d"
+        return "#00d68f"
+
+    def _precip_color(v):
+        if v is None: return "#6b84a3"
+        if v > 5:     return "#ff5c7a"
+        if v > 0:     return "#ffb84d"
+        return "#00d68f"
+
     with st.container(border=True):
-        h0, h1, h2, h3, h4 = st.columns([0.62, 1.35, 3.4, 1.1, 1.9])
+        h0, h1, h2, h_meteo, h3, h4 = st.columns([0.62, 1.35, 2.8, 2.8, 1.1, 1.9])
+
         with h0:
             if st.button("🏠", key="floxia_nav_home", help="Retour au bureau"):
                 st.session_state["current_page"] = "Home"
                 st.rerun()
+
         with h1:
             st.markdown(
                 "<span style='font-family:DM Sans,Inter,sans-serif;font-weight:800;font-size:0.95rem;"
@@ -1945,12 +2035,71 @@ def render_desktop_top_bar(module_title: str, user_name: str):
                 "background-clip:text;color:transparent;'>Floxia</span>",
                 unsafe_allow_html=True,
             )
+
         with h2:
             st.markdown(
                 f"<div style='font-family:DM Sans,Inter,sans-serif;font-size:1.05rem;font-weight:800;"
                 f"line-height:1.2;color:var(--text-main);'>{safe_title}</div>",
                 unsafe_allow_html=True,
             )
+
+        with h_meteo:
+            if not meteo:
+                st.markdown(
+                    "<div style='font-size:0.75rem;color:var(--text-muted);'>Météo indisponible</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                # ── Prévisions 3 jours ────────────────────────────────────
+                jours_html = ""
+                jours_noms_court = ["Auj.", "Dem.", "J+2"]
+                for i, j in enumerate(meteo.get("jours", [])):
+                    precip_str = f"{j['precip']:.1f}mm" if j['precip'] else "0mm"
+                    jours_html += (
+                        f"<div style='text-align:center;padding:4px 8px;"
+                        f"background:rgba(255,255,255,0.04);border-radius:8px;"
+                        f"border:1px solid var(--border);min-width:56px;'>"
+                        f"<div style='font-size:0.62rem;color:var(--text-muted);font-weight:700;"
+                        f"text-transform:uppercase;letter-spacing:0.05em;'>{jours_noms_court[i]}</div>"
+                        f"<div style='font-size:1rem;line-height:1.2;'>{j['icon']}</div>"
+                        f"<div style='font-size:0.68rem;color:var(--text-main);font-weight:600;'>"
+                        f"{j['t_max']:.0f}° <span style='color:var(--text-muted);'>{j['t_min']:.0f}°</span></div>"
+                        f"<div style='font-size:0.6rem;color:{_precip_color(j[\"precip\"])};'>{precip_str}</div>"
+                        f"</div>"
+                    )
+
+                wind_color  = _wind_color(meteo.get("wind"))
+                prec_color  = _precip_color(meteo.get("precip"))
+                wind_val    = f"{meteo['wind']:.0f} km/h" if meteo.get("wind") is not None else "—"
+                precip_val  = f"{meteo['precip']:.1f} mm" if meteo.get("precip") is not None else "—"
+                temp_val    = f"{meteo['temp']:.0f}°C" if meteo.get("temp") is not None else "—"
+
+                st.markdown(
+                    f"""<div style='display:flex;align-items:center;gap:8px;flex-wrap:nowrap;'>
+                      <!-- Conditions actuelles -->
+                      <div style='display:flex;flex-direction:column;gap:2px;flex-shrink:0;'>
+                        <div style='display:flex;align-items:center;gap:6px;'>
+                          <span style='font-size:1.3rem;line-height:1;'>{meteo['icon']}</span>
+                          <div>
+                            <div style='font-size:1rem;font-weight:800;color:var(--text-main);line-height:1;'>{temp_val}</div>
+                            <div style='font-size:0.65rem;color:var(--text-muted);white-space:nowrap;'>{html_module.escape(meteo["ville"])} · {meteo["label"]}</div>
+                          </div>
+                        </div>
+                        <div style='display:flex;gap:6px;margin-top:2px;'>
+                          <span style='font-size:0.62rem;color:{wind_color};font-weight:600;'>💨 {wind_val}</span>
+                          <span style='font-size:0.62rem;color:{prec_color};font-weight:600;'>🌧 {precip_val}</span>
+                        </div>
+                      </div>
+                      <!-- Séparateur -->
+                      <div style='width:1px;height:40px;background:var(--border);flex-shrink:0;'></div>
+                      <!-- Prévisions 3 jours -->
+                      <div style='display:flex;gap:4px;overflow:hidden;'>
+                        {jours_html}
+                      </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
         with h3:
             st.markdown(
                 f"<div style='text-align:right;font-family:DM Sans,Inter,sans-serif;'>"
@@ -1958,6 +2107,7 @@ def render_desktop_top_bar(module_title: str, user_name: str):
                 f"<div style='font-size:0.72rem;font-weight:600;color:var(--text-muted);margin-top:2px;'>{now_d}</div></div>",
                 unsafe_allow_html=True,
             )
+
         with h4:
             st.markdown(
                 f"<div style='text-align:right;font-family:DM Sans,Inter,sans-serif;'>"
@@ -1967,8 +2117,9 @@ def render_desktop_top_bar(module_title: str, user_name: str):
                 unsafe_allow_html=True,
             )
 
+    # ── Paramètre ville + options session ──────────────────────────────────
     with st.expander("⚙ Affichage & session", expanded=False):
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.button("Basculer thème", on_click=toggle_theme, use_container_width=True, key="desk_theme_btn")
         with c2:
@@ -1983,14 +2134,25 @@ def render_desktop_top_bar(module_title: str, user_name: str):
                 st.session_state.ui_density = density_choice
                 st.rerun()
         with c3:
-            if st.button("Actualiser", use_container_width=True, key="desk_refresh_btn", help="Actualiser"):
-                st.cache_data.clear()
+            ville_input = st.text_input(
+                "Ville météo",
+                value=st.session_state.get("meteo_ville", "Paris"),
+                key="meteo_ville_input",
+                label_visibility="collapsed",
+                placeholder="Ville météo...",
+            )
+            if ville_input.strip() and ville_input.strip() != st.session_state.get("meteo_ville", "Paris"):
+                st.session_state["meteo_ville"] = ville_input.strip()
+                get_meteo.clear()
                 st.rerun()
         with c4:
+            if st.button("Actualiser", use_container_width=True, key="desk_refresh_btn"):
+                st.cache_data.clear()
+                st.rerun()
+        with c5:
             if st.button("Déconnexion", use_container_width=True, key="desk_logout_btn"):
                 logout()
                 st.rerun()
-
 
 # ── NAVIGATION BUREAU (Launchpad + st.session_state.current_page) ─────────────
 if "current_page" not in st.session_state:
