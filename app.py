@@ -2064,7 +2064,7 @@ def render_desktop_top_bar(module_title: str, user_name: str):
                         f"<div style='font-size:1rem;line-height:1.2;'>{j['icon']}</div>"
                         f"<div style='font-size:0.68rem;color:var(--text-main);font-weight:600;'>"
                         f"{j['t_max']:.0f}° <span style='color:var(--text-muted);'>{j['t_min']:.0f}°</span></div>"
-                        f"<div style='font-size:0.6rem;color:{_precip_color(j[\"precip\"])};'>{precip_str}</div>"
+                        f"<div style='font-size:0.6rem;color:{_precip_color(j.get('precip'))};'>{precip_str}</div>"
                         f"</div>"
                     )
 
